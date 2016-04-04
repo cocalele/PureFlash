@@ -1,0 +1,113 @@
+In this release there are new layouts logging messages with local time. There
+is also various maintenance work and improved security in public API headers.
+Windows MinGW port has been thoroughly tested and updated.
+
+Summary of the changes:
+
+* new date_local and date_local_r appenders
+* MinGW updates and important bugfixes:
+  * timeval vs FILETIME structures mismatch
+  * cleanups
+  * support for MinGW >= 4.8
+  * add -no-undefied linker flag to create shared dll
+  * reentrant layouts on all platforms now
+  * replacement functions for buggy snprintf()/vsnprintf()
+  * tests working out-of-the-box
+  * proper output of long long int
+  * generate also .def file
+  * providing binaries for the release
+* tests working out-of-the-box on FreeBSD
+* fixed several warnings
+* public API functions with format strings are marked by GNU C format attribute
+* updated documentation
+
+1.2.3	2013-04-06:
+
+This release contains important bugfix in syslog appender. There are also
+updates for better integration with recent Linux distributions:
+
+* use UTF-8 encoding in AUTHORS file
+* update rpm packaging
+* update FSF address in license and headers
+* manpage for log4c-config
+* pkgconfig file
+* fixed memory leaks in log4c_ini()/log4c_fini()
+* use more recent autotools
+
+1.2.2	2012-10-05:
+
+This is mainly bugfix and portability release, addressing collected bugreports
+and patches:
+
+* removed warning in m4 macro
+* added log4c_appender_syslog_set_facility()
+* rollingfile appender crash fixes
+* test updates
+* load only first log4crc file
+* fixed crash on messages longer than 1024 bytes
+* added one missing C++ declaration
+* fixed reopening of the stream appender
+* proper copy message over end of the file in mmap appender
+* portability improvements:
+  * support for XCode 3 and OSX 10.5
+  * support build with MinGW
+  * build tests in FreeBSD
+  * try to use C89 compiler (but va_copy or __va_copy still needed)
+* various small other fixes
+
+1.2.1	2007-11-08:
+
+* allow use of KB,MB,GB when specifying sizes in config file
+	Francisco Camenforte Torres
+* memory leak fixes to sd_list, rolling file appender, etc.
+	Francisco Camenforte Torres
+* hpux syntax fixes
+	Francisco Camenforte Torres
+* sytax checks during build for c++ compilation
+
+1.2.0	2007-06-21:
+
+- new log4crc hot reread feature. to enable use the --enable-reread
+  configure option (Joel Schaubert)
+- new API for a logging message with user provided location_info
+  (Joel Schaubert)
+- added the former XML parser based on libexpat. to disable and
+  use the home made parser use the --without-expat configure
+  option (Robert Byrne)
+- bug fixes
+
+1.1.0	2005-12-16:
+
+- added Windows support from Robert Byrne <Robert.Byrne@Sun.COM>
+- added new API log4c_category_list() to retreive a list of the current
+  categories being used in log4c
+- added an example library contributed by joel schaubert
+  <foxyjoel@gmail.com>
+- added support for threadsafe loggind and thread safe
+  layouts. original idea from Jean-Pierre Joannin
+  <jean-pierre.joannin@hp.com>
+- added a new API log4c_load() to load/reload a configuration file.
+- added new appender stream2 from Robert Byrne <Robert.Byrne@Sun.COM>
+- added native Solaris cc support
+- added support for suse-8
+- log4c got included in gentoo
+- added macosx support from Olger Warnier
+- plenty of minor fixes
+
+1.0.12	2004-08-18:
+
+This is a release fixing minor bugs concerning native AIX compiler, gcc 3.4.
+
+1.0.11	2003-09-13:
+
+expat was removed and replaced with a simple XML parser.
+
+1.0.10	2002-11-22
+1.0.9	2002-11-21
+1.0.8	2002-09-23
+1.0.7	2002-09-23
+1.0.6	2002-05-02
+1.0.5	2002-05-02
+1.0.4	2002-04-10
+1.0.3	2002-03-11
+1.0.2	2002-03-11

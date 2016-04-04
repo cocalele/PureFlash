@@ -1,0 +1,3 @@
+[submodule "s5afs/thirdParty/log4c"]
+	path = s5afs/thirdParty/log4c
+	url = https://github.com/cocalele/log4c.git

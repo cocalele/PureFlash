@@ -1,0 +1,11 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: log4c
+Description: Library of C for flexible logging to files, syslog and other destinations
+Version: 1.2.4
+Requires:
+Libs: -L${libdir} -llog4c
+Cflags: -I${includedir}

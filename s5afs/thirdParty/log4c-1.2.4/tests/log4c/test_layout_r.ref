@@ -1,0 +1,23 @@
+=> test #0 :
+factory[log4c_category_factory]:
+{ name:'root' priority:NOTICE additive:1 appender:'(nil)' parent:'(nil)' }
+{ name:'sub1' priority:ERROR additive:1 appender:'appender1' parent:'root' }
+
+factory[log4c_appender_factory]:
+{ name:'stderr' type:'stream' layout:'basic' isopen:0 udata:0x111111111111}
+{ name:'stdout' type:'stream' layout:'basic' isopen:0 udata:0x111111111111}
+{ name:'appender1' type:'stream' layout:'layout1' isopen:0 udata:0x111111111111}
+
+factory[log4c_layout_factory]:
+{ name:'layout1' type:'basic_r' udata:(nil) }
+{ name:'basic' type:'basic' udata:(nil) }
+{ name:'dated' type:'dated' udata:(nil) }
+
+=> test #0 :  passed
+=> test #1 :
+[appender1] ERROR    sub1 - let's log
+=> test #1 :  passed
+=> test #2 :
+[appender1] ERROR    sub1 - let's log a ...=> test #2 :  passed
+=> test #3 :
+=> test #3 :  passed

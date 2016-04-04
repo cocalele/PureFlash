@@ -1,0 +1,26 @@
+.TH log4c 1 "Oct 2012"
+.SH NAME
+log4c-config - script to get information about the installed version of log4c
+.SH SYNOPSIS
+.B log4c-config
+[\-\-prefix] [\-\-libs] [\-\-cflags] [\-\-version] [\-\-help]
+.SH DESCRIPTION
+\fIlog4c-config\fP is a tool that is used to determine the compile and
+linker flags that should be used to compile and link programs that use
+\fIlog4c\fP.
+.SH OPTIONS
+\fIlog4c-config\fP accepts the following options:
+.TP 8
+.B  \-\-version
+Print the currently installed version of \fIlog4c\fP on the standard output.
+.TP 8
+.B  \-\-libs
+Print the linker flags that are necessary to link a \fIlog4c\fP program.
+.TP 8
+.B  \-\-cflags
+Print the compiler flags that are necessary to compile a \fIlog4c\fP program.
+.TP 8
+.B  \-\-prefix
+Print the prefix with which log4c was compiled.
+.SH AUTHOR
+This manual page was copied from xml2-config manpage written by Fredrik Hallenberg <hallon@lysator.liu.se>. It was modified by František Dvořák <valtri@civ.zcu.cz>.

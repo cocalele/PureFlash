@@ -1,0 +1,8 @@
+version.lo: version.c ../../src/config.h ../../src/log4c/version.h \
+ ../../src/log4c/defs.h
+
+../../src/config.h:
+
+../../src/log4c/version.h:
+
+../../src/log4c/defs.h:
