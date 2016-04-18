@@ -1,0 +1,54 @@
+SPureFlash can be build with cmake tools.
+   
+1. Build on Linux
+=================
+
+1) check out code
+  # git clone https://github.com/cocalele/PureFlash.git
+2) build third party library
+  # cd PureFlash/s5afs/thirdParty/log4c-1.2.4
+  # autoreconf -f -i
+  # ./configure --without-expat --enable-constructors
+  # make
+  # cp src/log4c/.libs/liblog4c.so* bin/
+  
+3) run cmake to generate ninja scripts
+  # cd PureFlash; 
+  # mkdir build_deb; cd build_deb
+  # cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
+
+The above command will generate scripts for Debug build. To do a release build, run command:
+  # cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
+  
+4) run ninja to do build
+  $ ninja
+
+after build finish, all binary should be found under  * bin * dir
+
+
+2. Run 
+=================
+1) Setup environment variables 
+  # cd build_deb 
+  # source env.sh
+2) Setup a developer debug environment
+  # truncate  -s 1G /etc/s5/tray0.img
+  # losetup /dev/loop0 /etc/s5/tray0.img
+  # cp bin/s5afs_template.conf /etc/s5/s5afs.conf
+  # insmod bin/s5bd.ko
+  # bin/bdd -d
+  # modprobe nbdx; modprobe xio_rdma; modprobe xio_tcp
+  # s5afs -c /etc/s5/s5afs.conf -d
+3) startup nbdx server
+  3.a) start in TCP mode for debug purpose
+  # raio_server -a 127.0.0.1 -p 5555 -c ff -t tcp -f 0
+  
+  or 
+  3.b) start in RDMA mode, replace IP with real IP of your RDMA NIC    
+  # raio_server -a 10.10.1.25 -p 5555 -c ff -t rdma -f 0
+ 
+4) startup jConductor, center controller of PureFlash
+
+5) Create tenant and volume, export via NBDX
+
+6) mount volume on client side via NBDX
