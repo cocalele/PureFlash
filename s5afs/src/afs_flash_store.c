@@ -14,7 +14,7 @@
 #include "afs_server.h"
 #include "s5log.h"
 #include "s5message.h"
-
+#include "afs_cluster.h"
 
 static int read_store_head(struct flash_store* store);
 static int initialize_store_head(struct flash_store* store);
@@ -30,7 +30,7 @@ static int load_meta_data(struct flash_store* store);
  * @return 0 on success, negative for error
  * @retval -ENOENT  device not exist or failed to open
  */
-int fs_init(struct flash_store* store, const char* dev_name)
+int fs_init(const char* mngt_ip, struct flash_store* store, const char* dev_name)
 {
 	int ret = 0;
 	safe_strcpy(store->dev_name, dev_name, sizeof(store->dev_name));
@@ -38,6 +38,12 @@ int fs_init(struct flash_store* store, const char* dev_name)
 	if (store->dev_fd == -1)
 		return -errno;
 
+    ret = register_tray(mngt_ip, store->uuid, store->dev_name, store->dev_capacity);
+    if(ret)
+    {
+        S5LOG_ERROR("could not register tray...");
+        return ret;
+    }
 
 	if ((ret = read_store_head(store)) == 0)
 	{

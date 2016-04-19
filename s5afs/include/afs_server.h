@@ -95,24 +95,24 @@ int recv_msg_block_delete_request(void* sockParam, s5_message_t* msg, void* para
 int recv_msg_s5_stat_request(void* sockParam, s5_message_t* msg, void* param);
 
 /**
- *  Initialize toe server. 
+ *  Initialize store server. 
  *
  *  @param[in]   toe_daemon		The pointer to toedaemon instance. This instance should be malloc in advance, and deleted by using release_s5d_srvtoe.
  *  @return      0          Success.
  *  @retval      -S5_CONF_ERR	When the key can not find from S5 config file.
  *  @retval		 -S5_BIND_ERR	When try to bind listen IP or port failed
  */
-int init_s5d_srv_toe(struct toedaemon* toe_daemon);
+int init_store_server(struct toedaemon* toe_daemon);
 
 /**
  *  Release toe server. 
  *
- *  @param[in]   toe_daemon     The pointer to toedaemon instance. This instance should be malloc in advance, and deleted by using release_s5d_srvtoe.
+ *  @param[in]   toe_daemon     The pointer to toedaemon instance. 
  *  @return      0          Success.
  *  @retval      -S5_CONF_ERR   When the key can not find from S5 config file.
  *  @retval      -S5_BIND_ERR   When try to bind listen IP or port failed
  */
-int release_s5d_srv_toe(struct s5d_srv_toe* s5v_srv_bd);
+int release_store_server(struct toedaemon* toe_daemon);
 
 #ifdef __cplusplus
 }

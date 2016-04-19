@@ -13,6 +13,7 @@
 #include "spy.h"
 #include "s5message.h"
 #include "afs_flash_store.h"
+#include "afs_cluster.h"
 
 extern struct afsc_st afsc;
 
@@ -31,11 +32,7 @@ static int32_t calculate_tray_id(uint64_t volume_id)
 	return (int32_t)(volume_id & 0xff);
 }
 
-
-
-
-
-int cachemgr_init(int32_t tray_set_count, int32_t nic_port_count)
+void register_spy_variables()
 {
 	spy_register_variable("read", &read_op_count, vt_int32, "read op count");
 	spy_register_variable("write", &write_op_count, vt_int32, "write op count");
@@ -43,9 +40,17 @@ int cachemgr_init(int32_t tray_set_count, int32_t nic_port_count)
 	spy_register_variable("delete", &delete_op_count, vt_int32, "delete op count");
 	spy_register_variable("client_info", &client_info_op_count, vt_int32, "client info op count");
 
-	return 0;
 }
 
+void unregister_spy_variables()
+{
+	spy_unregister("read");
+	spy_unregister("write");
+	spy_unregister("reply_ok");
+	spy_unregister("delete");
+	spy_unregister("client_info");
+
+}
 int flash_store_config(struct toedaemon* toe_daemon, conf_file_t fp)
 {
 	store_count = toe_daemon->tray_set_count;
@@ -60,11 +65,16 @@ int flash_store_config(struct toedaemon* toe_daemon, conf_file_t fp)
 				tary_section, toe_daemon->s5daemon_conf_file);
 			return -EINVAL;
 		}
-		int rc = fs_init(&flash_stores[i], dev_name);
+		int rc = fs_init(toe_daemon->mngt_ip, &flash_stores[i], dev_name);
 		if (rc)
 		{
 			S5LOG_ERROR("Failed to initialize %s, with dev_name(%s)", tary_section, dev_name);
 		}
+		register_tray(toe_daemon->mngt_ip, flash_stores[i].uuid, dev_name, flash_stores[i].dev_capacity);
+		if(rc == 0)
+			set_tray_state(toe_daemon->mngt_ip, flash_stores[i].uuid, TS_OK, TRUE);
+		else
+			set_tray_state(toe_daemon->mngt_ip, flash_stores[i].uuid, TS_ERROR, FALSE);
 	}
 	return 0;
 }

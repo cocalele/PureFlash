@@ -20,10 +20,11 @@ struct toedaemon;
  *  Initialize afsc_st, register spy variables.
  *
  *  @param[in]   tray_set_count int32_t,the total number of tray_set
- *  @return      No return.
+ * 
  */
-int cachemgr_init(int32_t tray_set_count, int32_t nic_port_count);
- 
+void register_spy_variables();
+void unregister_spy_variables();
+
 /*  Release cache management data for S5afs 
  *
  *  Release afsc_st, and unregister spy variables.

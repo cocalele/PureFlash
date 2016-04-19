@@ -50,7 +50,7 @@ struct lmt_entry
  * @return 0 on success, negative for error
  * @retval -ENOENT  device not exist or failed to open
  */
-int fs_init(struct flash_store* store, const char* dev_name);
+int fs_init(const char* mngt_ip, struct flash_store* store, const char* dev_name);
 
 /**
  * read data to buffer. 

@@ -1,5 +1,6 @@
 #ifndef spy_h__
 #define spy_h__
+#include <stdint.h>
 
 /**
 * Copyright (C), 2014-2015.

@@ -19,10 +19,10 @@
 #include "afs_flash_store.h"
 
 extern struct afsc_st afsc;
-static void *s5d_listentoe_thread(void *param);
+static void *afs_listen_thread(void *param);
 static int handle_msg(s5v_msg_entry_t *s5vmsg);
 
-static int parse_s5daemon_conf_file_afs_info(struct toedaemon* toe_daemon, conf_file_t fp)
+static int init_trays(struct toedaemon* toe_daemon, conf_file_t fp)
 {
 	int rc = -1;	
 
@@ -58,7 +58,12 @@ static int parse_s5daemon_conf_file_afs_info(struct toedaemon* toe_daemon, conf_
 	return rc;
 }
 
-static int create_toe_sockets_and_threads(struct toedaemon* toe_daemon)
+static int release_trays(struct toedaemon* toe_daemon)
+{
+	return 0;
+}
+
+static int create_sockets_and_threads(struct toedaemon* toe_daemon)
 {
     int rc = -1;
 	for(int i = 0; i < toe_daemon->real_nic_count; i++)
@@ -80,7 +85,7 @@ static int create_toe_sockets_and_threads(struct toedaemon* toe_daemon)
 			}  
 	
 			rc = pthread_create(&(afsc.srv_toe_bd[total_index].listen_s5toe_thread), NULL, 
-				 				s5d_listentoe_thread, (void*)&(afsc.srv_toe_bd[total_index]));
+				 				afs_listen_thread, (void*)&(afsc.srv_toe_bd[total_index]));
     		if(rc)
     		{   
         		S5LOG_ERROR("Failed to create listen thread failed rc(%d) for ip(%s) port(%d).", 
@@ -107,7 +112,7 @@ static int create_toe_sockets_and_threads(struct toedaemon* toe_daemon)
 	
 
 
-static int parse_s5daemon_conf_file_nic_info(struct toedaemon* toe_daemon, conf_file_t fp)
+static int init_ports(struct toedaemon* toe_daemon, conf_file_t fp)
 {
 	int rc = 0;
 
@@ -170,11 +175,60 @@ static int parse_s5daemon_conf_file_nic_info(struct toedaemon* toe_daemon, conf_
 			afsc.srv_toe_bd[total_index].listen_port = (unsigned short)(port_off + PORT_BASE);
 		}
 	}
-	
+	rc = s5socket_create_reaper_thread(&(toe_daemon->reap_socket_thread));
+	if (rc < 0)
+	{
+		return rc;
+	}
+	rc = create_sockets_and_threads(toe_daemon);
+	if (rc < 0)
+	{
+		return rc;
+	}
+
 	return rc;
 }
 
-int init_s5d_srv_toe(struct toedaemon* toe_daemon)
+static int release_socket_and_thread(struct s5d_srv_toe* srv_toe_bd)
+{
+	int rc = 0;
+
+	exit_thread(srv_toe_bd->listen_s5toe_thread);
+
+	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_WRITE);
+	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_READ);
+	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_RGE_BLOCK_DELETE);
+	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_S5_STAT);
+	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_NIC_CLIENT_INFO);
+
+	s5socket_release(&srv_toe_bd->socket, SOCKET_TYPE_SRV);
+	return rc;
+}
+
+static int release_ports(struct toedaemon* toe_daemon)
+{
+	int i;
+	int rc = 0;
+	for (i = 0; i < toe_daemon->real_nic_count; i++)
+	{
+		for (int j = 0; j < toe_daemon->nic_port_count; j++)
+		{
+			int index = i * toe_daemon->nic_port_count + j;
+			release_socket_and_thread(&(afsc.srv_toe_bd[index]));
+		}
+	}
+
+	if (toe_daemon->real_nic_count > 0)
+	{
+		int index = toe_daemon->real_nic_count * toe_daemon->nic_port_count;
+		release_socket_and_thread(&(afsc.srv_toe_bd[index]));
+
+		rc = exit_thread(toe_daemon->reap_socket_thread);
+	}
+	return rc;
+}
+
+int init_store_server(struct toedaemon* toe_daemon)
 {
     int rc = -1; 
 
@@ -188,28 +242,18 @@ int init_s5d_srv_toe(struct toedaemon* toe_daemon)
         return rc;
     }
 
-	rc = parse_s5daemon_conf_file_afs_info(toe_daemon, fp);
+	rc = init_trays(toe_daemon, fp);
     if(rc < 0)
     {   
     	goto EXIT;
 	}   
         
-    rc = parse_s5daemon_conf_file_nic_info(toe_daemon, fp);    
-
+    rc = init_ports(toe_daemon, fp);    
 	if(rc < 0)
 	{
 		goto EXIT;
 	}
-    rc = s5socket_create_reaper_thread(&(toe_daemon->reap_socket_thread));
-	if(rc < 0)
-	{
-		goto EXIT;
-	}
-	rc = create_toe_sockets_and_threads(toe_daemon);
-	if(rc < 0)
-	{
-		goto EXIT;
-	}
+	register_spy_variables();
 
 
 EXIT:
@@ -217,29 +261,15 @@ EXIT:
 		conf_close(fp);
 	return rc;
 }
-
-int release_s5d_srv_toe(struct s5d_srv_toe* srv_toe_bd)
+int release_store_server(struct toedaemon* toe_daemon)
 {
-	int rc = -1;
-
-	if(!srv_toe_bd)
-	{
-		S5LOG_INFO("Param is invalid.");
-		rc = -EINVAL;
-		return rc;
-	}
-
-	exit_thread(srv_toe_bd->listen_s5toe_thread);
-
-    s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_WRITE);
-    s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_READ);	
-    s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_RGE_BLOCK_DELETE);
-	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_S5_STAT);	
-	s5socket_unreigster_handle(srv_toe_bd->socket, SOCKET_TYPE_SRV, MSG_TYPE_NIC_CLIENT_INFO);
-
-	s5socket_release(&srv_toe_bd->socket,SOCKET_TYPE_SRV);		
+	int rc = 0;
+	unregister_spy_variables();
+	rc = release_ports(toe_daemon);
+	rc = release_trays(toe_daemon);
 	return rc;
 }
+
 
 static int push_msg_to_handle_thread(PS5CLTSOCKET socket, s5_message_t* msg)
 {
@@ -415,7 +445,7 @@ static void *msg_process_thread(void *param)
 	return NULL;
 }
 
-void *s5d_listentoe_thread(void *param)
+void *afs_listen_thread(void *param)
 {
 	pthread_t threadID;
 	pthread_t msgThreadID;

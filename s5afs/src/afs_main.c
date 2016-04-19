@@ -11,7 +11,8 @@
 #include "s5utils.h"
 #include "spy.h"
 #include "afs_server.h"
-
+#include "s5errno.h"
+#include "afs_cluster.h"
 
 S5LOG_INIT("s5afs")
 
@@ -32,83 +33,20 @@ void sigroutine(int dunno)
     return;
 } 
 
-int init_src(struct toedaemon* toe_daemon)
+
+int release_afs(struct toedaemon *toe_daemon)
 {
-	int rc = -1;
-	if(!toe_daemon)
-	{
-		goto FINALLY;
-	}
-
-	rc = init_s5d_srv_toe(toe_daemon);	
-	if (rc != 0)
-	{
-		S5LOG_ERROR("Failed: init_s5d_srvtoe failed rc(%d).", rc);
-		return rc;
-	}
-	
-	cachemgr_init(toe_daemon->tray_set_count, toe_daemon->nic_port_count);
-	
-
-FINALLY:	
-	return rc;
-}
-
-int release_src(struct toedaemon *toe_daemon)
-{
-	int rc = -1;
-	int i;
-	int index = -1;
-	char text_name[1024];
-
-	if(!toe_daemon)
-	{
-		S5LOG_ERROR("Failed: param is invalid.");
-		rc = -EINVAL;
-		goto FINALLY;
-	}
-
-	for(i = 0; i < toe_daemon->real_nic_count; i++)
-	{
-		for(int j = 0; j < toe_daemon->nic_port_count; j++)
-		{
-			index = i * toe_daemon->nic_port_count + j;
-			release_s5d_srv_toe(&(afsc.srv_toe_bd[index]));
-		}		
-	}
-
-	if(toe_daemon->real_nic_count > 0)
-	{
-		index = toe_daemon->real_nic_count * toe_daemon->nic_port_count;
-		release_s5d_srv_toe(&(afsc.srv_toe_bd[index]));	
-
-		rc = exit_thread(toe_daemon->reap_socket_thread);
-	}
-
-	for(i = 0; i < toe_daemon->tray_set_count; i++)
-	{
-		snprintf(text_name,1024,"raw_capacity_%i",i);
-		spy_unregister(text_name);
-	}	
-
-	spy_unregister("read");
-	spy_unregister("write");
-	spy_unregister("reply_ok");
-	spy_unregister("delete");
-	spy_unregister("stat");
-	spy_unregister("client_info");
-	spy_unregister("total_raw_capacity");
-	spy_unregister("total_avail_capacity");
-
+	release_store_server(toe_daemon);
 	free(afsc.srv_toe_bd);
-FINALLY:	
-	return rc;	
+	return 0;	
 }
 
 static void printUsage()
 {
 	S5LOG_ERROR("Usage: s5afs -c <s5daemon_conf_file> [-d] [-sp spy_port]\n\t\t-d daemon mode.");
 }
+
+
 
 int main(int argc, char *argv[])
 {
@@ -178,19 +116,53 @@ int main(int argc, char *argv[])
 		memset(toe_daemon, 0, sizeof(*toe_daemon));
 	}
 	
+    conf_file_t fp = NULL;
+    fp = conf_open(s5daemon_conf);
+    if(!fp)
+    {
+        S5LOG_ERROR("Failed to find S5afs conf(%s)", s5daemon_conf);
+        return -S5_CONF_ERR;
+    }
+    const char *zk_ip = conf_get(fp, "zookeeper", "ip");
+    if(!zk_ip)
+    {
+        S5LOG_ERROR("Failed to find key(zookeeper:ip) in s5afs conf(%s).", s5daemon_conf);
+        return -S5_CONF_ERR;
+    }
+	
+	
+	const char *this_mngt_ip = conf_get(fp, "afs", "mngt_ip");
+	if (!this_mngt_ip)
+	{
+		S5LOG_ERROR("Failed to find key(conductor:mngt_ip) in s5afs conf(%s).", s5daemon_conf);
+		return -S5_CONF_ERR;
+	}
+	safe_strcpy(toe_daemon->mngt_ip, this_mngt_ip, sizeof(toe_daemon->mngt_ip));
+    rc = init_cluster(zk_ip);
+    if (rc)
+    {
+        S5LOG_ERROR("Failed to connect zookeeper");
+        return rc;
+    }
+    rc = register_store_node(this_mngt_ip);
+    if (rc)
+    {
+        S5LOG_ERROR("Failed to register store");
+        return rc;
+    }
 	toe_daemon->s5daemon_conf_file = s5daemon_conf;	
 
-	rc = init_src(toe_daemon);
+	rc = init_store_server(toe_daemon);
 	if(rc)
 	{
-		S5LOG_ERROR("Failed to init_src rc:%d.", rc);
+		S5LOG_ERROR("Failed on init_store_server rc:%d.", rc);
 		goto RELEASE;
 	}
 	if(spy_port)
 	{
 		spy_start(spy_port);
 	}
-
+	set_store_node_state(this_mngt_ip, NS_OK, TRUE);
     signal(SIGTERM, sigroutine);
     signal(SIGINT, sigroutine);
 
@@ -209,7 +181,7 @@ int main(int argc, char *argv[])
 	}
 
 RELEASE:
-	rc = release_src(toe_daemon);
+	rc = release_afs(toe_daemon);
 	if(rc)
 		S5LOG_INFO("Error:release_src rc:%d.", rc);
 

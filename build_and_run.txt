@@ -12,6 +12,10 @@ SPureFlash can be build with cmake tools.
   # make
   # cp src/log4c/.libs/liblog4c.so* bin/
   
+  # cd PureFlash/s5afs/thirdParty/zookeeper-3.4.6/src/c
+  # ./configure --without-cppunit
+  # make
+  
 3) run cmake to generate ninja scripts
   # cd PureFlash; 
   # mkdir build_deb; cd build_deb

@@ -1,5 +1,17 @@
 #ifndef afs_cluster_h__
 #define afs_cluster_h__
+#include <stdint.h>
+#include "s5utils.h"
+
+//node state 
+#define NS_OK "OK"
+#define NS_WARN "WARN"
+#define NS_ERROR	"ERROR"
+
+//TRAY state
+#define TS_OK "OK"
+#define TS_WARN "WARN"
+#define TS_ERROR	"ERROR"
 
 /**
  * 建立向zookeeper的连接，
@@ -8,7 +20,7 @@
  *    ip=192.168.0.253:2181,localhost:2181
  * 部分获得。上面这个例子中，zk_ip_port参数就是"192.168.0.253:2181,localhost:2181"
  * @return 0表示成功，
- *         负数表示失败
+ *         负数表示失败, 数字为-errno
  * 
  * @implementation
  *  该函数的实现，调用 
@@ -27,8 +39,17 @@ int init_cluster(const char* zk_ip_port);
  *                   +state  #状态， 内容为：ERROR, WARN, OK
  *                   +alive  #EPHEMERAL类型，表示该store节点是否在线，alive存在就表示在线,内容为空
  *                   +trays
+ * @remark
+ * register_store不从创建sate和 alive节点，需要在节点初始化完毕后，调用set_store_node_state函数创建此二节点。
+ * @return 0 on success, negative value on error. On error, an error message is logged.
+ * @retval ZNONODE the parent node does not exist.
+ * @retval ZNOAUTH the client does not have permission.
+ * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * @retval ZBADARGUMENTS - invalid input parameters
+ * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int register_store(const char* mngt_ip);
+int register_store_node(const char* mngt_ip);
 
 /**
  * 向zookeeper注册一个tray，注册的过程就是在zookeeper的/s5/stores/<mngt_ip>trays下对应存储系节点下面，建立如下的节点结构：
@@ -41,7 +62,48 @@ int register_store(const char* mngt_ip);
  *							+state    #该tray的状态, 内容为:ERROR, WARN, OK
  *							+online   # EPHEMERAL类型，该tray是否在线，online节点存在就表示在线,内容为空
  * 该函数可以调用多次，每次注册一个tray
+ * register_tray不从创建sate和 online节点，需要在节点初始化完毕后，调用set_tray_state函数创建此二节点。
+ * @return 0 on success, negative value on error. On error, an error message is logged.
+ * @retval ZNONODE the parent node does not exist.
+ * @retval ZNOAUTH the client does not have permission.
+ * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * @retval ZBADARGUMENTS - invalid input parameters
+ * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 int register_tray(const char* mngt_ip, const char* uuid, const char* devname, int64_t capacity);
+
+/**
+ * set store node's state. create `state` and `alive` node on zookeeper, if not exists. 
+ * @seealso register_store for tree structure of store node in zookeeper
+ * @param mngt_ip  management IP of store node, use as ID of store node
+ * @param state store node's state, value can NS_OK, NS_WARN, NS_ERROR
+ * @param alive TRUE for alive, FALSE for not 
+ * @return 0 on success, negative value on error. On error, an error message is logged.
+ * @retval ZNONODE the parent node does not exist.
+ * @retval ZNOAUTH the client does not have permission.
+ * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * @retval ZBADARGUMENTS - invalid input parameters
+ * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+*/
+int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive);
+
+/**
+ * set tray state. create `state` and `online` node on zookeeper, if not exists. 
+ * @seealso register_tray for tree structure of tray node in zookeeper.
+ * @param mngt_ip IP of store node of the tray
+ * @param tray_uuid uuid of tray to set
+ * @param state, tray state, can be TS_OK, TS_WARN, TS_ERROR
+ * @online TRUE for online, FALSE for not
+ * @return 0 on success, negative value on error. On error, an error message is logged.
+ * @retval ZNONODE the parent node does not exist.
+ * @retval ZNOAUTH the client does not have permission.
+ * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * @retval ZBADARGUMENTS - invalid input parameters
+ * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+ */
+int set_tray_state(const char* mngt_ip, const char* tray_uuid, const char* state, BOOL online);
 
 #endif // afs_cluster_h__
