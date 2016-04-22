@@ -74,12 +74,17 @@ add_executable(s5afs  ${S5AFS_SRC} ${INCS})
 add_executable(spy  src/afs_spy_client.cpp)
 set_target_properties(s5afs PROPERTIES SKIP_BUILD_RPATH true)
 
-TARGET_LINK_LIBRARIES(s5afs pthread log4c zookeeper_mt ${GCOV})
+TARGET_LINK_LIBRARIES(s5afs pthread log4c zookeeper_mt uuid ${GCOV})
 add_custom_command(TARGET s5afs POST_BUILD 
 	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3 ${LIBRARY_OUTPUT_PATH}/liblog4c.so
+	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
 	COMMAND cp ${LOG4C_BIN}/liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3.3.1
+	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/log4crc ${CMAKE_BINARY_DIR}/log4crc
 	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/s5afs_template.conf ${CMAKE_BINARY_DIR}
 	COMMAND ln -s liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3
 	COMMAND ln -s liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so	
-	DEPENDS ${LOG4C_BIN}/liblog4c.so.3.3.1
+	COMMAND cp ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0
+	COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2
+	COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
+	DEPENDS ${LOG4C_BIN}/liblog4c.so.3.3.1 ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 
 )

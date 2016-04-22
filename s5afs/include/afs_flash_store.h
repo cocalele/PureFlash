@@ -1,5 +1,6 @@
 #ifndef flash_store_h__
 #define flash_store_h__
+#include <uuid/uuid.h>
 #include "hashtable.h"
 #include "fixed_size_queue.h"
 #include "s5conf.h"
@@ -15,7 +16,7 @@ struct toedaemon;
 struct flash_store
 {
 	char dev_name[256];
-	char uuid[16];
+	uuid_t  uuid;
 	int64_t dev_capacity; //total capacity of device, in byte,
 	int64_t meta_size;//reserved size for meta data, remaining for user store, general 1G byte
 

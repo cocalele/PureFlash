@@ -38,13 +38,6 @@ int fs_init(const char* mngt_ip, struct flash_store* store, const char* dev_name
 	if (store->dev_fd == -1)
 		return -errno;
 
-    ret = register_tray(mngt_ip, store->uuid, store->dev_name, store->dev_capacity);
-    if(ret)
-    {
-        S5LOG_ERROR("could not register tray...");
-        return ret;
-    }
-
 	if ((ret = read_store_head(store)) == 0)
 	{
 		ret = load_meta_data(store);
@@ -154,9 +147,11 @@ static int initialize_store_head(struct flash_store* store)
 		return -errno;
 	store->dev_capacity = numblocks << 9;//512 byte per block
 	store->meta_size = META_RESERVE_SIZE;
+	uuid_generate(store->uuid);
 	char head[4096];
 	memset(head, 0, sizeof(head));
 	*((unsigned int*)head) = 0x3553424e; //magic number, NBS5
+	memcpy(head + 4, store->uuid, sizeof(uuid_t));
 	*((unsigned int*)(head+20)) = 0x00010000; //S5 version
 	if(-1 == pwrite(store->dev_fd, head, sizeof(head), 0))
 		return -errno;
@@ -293,6 +288,6 @@ static int read_store_head(struct flash_store* store)
 		return -EUCLEAN;
 	if(*((unsigned int*)(head + 20)) != 0x00010000) //S5 version
 		return -EUCLEAN;
-
+	memcpy(store->uuid, head + 4, sizeof(uuid_t));
 	return 0;
 }

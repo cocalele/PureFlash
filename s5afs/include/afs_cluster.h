@@ -1,6 +1,8 @@
 #ifndef afs_cluster_h__
 #define afs_cluster_h__
 #include <stdint.h>
+#include <uuid/uuid.h>
+
 #include "s5utils.h"
 
 //node state 
@@ -71,7 +73,7 @@ int register_store_node(const char* mngt_ip);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int register_tray(const char* mngt_ip, const char* uuid, const char* devname, int64_t capacity);
+int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, int64_t capacity);
 
 /**
  * set store node's state. create `state` and `alive` node on zookeeper, if not exists. 
@@ -104,6 +106,6 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int set_tray_state(const char* mngt_ip, const char* tray_uuid, const char* state, BOOL online);
+int set_tray_state(const char* mngt_ip, const uuid_t tray_uuid, const char* state, BOOL online);
 
 #endif // afs_cluster_h__

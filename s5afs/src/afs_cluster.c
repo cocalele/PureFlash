@@ -12,7 +12,7 @@ int init_cluster(const char* zk_ip_port)
 	zookeeper_handler = zookeeper_init(zk_ip_port, NULL, 50000, 0, 0, 0);
 	if (!zookeeper_handler)
 	{
-		S5LOG_ERROR("Fail to zookeeper_init, errno:%d ", errno);
+		S5LOG_ERROR("Failed to zookeeper_init, errno:%d ", errno);
 		return -errno;
 	}
 	return 0;
@@ -40,13 +40,13 @@ static int zk_update(const char* node, const char* value, int val_len)
 	int rc = zoo_create(zookeeper_handler, node, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 	if (rc != ZOK && rc != ZNODEEXISTS)
 	{
-		S5LOG_ERROR("Fail to create zookeeper node %s rc:%d", node, rc);
+		S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", node, rc);
 		return rc;
 	}
 	rc = zoo_set(zookeeper_handler, node, value, value ? val_len : -1, -1);
 	if (rc != ZOK)
 	{
-		S5LOG_ERROR("Fail to update zookeeper node value node:%s rc:%d", node, rc);
+		S5LOG_ERROR("Failed to update zookeeper node value node:%s rc:%d", node, rc);
 		return rc;
 	}
 	return ZOK;
@@ -66,7 +66,7 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive)
 		rc = zoo_create(zookeeper_handler, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 		if (rc != ZOK && rc != ZNODEEXISTS)
 		{
-			S5LOG_ERROR("could not create zookeeper node %s rc:%d", zk_node_name, rc);
+			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
 			return rc;
 		}
 	}
@@ -82,6 +82,11 @@ int register_store_node(const char* mngt_ip)
 {
 	char zk_node_name[64];
 	int rc;
+	if ((rc = zk_update("/s5", NULL, 0)) != ZOK)
+		return rc;
+	if ((rc = zk_update("/s5/stores", NULL, 0)) != ZOK)
+		return rc;
+
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s", mngt_ip);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
@@ -93,20 +98,22 @@ int register_store_node(const char* mngt_ip)
 	return 0;
 }
 
-int set_tray_state(const char* mngt_ip, const char* uuid, const char* state, BOOL online)
+int set_tray_state(const char* mngt_ip, const uuid_t uuid, const char* state, BOOL online)
 {
 	char zk_node_name[128];
+	char uuid_str[64];
 	int rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/state", mngt_ip, uuid);
+	uuid_unparse(uuid, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/state", mngt_ip, uuid_str);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/online", mngt_ip, uuid);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/online", mngt_ip, uuid_str);
 	if (online)
 	{
 		rc = zoo_create(zookeeper_handler, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 		if (rc != ZOK && rc != ZNODEEXISTS)
 		{
-			S5LOG_ERROR("could not create zookeeper node %s rc:%d", zk_node_name, rc);
+			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
 			return rc;
 		}
 	}
@@ -118,21 +125,23 @@ int set_tray_state(const char* mngt_ip, const char* uuid, const char* state, BOO
 	return ZOK;
 }
 
-int register_tray(const char* mngt_ip, const char* uuid, const char* devname, int64_t capacity)
+int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, int64_t capacity)
 {
 	char zk_node_name[128];
 	char value_buf[128];
+	char uuid_str[64];
 	int rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s", mngt_ip, uuid);
+	uuid_unparse(uuid, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s", mngt_ip, uuid_str);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 	
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/devname", mngt_ip, uuid);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/devname", mngt_ip, uuid_str);
 	if ((rc = zk_update(zk_node_name, devname, (int)strlen(devname))) != ZOK)
 		return rc;
 	
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/capacity", mngt_ip, uuid);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/capacity", mngt_ip, uuid_str);
 	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
 	if ((rc = zk_update(zk_node_name, value_buf, (int)len)) != ZOK)
 		return rc;
