@@ -1,2 +1,0 @@
-SUBDIRS = log4c
-
