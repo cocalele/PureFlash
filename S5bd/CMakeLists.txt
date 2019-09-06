@@ -4,9 +4,7 @@ if(COMMAND cmake_policy)
 endif()
 
 PROJECT(s5bd)
-USE_S5LOG()
-USE_ZEROMQ()
-USE_CZMQ()
+
 
 set(S5COMMON_SRC ${s5bd_SOURCE_DIR}/../Common)
 set(S5MANAGER_SRC ${s5bd_SOURCE_DIR}/../S5manager)
@@ -22,7 +20,6 @@ set(CMAKE_CXX_COMPILER g++)
 
 include_directories(${s5bd_SOURCE_DIR}/include)
 include_directories(${S5COMMON_SRC}/include)
-include_directories(${S5MANAGER_SRC}/include)
 
 link_directories(${S5COMMON_SRC}/lib)
 link_directories(/usr/local/lib)

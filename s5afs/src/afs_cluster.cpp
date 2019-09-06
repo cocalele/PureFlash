@@ -6,7 +6,7 @@
 #include "zookeeper.h"
 #include "s5log.h"
 static zhandle_t* zookeeper_handler;
- 
+
 int init_cluster(const char* zk_ip_port)
 {
 	zookeeper_handler = zookeeper_init(zk_ip_port, NULL, 50000, 0, 0, 0);
@@ -24,16 +24,16 @@ int init_cluster(const char* zk_ip_port)
  * @param node name of node to update or create
  * @param value buffer to node content, pass NULL if node has no value, or clear value of node
  * @param val_len length of value, in byte. pass -1 if value is NULL.
- * 
+ *
  * @return ZOK on success, negative value on error
- * @retval ZNONODE the parent node does not exist. 
- * @retval ZNOAUTH the client does not have permission. 
- * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes. 
- * @retval ZBADARGUMENTS - invalid input parameters 
- * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE 
+ * @retval ZNONODE the parent node does not exist.
+ * @retval ZNOAUTH the client does not have permission.
+ * @retval ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * @retval ZBADARGUMENTS - invalid input parameters
+ * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- * 
- * 
+ *
+ *
  */
 static int zk_update(const char* node, const char* value, int val_len)
 {
@@ -90,8 +90,8 @@ int register_store_node(const char* mngt_ip)
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s", mngt_ip);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
-	
-	
+
+
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays", mngt_ip);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
@@ -135,11 +135,11 @@ int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, i
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s", mngt_ip, uuid_str);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
-	
+
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/devname", mngt_ip, uuid_str);
 	if ((rc = zk_update(zk_node_name, devname, (int)strlen(devname))) != ZOK)
 		return rc;
-	
+
 
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/capacity", mngt_ip, uuid_str);
 	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);

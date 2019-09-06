@@ -24,11 +24,6 @@ include_directories(../S5bd/include)
 include_directories(include/sqlite3)
 include_directories(include/hash)
 
-USE_S5LOG()
-USE_ZEROMQ()
-USE_CZMQ()
-USE_LFDS()
-
 set (S5COMMON_SRC 
 	src/s5socket.cpp
 	src/s5message.cpp
@@ -40,16 +35,9 @@ set (S5COMMON_SRC
 	src/s5conf.cpp
 	src/s5strtol.cpp
 	src/cmdopt.c
-	src/s5utils.c
-	src/fixed_size_queue.c
-	src/spy.cpp
+	src/s5_utils.cpp
     src/md5.c
-    src/libs5mq.c
-    src/s5mq_pack_unpack.c
-    src/broker.c
 	src/special_vol_mgr.c
-	src/hash/hashtable.c
-	src/hash/murmur.c
   )	
 file(GLOB_RECURSE INCS "*.h")
 
@@ -69,64 +57,18 @@ add_definitions(-D__WITH_MURMUR)
 set (S5HASH_SRC src/hash/murmur.c src/hash/hashtable.c)
 set_source_files_properties(${S5HASH_SRC} PROPERTIES COMPILE_FLAGS "-w")
 
-ADD_LIBRARY(s5hash SHARED ${S5HASH_SRC}) 
+
+ADD_LIBRARY(s5hash STATIC ${S5HASH_SRC}) 
+set_target_properties(s5hash PROPERTIES OUTPUT_NAME "s5hash")
 set_target_properties(s5hash PROPERTIES SKIP_BUILD_RPATH true)
 set_target_properties(s5hash PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-
-ADD_LIBRARY(s5hash_static STATIC ${S5HASH_SRC}) 
-set_target_properties(s5hash_static PROPERTIES OUTPUT_NAME "s5hash")
-set_target_properties(s5hash_static PROPERTIES SKIP_BUILD_RPATH true)
-set_target_properties(s5hash_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 	
-add_library(s5common SHARED  ${S5COMMON_SRC} ${INCS})
+
+
+add_library(s5common STATIC  ${S5COMMON_SRC} ${INCS})
+set_target_properties(s5common PROPERTIES OUTPUT_NAME "s5common")
 set_target_properties(s5common PROPERTIES SKIP_BUILD_RPATH true)
 set_target_properties(s5common PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-TARGET_LINK_LIBRARIES(s5common dl pthread
-log4c lfds611 rt zmq czmq ${GCOV}) 
+TARGET_LINK_LIBRARIES(s5common dl pthread  ${GCOV}) 
 
-add_executable(spy  src/spy_client.cpp)
-add_library(s5common_static STATIC  ${S5COMMON_SRC} ${INCS})
-set_target_properties(s5common_static PROPERTIES OUTPUT_NAME "s5common")
-set_target_properties(s5common_static PROPERTIES SKIP_BUILD_RPATH true)
-set_target_properties(s5common_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-TARGET_LINK_LIBRARIES(s5common_static dl
-pthread log4c lfds611 ${GCOV}) 
 
-add_custom_command(TARGET s5common POST_BUILD 
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3 ${LIBRARY_OUTPUT_PATH}/liblog4c.so
-	COMMAND cp ${LOG4C_BIN}/liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3.3.1
-	COMMAND ln -s liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so.3
-	COMMAND ln -s liblog4c.so.3.3.1 ${LIBRARY_OUTPUT_PATH}/liblog4c.so
-	DEPENDS ${LOG4C_BIN}/liblog4c.so.3.3.1
-)
-add_custom_command(TARGET s5common POST_BUILD 
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/liblog4c.a 
-	COMMAND cp ${LOG4C_BIN}/liblog4c.a ${LIBRARY_OUTPUT_PATH}/liblog4c.a
-	DEPENDS ${LOG4C_BIN}/liblog4c.a
-)
-add_custom_command(TARGET s5common POST_BUILD 
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/liblog4c.la 
-	COMMAND cp ${LOG4C_BIN}/liblog4c.la ${LIBRARY_OUTPUT_PATH}/liblog4c.la
-	DEPENDS ${LOG4C_BIN}/liblog4c.la
-)
-add_custom_command(TARGET s5common POST_BUILD 
-	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/log4crc ${CMAKE_BINARY_DIR}/log4crc
-	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/log4crc
-)
-
-add_custom_command(TARGET s5common POST_BUILD 
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzmq.so.5.0.0 ${LIBRARY_OUTPUT_PATH}/libzmq.so.5 ${LIBRARY_OUTPUT_PATH}/libzmq.so
-	COMMAND cp -f ${ZEROMQ_BIN}/libzmq.so.5.0.0 ${LIBRARY_OUTPUT_PATH}/libzmq.so.5.0.0
-	COMMAND ln -sf libzmq.so.5.0.0 ${LIBRARY_OUTPUT_PATH}/libzmq.so.5
-	COMMAND ln -sf libzmq.so.5.0.0 ${LIBRARY_OUTPUT_PATH}/libzmq.so
-	DEPENDS ${ZEROMQ_BIN}/libzmq.so.5.0.0
-)
-
-add_custom_command(TARGET s5common POST_BUILD 
-    COMMAND mkdir -p ${LIBRARY_OUTPUT_PATH}/unittest_conf/
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libczmq.so.3.0.0 ${LIBRARY_OUTPUT_PATH}/libczmq.so.3 ${LIBRARY_OUTPUT_PATH}/libczmq.so
-	COMMAND cp -f ${CZMQ_BIN}/libczmq.so.3.0.0 ${LIBRARY_OUTPUT_PATH}/libczmq.so.3.0.0
-	COMMAND ln -sf libczmq.so.3.0.0 ${LIBRARY_OUTPUT_PATH}/libczmq.so.3
-	COMMAND ln -sf libczmq.so.3.0.0 ${LIBRARY_OUTPUT_PATH}/libczmq.so
-	DEPENDS ${CZMQ_BIN}/libczmq.so.3.0.0
-)

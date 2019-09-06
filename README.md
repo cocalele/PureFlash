@@ -23,3 +23,47 @@ software stack exhaust system's compute power and make the SSD useless. PureFlas
  * 2) manage raw SSD directly instead of using file system
  * 3) provide block service only
 
+3. Software design
+========================
+The whole system include 3 modules (View graph with tabstop=4 and monospaced font)
+			   
+                                                            +---------------+
+                                                            |               |
+                                                       +--->+  MetaDB       |
+                                                       |    |  (HA DB)      |
+                             +------------------+      |    +---------------+
+                             |                  +------+
+                             | S5conductor      |           +---------------+
+                        +---->  (Max 5 nodes)   +----------->               |
+                        |    +--------+---------+           | Zookeeper     |
+                        |             |                     | (3 nodes)     |
+                        |             |                     +------^--------+
++-------------------+   |             |                            |
+|                   +---+    +--------v---------+                  |
+| S5bd  S5kd        |        |                  |                  |
+| (User and kernel  +------->+ S5afs            +------------------+
+| space client)     |        | (Max 1024 nodes) |
++-------------------+        +------------------+
+
+
+
+## 3.1 S5afs, S5 All Flash System
+  This module is the server daemon, provide all data service on store. include:
+   1) SSD disk management
+   2) Networ interface (RDMA and TCP protocol)
+   3) IO handling
+  
+  There're at most 1024 S5afs nodes in a cluster. All s5afs works in acitve mode, since every s5afs need to provide data service.
+  
+## 3.2 S5conductor
+  This is the control module to conduct all players in storage cluster. A cluster should has at least 2 s5conductor nodes and at most 5 are supported.
+  S5conductor works in active-standby mode. only one conductor is active. All others in standby.
+  
+## 3.3 Zookeeper
+  All conductor and afs nodes(instance) register themself to zookeeper, so the active conductor can discovery services in cluster.
+
+## 3.4 MetaDB
+  MetaDB is a PostgreSQL cluster with HA.   
+  
+## 3.5 S5bd and S5kd
+  S5bd is user space client. Qemu   

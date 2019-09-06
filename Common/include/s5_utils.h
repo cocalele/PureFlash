@@ -16,11 +16,8 @@
 
 #include "s5conf.h"
 #include "s5log.h"
+#include "basetype.h"
 #include "pthread.h"
-#define BOOL int
-#define TRUE 1
-#define FALSE 0
-typedef unsigned char uchar;
 
 #ifdef DEBUG
 
@@ -29,7 +26,7 @@ typedef unsigned char uchar;
 *
 * @param[in] x, verify statement x is true or not.
 */
-#define S5ASSERT(x) if(!(x)) { S5LOG_TRACE("Assertion %s", #x); assert(x);}
+#define S5ASSERT(x) if(!(x)) { S5LOG_ERROR("Assertion %s", #x); assert(x);}
 #else
 #define S5ASSERT(x)
 #endif
@@ -43,7 +40,7 @@ extern "C" {
 
 #define max(a,b)    (((a) > (b)) ? (a) : (b))		///<get the bigger from two numbers.
 #define min(a,b)    (((a) < (b)) ? (a) : (b))		///<get the smaller from two numbers.
- 
+
 /**
 * free memory macro.
 *
@@ -56,6 +53,22 @@ extern "C" {
             (*p) = NULL;\
         }               \
     }while(0)
+
+/**
+ * Dump s5message's head.
+ *
+ * @param[in] phead  pointer to s5message's head.
+ * @return	0 on success.
+ */
+#define DUMP_MSG_HEAD(phead)   \
+	do{ 					  \
+	S5LOG_DEBUG("Debug info: magic:%d, msg_type:%d, transaction_id:%d, user_id:%d, pool_id:%d,"    \
+	"data_len:%d, image_id:%lu, slba:%lu, nlba:%d, obj_ver:%d, " 	 \
+	"listen_port:%d, snap_seq:%d, status:%d, iops_density:%d, is_head:%d",								\
+	phead.magic_num, phead.msg_type, phead.transaction_id, phead.user_id, phead.pool_id,  \
+	phead.data_len, phead.volume_id, phead.slba, phead.nlba, phead.obj_ver, 	\
+	phead.listen_port, phead.snap_seq, phead.status, phead.iops_density, phead.is_head);  \
+	}while(0)
 
 
 /**
@@ -111,8 +124,8 @@ void write_pid_file(const char* filename);
 char* safe_strcpy(char* dest, const char* src, size_t dest_size);
 
 /**
- * Check the validation of input ip 
- * 
+ * Check the validation of input ip
+ *
  * @param ip[in] input ip address
  * @return if the input ip is valid or not.
  */
@@ -121,7 +134,7 @@ BOOL isIpValid(const char* ip);
 /**
  * compute cbs by iops
  */
-uint64_t get_cbs_by_iops(uint64_t iops); 
+uint64_t get_cbs_by_iops(uint64_t iops);
 
 #ifdef __cplusplus
 }

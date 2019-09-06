@@ -13,10 +13,6 @@ add_executable(bdd  ${BDD_SRC} ${INCS})
 
 set (S5BD_SRC 
 	s5bd-cli/cmd_parse.c
-	../s5afs/src/afs_conf.c 
-	../s5afs/src/afs_conf_utils.c 
-	../s5afs/src/afs_strtol.c 
-	../s5afs/src/afs_utf8.c	
 )
 add_executable(s5bd  ${S5BD_SRC} ${INCS})
 

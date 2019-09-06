@@ -2,7 +2,14 @@ SPureFlash can be build with cmake tools.
    
 1. Build on Linux
 =================
-
+0) Prerequisite to build on CentOS 7
+  - ninja 
+    # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
+    # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
+  
+  - Ohters
+    # yum install -y cmake libuuid libuuid-devel
+  
 1) check out code
   # git clone https://github.com/cocalele/PureFlash.git
 2) build third party library

@@ -1,67 +1,52 @@
-#ifndef _LOG_H_
-#define _LOG_H_
+#ifndef _S5LOG_H_
+#define _S5LOG_H_
 
 /**
-* Copyright (C), 2014-2015.
+* Copyright (C), 2014-2019.
 * @file
 * s5log macroes.
 *
 * This file defines s5log's macroes.
 */
 
-#include <log4c.h>
+void s5log(int level, const char * format, ...);
 
-/**
- * init a category for s5log.
- *
- * it should be called in the source file which include main function.
- * @param[in] category	name of category.
- */
-#define S5LOG_INIT(category)							\
-	static log4c_category_t* __s5_log_category = NULL;		\
-	__attribute__((constructor))							\
-	static void __init_category(void)						\
-	{														\
-		__s5_log_category = log4c_category_get(category);	\
-	}														\
-	inline log4c_category_t* get_category(){return __s5_log_category;}
-
+#define S5LOG_LEVEL_FATAL 0
+#define S5LOG_LEVEL_ERROR 1
+#define S5LOG_LEVEL_WARN 2
+#define S5LOG_LEVEL_INFO 3
+#define S5LOG_LEVEL_DEBUG 4
 /**
  * log the fatal type information.
  */
 #define S5LOG_FATAL(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_FATAL,  "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
+s5log(S5LOG_LEVEL_FATAL,  fmt "(%s:%d:%s) " , ##args, __FILE__ , __LINE__ , __FUNCTION__ )
 
 /**
  * log the error type information.
  */
 #define S5LOG_ERROR(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_ERROR,  "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
+s5log(S5LOG_LEVEL_ERROR,  fmt "(%s:%d:%s) " ,  ##args, __FILE__ , __LINE__ , __FUNCTION__ )
 
 /**
  * log the warn type information.
  */
 #define S5LOG_WARN(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_WARN, "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
+s5log(S5LOG_LEVEL_WARN,  fmt "(%s:%d:%s) " ,  ##args, __FILE__ , __LINE__ , __FUNCTION__ )
 
 
 /**
  * log the info type information.
  */
 #define S5LOG_INFO(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_INFO, "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
+s5log(S5LOG_LEVEL_INFO,  fmt "(%s:%d:%s) " ,  ##args, __FILE__ , __LINE__ , __FUNCTION__ )
 
 
 /**
  * log the debug type information.
  */
 #define S5LOG_DEBUG(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_DEBUG,  "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
+s5log(S5LOG_LEVEL_DEBUG,  fmt "(%s:%d:%s) " ,  ##args, __FILE__ , __LINE__ , __FUNCTION__ )
 
 
-/**
- * log the trace type information.
- */
-#define S5LOG_TRACE(fmt,args...)							\
-log4c_category_log(get_category(), LOG4C_PRIORITY_TRACE, "(%s:%d:%s) " fmt, __FILE__ , __LINE__ , __FUNCTION__ , ##args)
-#endif
+#endif //_S5LOG_H_
