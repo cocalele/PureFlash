@@ -1,7 +1,7 @@
 /**
  * Copyright (C), 2014-2015.
- * @file  
- * 
+ * @file
+ *
  * This file implements the apis to initialize/release this server, and the functions to handle request messages.
  */
 
@@ -11,12 +11,13 @@
 
 #include "s5errno.h"
 #include "afs_server.h"
-#include "s5utils.h"
+#include "s5_utils.h"
 #include "afs_main.h"
 #include "afs_request.h"
 #include "s5conf.h"
-#include "spy.h"
+#include "s5_buffer.h"
 #include "afs_flash_store.h"
+#include "s5_connection.h"
 
 extern struct afsc_st afsc;
 static void *afs_listen_thread(void *param);
@@ -24,7 +25,7 @@ static int handle_msg(s5v_msg_entry_t *s5vmsg);
 
 static int init_trays(struct toedaemon* toe_daemon, conf_file_t fp)
 {
-	int rc = -1;	
+	int rc = -1;
 
 	int nic_port_count = -1;
 	rc = conf_get_int(fp, "afs", "max_nic_port_count", &nic_port_count);
@@ -34,13 +35,13 @@ static int init_trays(struct toedaemon* toe_daemon, conf_file_t fp)
 					toe_daemon->s5daemon_conf_file);
 		return rc;
 	}
-    S5LOG_INFO("Parse_s5daemon_conf_file_afs_info:: get nic port count(%d) in S5 daemon conf(%s)", 
+    S5LOG_INFO("Parse_s5daemon_conf_file_afs_info:: get nic port count(%d) in S5 daemon conf(%s)",
 				nic_port_count, toe_daemon->s5daemon_conf_file);
 	toe_daemon->nic_port_count = nic_port_count;
 
    	toe_daemon->daemon_request_port = LOCAL_HOST_PORT;
 
-	int tray_set_count = -1; 
+	int tray_set_count = -1;
     rc = conf_get_int(fp, "afs", "max_tray_set_count", &tray_set_count);
     if(rc)
     {
@@ -48,8 +49,8 @@ static int init_trays(struct toedaemon* toe_daemon, conf_file_t fp)
 					toe_daemon->s5daemon_conf_file);
         return rc;
     }
-    
-    S5LOG_INFO("Parse_s5daemon_conf_file:: get tray set count(%d) in S5 daemon conf(%s)",  
+
+    S5LOG_INFO("Parse_s5daemon_conf_file:: get tray set count(%d) in S5 daemon conf(%s)",
                 tray_set_count, toe_daemon->s5daemon_conf_file);
 	toe_daemon->tray_set_count = tray_set_count;
 
@@ -71,63 +72,63 @@ static int create_sockets_and_threads(struct toedaemon* toe_daemon)
 		for(int j = 0; j < toe_daemon->nic_port_count; j++)
 		{
 			int total_index = i * toe_daemon->nic_port_count + j;
-		
+
 			//should get front_ip and front_port from s5_conf.
-			afsc.srv_toe_bd[total_index].socket = s5socket_create(SOCKET_TYPE_SRV, 
-                                                                  afsc.srv_toe_bd[total_index].listen_port, 
+			afsc.srv_toe_bd[total_index].socket = s5socket_create(SOCKET_TYPE_SRV,
+                                                                  afsc.srv_toe_bd[total_index].listen_port,
                                                                   afsc.srv_toe_bd[total_index].listen_ip);
 			afsc.srv_toe_bd[total_index].socket_clt = NULL;
 			if(!afsc.srv_toe_bd[total_index].socket)
-			{   
+			{
 				rc = -S5_BIND_ERR;
 				S5LOG_ERROR("Failed: init_s5d_srvbd:: srv_bd->socket error rc(%d). ", rc);
-				return rc;  
-			}  
-	
-			rc = pthread_create(&(afsc.srv_toe_bd[total_index].listen_s5toe_thread), NULL, 
+				return rc;
+			}
+
+			rc = pthread_create(&(afsc.srv_toe_bd[total_index].listen_s5toe_thread), NULL,
 				 				afs_listen_thread, (void*)&(afsc.srv_toe_bd[total_index]));
     		if(rc)
-    		{   
-        		S5LOG_ERROR("Failed to create listen thread failed rc(%d) for ip(%s) port(%d).", 
-							rc, afsc.srv_toe_bd[total_index].listen_ip, 
+    		{
+        		S5LOG_ERROR("Failed to create listen thread failed rc(%d) for ip(%s) port(%d).",
+							rc, afsc.srv_toe_bd[total_index].listen_ip,
 							afsc.srv_toe_bd[total_index].listen_port);
 				return rc;
-    		}   
+    		}
 			else
-			{   
+			{
 				S5LOG_INFO("Create listen thread successfully.");
 			}
 
-			
-			s5socket_register_handle(afsc.srv_toe_bd[total_index].socket, SOCKET_TYPE_SRV, MSG_TYPE_WRITE, 
+
+			s5socket_register_handle(afsc.srv_toe_bd[total_index].socket, SOCKET_TYPE_SRV, MSG_TYPE_WRITE,
 									 recv_msg_write, (void *)&(afsc.srv_toe_bd[total_index]));
-			
-			s5socket_register_handle(afsc.srv_toe_bd[total_index].socket, SOCKET_TYPE_SRV, MSG_TYPE_READ, 
+
+			s5socket_register_handle(afsc.srv_toe_bd[total_index].socket, SOCKET_TYPE_SRV, MSG_TYPE_READ,
 									 recv_msg_read, (void *)&(afsc.srv_toe_bd[total_index]));
-		}   
+		}
 	}
 
 	return rc;
 }
-	
+
 
 
 static int init_ports(struct toedaemon* toe_daemon, conf_file_t fp)
 {
 	int rc = 0;
 
-	const char*	ip_srv_bd = NULL;	
+	const char*	ip_srv_bd = NULL;
 	toe_daemon->real_nic_count = 0;
 
 	//get host port ip
 	char host_port_setion[16][64] = {{0}};
 	for(int index = 0; index < 16; index++)
-	{    
-		snprintf(host_port_setion[index], 64, "%s%d", (char*)g_host_port_section, index); 
+	{
+		snprintf(host_port_setion[index], 64, "%s%d", (char*)g_host_port_section, index);
 		ip_srv_bd = conf_get(fp, host_port_setion[index], (char*)g_host_port_ip_key);
 		if(!ip_srv_bd)
 		{
-			S5LOG_WARN("Failed to find key(%s) in S5 daemon conf(%s)", 
+			S5LOG_WARN("Failed to find key(%s) in S5 daemon conf(%s)",
 						g_host_port_ip_key, toe_daemon->s5daemon_conf_file);
 			continue;
 		}
@@ -143,7 +144,7 @@ static int init_ports(struct toedaemon* toe_daemon, conf_file_t fp)
 	afsc.ip_array = (uint32_t*)malloc(sizeof(uint32_t) * (uint32_t)toe_daemon->real_nic_count);
 
 	if(!afsc.srv_toe_bd)
-	{   
+	{
 		S5LOG_ERROR("Failed malloc for toedaemon.");
 		rc = -ENOMEM;
 		return rc;
@@ -154,16 +155,16 @@ static int init_ports(struct toedaemon* toe_daemon, conf_file_t fp)
 	{
 		ip_srv_bd = conf_get(fp, host_port_setion[index], (char*)g_host_port_ip_key);
         if(!ip_srv_bd)
-        {   
+        {
             continue;
-        }   
+        }
         else
-        {   
-            S5LOG_INFO("Parse_s5daemon_conf_file_nic_info:: open the host port ip(%s) in S5 daemon conf(%s)", 
+        {
+            S5LOG_INFO("Parse_s5daemon_conf_file_nic_info:: open the host port ip(%s) in S5 daemon conf(%s)",
                        ip_srv_bd, toe_daemon->s5daemon_conf_file);
-        } 
+        }
 
-		afsc.ip_array[nic_index] = ntohl(inet_addr(ip_srv_bd)); 
+		afsc.ip_array[nic_index] = ntohl(inet_addr(ip_srv_bd));
 
 		nic_index++;
 
@@ -171,7 +172,7 @@ static int init_ports(struct toedaemon* toe_daemon, conf_file_t fp)
 		for(int port_off = 0; port_off < toe_daemon->nic_port_count; port_off++)
 		{
 			total_index = (nic_index - 1) * toe_daemon->nic_port_count + port_off;
-			afsc.srv_toe_bd[total_index].listen_ip = (char*)ip_srv_bd; 
+			afsc.srv_toe_bd[total_index].listen_ip = (char*)ip_srv_bd;
 			afsc.srv_toe_bd[total_index].listen_port = (unsigned short)(port_off + PORT_BASE);
 		}
 	}
@@ -230,7 +231,7 @@ static int release_ports(struct toedaemon* toe_daemon)
 
 int init_store_server(struct toedaemon* toe_daemon)
 {
-    int rc = -1; 
+    int rc = -1;
 
     // get s5daemon config file
     conf_file_t fp = NULL;
@@ -244,11 +245,11 @@ int init_store_server(struct toedaemon* toe_daemon)
 
 	rc = init_trays(toe_daemon, fp);
     if(rc < 0)
-    {   
+    {
     	goto EXIT;
-	}   
-        
-    rc = init_ports(toe_daemon, fp);    
+	}
+
+    rc = init_ports(toe_daemon, fp);
 	if(rc < 0)
 	{
 		goto EXIT;
@@ -281,9 +282,9 @@ static int push_msg_to_handle_thread(PS5CLTSOCKET socket, s5_message_t* msg)
 	{
 		s5socket_lock_handler_mutex(socket);
     	while(s5socket_get_handler_init_flag(socket) == FALSE)
-    	{    
+    	{
 			s5socket_wait_cond(socket);
-		}		
+		}
 		s5socket_unlock_handler_mutex(socket);
 	}
 
@@ -322,7 +323,7 @@ int recv_msg_read(void* sockParam, s5_message_t* msg, void* param)
 	if(rc)
 	{
 		rc = cachemgr_read_request(msg, socket);
-		s5msg_release_all(&msg);		
+		s5msg_release_all(&msg);
 	}
 
 	return rc;
@@ -338,7 +339,7 @@ int recv_msg_write(void* sockParam, s5_message_t* msg, void* param)
 	if(rc)
 	{
 		rc = cachemgr_write_request(msg, socket);
-		s5msg_release_all(&msg);		
+		s5msg_release_all(&msg);
 	}
 
 	return rc;
@@ -360,7 +361,7 @@ int recv_msg_block_delete_request(void* sockParam, s5_message_t* msg, void* para
 	if(rc)
 	{
 		rc = cachemgr_block_delete_request(msg, socket);
-		s5msg_release_all(&msg);	
+		s5msg_release_all(&msg);
 	}
 
 	return rc;
@@ -372,19 +373,19 @@ int recv_msg_s5_stat_request(void* sockParam, s5_message_t* msg, void* param)
 	PS5CLTSOCKET socket = (PS5CLTSOCKET)sockParam;
 
     if(!socket || !msg)
-    {   
+    {
         S5LOG_ERROR("Failed: param is invalid.");
         return -EINVAL;
-    }   
+    }
 
     rc = push_msg_to_handle_thread(socket, msg);
     if(rc)
-    {   
+    {
 		S5ASSERT("Not supported, use spy" == 0);
-        s5msg_release_all(&msg);    
-    }   
+        s5msg_release_all(&msg);
+    }
 
-    return rc; 	
+    return rc;
 }
 
 static int handle_socket_exception(void* clntSock, void* srv_toe)
@@ -399,7 +400,7 @@ static int handle_socket_exception(void* clntSock, void* srv_toe)
     s5_srv_toe->exitFlag = 1;
     s5list_push_ulc(&msg_entry->msg_list_entry, &s5_srv_toe->msg_list_head);
     s5list_signal_entry(&s5_srv_toe->msg_list_head);
-    s5list_unlock(&s5_srv_toe->msg_list_head);  
+    s5list_unlock(&s5_srv_toe->msg_list_head);
 	s5socket_unregister_conn_exception_handle(clntSock);
     return 0;
 }
@@ -447,50 +448,7 @@ static void *msg_process_thread(void *param)
 
 void *afs_listen_thread(void *param)
 {
-	pthread_t threadID;
-	pthread_t msgThreadID;
-	PS5CLTSOCKET clntSock = NULL;
-	int rc = 0;
-	struct s5d_srv_toe* srv_toe = (struct s5d_srv_toe*)param;	
-	if(!srv_toe)
-	{
-		S5LOG_ERROR("Failed:  prama is invalid,thread exit.");
-		return NULL;
-	}
-
-	threadID = pthread_self();
-	S5LOG_INFO("Listen Thread:  listen_ip(srv_toe->listen_ip(%s) listen port(%u) thread(%llu) start.",
-			   srv_toe->listen_ip, srv_toe->listen_port, (unsigned long long)threadID);
-	
-	s5list_init_head(&srv_toe->msg_list_head);
-
-	rc = pthread_create(&msgThreadID, NULL,	msg_process_thread, param);
-
-	S5LOG_INFO("Listen Thread: ip(%s) port(%u) is available now.",
-		srv_toe->listen_ip, srv_toe->listen_port);
-
-	while (!srv_toe->exitFlag)
-	{
-		clntSock = s5socket_accept(srv_toe->socket, 1);
-		if (clntSock <= 0)
-			continue;
-		srv_toe->socket_clt = clntSock;
-		s5socket_lock_handler_mutex(clntSock);
-
-		s5list_clear(&srv_toe->msg_list_head);
-
-		//s5socket_register_conn_exception_handle(clntSock, handle_socket_exception, srv_toe);
-		srv_toe->exitFlag = 0;
-		s5socket_set_user_data(clntSock, srv_toe);
-
-		s5socket_set_handler_init_flag(clntSock, TRUE);
-		s5socket_signal_cond(clntSock);
-		s5socket_unlock_handler_mutex(clntSock);
-
-		char* s5bd_ip = s5socket_get_foreign_ip(clntSock);
-		int s5bd_port = s5socket_get_foreign_port(clntSock);
-		S5LOG_INFO("S5afs:Accept s5bd<ip:%s port:%d> ", s5bd_ip, s5bd_port);
-	}
+	((S5TcpServer*)param)->listen_proc();
 
 	return NULL;
 }
@@ -512,10 +470,178 @@ static int handle_msg(s5v_msg_entry_t *s5vmsg)
 		case MSG_TYPE_S5_STAT:
 			S5ASSERT("Not supported, use spy" == 0);
 			break;
-		case MSG_TYPE_NIC_CLIENT_INFO: 
+		case MSG_TYPE_NIC_CLIENT_INFO:
 		default:
 			break;
 	}
 	return	rc;
 }
 
+int S5TcpServer::init(conf_file_t conf)
+{
+	int rc = 0;
+	poller_cnt = conf_get_int(conf, "tcp_server", "poller_count", 4, FALSE);
+	pollers = new S5Poller[poller_cnt];
+	for(int i=0;i<poller_cnt;i++)
+	{
+		rc = pollers[i].init(512);
+		if (rc != 0)
+			S5LOG_FATAL("Failed init TCP pollers[%d], rc:%d", i, rc);
+	}
+	rc = pthread_create(&listen_s5toe_thread, NULL, afs_listen_thread, this);
+	if (rc)
+	{
+		S5LOG_FATAL("Failed to create TCP listen thread failed rc:%d",rc);
+		return rc;
+	}
+}
+
+void S5TcpServer::listen_proc()
+{
+	int rc = 0;
+	int yes = 1;
+	sockaddr_in srv_addr;
+	S5LOG_INFO("Init TCP server with IP:<NULL>:%d", TCP_PORT_BASE);
+	memset(&srv_addr, 0, sizeof(srv_addr));
+	srv_addr.sin_family = AF_INET;
+	srv_addr.sin_port = htons(TCP_PORT_BASE);
+
+	server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);;
+	if (server_socket_fd < 0) {
+		rc = -errno;
+		S5LOG_FATAL("Failed to create TCP server socket, rc:%d", rc);
+		goto release1;
+	}
+	rc = setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(int));
+	if (rc != 0)
+	{
+		rc = -errno;
+		S5LOG_ERROR("set SO_REUSEPORT failed, rc:%d", rc);
+	}
+	rc = setsockopt(server_socket_fd, IPPROTO_TCP, TCP_QUICKACK, &yes, sizeof(int));
+	if (rc != 0)
+	{
+		rc = -errno;
+		S5LOG_ERROR("set TCP_QUICKACK failed, rc:%d", rc);
+	}
+	/* Now bind the host address using bind() call.*/
+	if (bind(server_socket_fd, (struct sockaddr *) &srv_addr, sizeof(srv_addr)) < 0)
+	{
+		rc = -errno;
+		S5LOG_FATAL("Failed to bind socket, rc:%d", rc);
+		goto release2;
+	}
+
+
+	if (listen(server_socket_fd, 128) < 0)
+	{
+		rc = -errno;
+		S5LOG_FATAL("Failed to listen socket, rc:%d", rc);
+		goto release2;
+	}
+
+	while (1)
+	{
+		accept_connection();
+	}
+	return;
+release2:
+release1:
+	return;
+}
+int on_tcp_handshake_recved(BufferDescriptor* bd, S5Connection* conn_, void* cbk_data)
+{
+	S5TcpConnection* conn = (S5TcpConnection*)conn_;
+	struct qfa_client_volume_priv* volume;
+
+	volume = (struct qfa_client_volume_priv*)calloc(1, sizeof(struct qfa_client_volume_priv));
+	if (volume == NULL)
+	{
+		rc = -ENOMEM;
+		S5LOG_ERROR("Failed to malloc volume memory on connection from:%s", conn->connection_info.c_str());
+		conn->close();
+		return 0;
+	}
+	conn->state = CONN_OK;
+	conn->volume = volume;
+	return 0;
+}
+int S5TcpServer::accept_connection()
+{
+	sockaddr_in client_addr;
+	socklen_t addr_len = sizeof(client_addr);
+	int rc = 0;
+	int connfd = accept(server_socket_fd, &client_addr, &addr_len);
+
+	if (connfd < 0) {
+		S5LOG_ERROR("Failed to accept tcp connection, rc:%d", -errno);
+		return -errno;
+	}
+
+	S5TcpConnection* conn = new S5TcpConnection();
+	if (conn == NULL)
+	{
+		rc = -ENOMEM;
+		S5LOG_ERROR("Failed to alloc qfa_connection for connection from:%s, rc:%d", ipstr, rc);
+		goto release1;
+	}
+	rc = conn->init(connfd, get_best_poller(), 128, 128);
+	//add this to debug bad performance in Wdindows driver
+	conn_add_ref(conn); //decreased in `server_on_disconnect`
+	__sync_fetch_and_add(&conn_stat.server_tcp_cnt, 1);
+	conn->transport = TCP;
+	conn->on_disconnected = server_on_disconnect;
+	conn->on_release = server_on_conn_release;
+	pthread_mutex_lock(&app_context.lock);
+	conn->disp_index = app_context.next_dispatcher++;
+	app_context.next_dispatcher %= app_context.dispatcher_count;
+	conn->replicator_index = app_context.next_replicator++;
+	app_context.next_replicator %= app_context.replicator_count;
+	pthread_mutex_unlock(&app_context.lock);
+	conn->rdma_poller_index = -1;
+	conn->role = ROLE_SERVER;
+	conn->transport = TCP;
+	conn->state = CONN_INIT;
+
+	BufferDescriptor *bd = new BufferDescriptor();
+	bd->buf = new struct s5_handshake_message;
+	bd->buf_size = sizeof s5_handshake_message;
+	bd->data_len = 0;
+	bd->on_work_complete = on_handshake_recved;
+	conn->post_recv(bd);
+
+
+
+
+	conn->heartbeat_receive_time = now_time_nsec();
+	store_inst->res_collector->insert_conn(conn);
+	return 0;
+release10:
+	store_inst->res_collector->remove_conn(conn);
+	qfa_poller_del(tsession->poller, conn->ctrl_evt_queue.fd);
+release9:
+	qfa_release_event_queue(&conn->ctrl_evt_queue);
+release8:
+	qfa_poller_del(tsession->poller, tsession->send_q.fd);
+release7:
+	qfa_poller_del(tsession->poller, tsession->recv_q.fd);
+release5:
+	free(volume);
+release4:
+	qfa_release_tcp_session(tsession);
+release3:
+	free(tsession);
+release2:
+	free(conn);
+release1:
+	close(connfd);
+	return rc;
+
+	if (rc)
+	{
+		char* addrstr = inet_ntoa(client_addr.sin_addr);
+		S5LOG_ERROR("Failed to create_tcp_server_connection for client:%s, rc:%d", addrstr, -errno);
+		return -errno;
+	}
+	return 0;
+}

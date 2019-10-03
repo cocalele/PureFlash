@@ -53,11 +53,11 @@ int conf_close(conf_file_t conf)
 
 
 extern "C"
-const char *conf_get(conf_file_t conf, const char *section, const char *key)
+const char *conf_get(conf_file_t conf, const char *section, const char *key, const char* def_val, BOOL fatal_on_error)
 {
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, NULL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, NULL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, NULL);
+	S5ASSERT(conf != NULL);
+	S5ASSERT(section != NULL);
+	S5ASSERT(key != NULL);
 
 	ConfFile *cf = static_cast<ConfFile *>(conf);
 	string section_name(section);
@@ -68,8 +68,9 @@ const char *conf_get(conf_file_t conf, const char *section, const char *key)
 	if(ret < 0)
 	{
 		errno = -ret;
-		S5LOG_WARN("Failed to conf_get char section[%s], key[%s] failed! ret[%d]", section, key, ret);
-		return NULL;
+		if (fatal_on_error)
+			S5LOG_FATAL("Configuration not found! section:%s, key:%s", section, key);
+		return def_val;
 	}
 
 	return  value_str->c_str();
@@ -77,123 +78,51 @@ const char *conf_get(conf_file_t conf, const char *section, const char *key)
 }
 
 extern "C"
-int conf_get_int(conf_file_t conf, const char *section, const char *key, int *value)
+int conf_get_int(conf_file_t conf, const char *section, const char *key, int def_val, BOOL fatal_on_error)
 {
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, -EINVAL);
+	S5ASSERT(conf != NULL);
+	S5ASSERT(section != NULL);
+	S5ASSERT(key != NULL);
 
-	const char *buf =  conf_get(conf, section, key);
+	const char *buf =  conf_get(conf, section, key, NULL, fatal_on_error);
 	if(!buf)
 	{
-		S5LOG_WARN("Failed to conf_get int section[%s], key[%s] failed! ", section, key);
-		return -EINVAL;
+		return def_val;
 	}
 
 	std::string err;
-	*value = strict_strtol(buf, 10, &err);
+	int value = strict_strtol(buf, 10, &err);
 	if(!err.empty())
 	{
-		S5LOG_WARN("Failed to strtol buf[%s], err[%s]", buf, err.c_str()) ;
-		return -EINVAL;
+		errno = EINVAL;
+		S5LOG_FATAL("Failed to strtol buf[%s], err[%s]", buf, err.c_str()) ;
+		return def_val;
 	}
-	return 0;
+	return value;
 }
 
 extern "C"
-int conf_get_long(conf_file_t conf, const char *section, const char *key, long *value)
+double conf_get_double(conf_file_t conf, const char *section, const char *key, double def_val, BOOL fatal_on_error)
 {
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, -EINVAL);
+	S5ASSERT(conf != NULL);
+	S5ASSERT(section != NULL);
+	S5ASSERT(key != NULL);
 
-	const char *buf  = conf_get(conf, section, key);
-	if(!buf)
+	const char *buf = conf_get(conf, section, key, NULL, fatal_on_error);
+	if (!buf)
 	{
-		S5LOG_WARN("Failed to conf_get long section[%s], key[%s] failed!", section, key);
-		return -EINVAL;
+		return def_val;
 	}
 
 	std::string err;
-	*value = strict_strtol(buf, 10, &err);
-	if(!err.empty())
+	double value = strict_strtod(buf, 10, &err);
+	if (!err.empty())
 	{
-		S5LOG_ERROR("Failed to get strtol buf[%s], err[%s]", buf, err.c_str()) ;
-		return -EINVAL;
+		errno = EINVAL;
+		S5LOG_FATAL("Failed to strtol buf[%s], err[%s]", buf, err.c_str());
+		return def_val;
 	}
-	return 0;
-}
-
-extern "C"
-int conf_get_longlong(conf_file_t conf, const char *section, const char *key, long long *value)
-{
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, -EINVAL);
-
-	const char *buf =  conf_get(conf, section, key);
-	if(!buf)
-	{
-		S5LOG_WARN("Failed to do conf_get longlong section[%s], key[%s]", section, key);
-		return -EINVAL;
-	}
-
-	std::string err;
-	*value = strict_strtoll(buf, 10, &err);
-	if(!err.empty())
-	{
-		S5LOG_ERROR("Failed to get strtol buf[%s], err[%s]", buf, err.c_str()) ;
-		return -EINVAL;
-	}
-	return 0;
-}
-
-extern "C"
-int conf_get_double(conf_file_t conf, const char *section, const char *key, double *value)
-{
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, -EINVAL);
-
-	const char *buf =  conf_get(conf, section, key);
-	if(!buf)
-	{
-		S5LOG_WARN("Failed to conf_get longlong section[%s], key[%s] failed!", section, key);
-		return -EINVAL;
-	}
-
-	std::string err;
-	*value = strict_strtod(buf, &err);
-	if(!err.empty())
-	{
-		S5LOG_ERROR("Failed to get strtol buf[%s], err[%s]", buf, err.c_str()) ;
-		return -EINVAL;
-	}
-	return 0;
-}
-
-extern "C"
-int conf_get_float(conf_file_t conf, const char *section, const char *key, float *value)
-{
-	CHECK_PARAM_NOT_NULL_OR_RETURN(conf, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(section, -EINVAL);
-	CHECK_PARAM_NOT_NULL_OR_RETURN(key, -EINVAL);
-
-	const char *buf =  conf_get(conf, section, key);
-	if(!buf)
-	{
-		S5LOG_WARN("Failed to get conf_get longlong section[%s], key[%s] failed!", section, key);
-		return -EINVAL;
-	}
-
-	std::string err;
-	*value = strict_strtof(buf, &err);
-	if(!err.empty())
-	{
-		S5LOG_ERROR("Failed to get strtol buf[%s], err[%s]", buf, err.c_str()) ;
-		return -EINVAL;
-	}
-	return 0;
+	return value;
 }
 
 

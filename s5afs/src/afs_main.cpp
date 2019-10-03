@@ -1,7 +1,7 @@
 /**
- * Copyright (C), 2014-2015.
- * @file
+ * Copyright (C), 2019.
  *
+ * @file
  * This file defines toe server initialization and release func.
  */
 #include <signal.h>

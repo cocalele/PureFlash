@@ -41,7 +41,7 @@
  * Data structure of fixed-size queue.
  */
 template <typename T>
-class fixed_size_queue
+class S5FixedSizeQueue
 {
 public:
 	int tail;			///< tail pointer
@@ -75,7 +75,9 @@ int init(int queue_depth)
  */
 void destroy()
 {
+	queue_depth = tail = head = 0;
 	free(data);
+	data = NULL;
 }
 
 /**
@@ -105,13 +107,18 @@ inline int enqueue(/*in*/const T& element)
  * User cannot long term retain element dequeued, and should not free it also.
  *
  * @param[in]	queue	the queue to operate on
- * @return a T, or else NULL if the queue is empty.
+ * @return a T
+ * @throws bad_logic exception if queue is empty.
+ *
+ * @mark, dequeue must return a value of T, not T* or T&. T* or T& is a pointer to data[i],
+ * after dequeue return, data[i] may has changed its value by other call to enqueue before
+ * caller consume dequeue's return value
  */
-inline const T* dequeue()
+inline T dequeue()
 {
 	if (unlikely(is_empty()))
-		return NULL;
-	T* t = &data[queue->head];
+		throw std::logic_error(format_string("queue:%s is empty", name));
+	T t = data[queue->head];
 	head = (head+1)% queue_depth;
 	return t;
 }

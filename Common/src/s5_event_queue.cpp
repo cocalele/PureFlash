@@ -1,13 +1,13 @@
 #include "s5_utils.h"
 #include "s5_event_queue.h"
-EventQueue::EventQueue(const char* name, int size)
+S5EventQueue::S5EventQueue()
 {
-	safe_strcpy(this->name, name, sizeof(this->name));
 	current_queue = NULL;
 }
-int EventQueue::init(int size)
+int S5EventQueue::init(const char* name, int size, BOOL semaphore_mode)
 {
-	pthread_spin_init(&lock), 0;
+	pthread_spin_init(&lock, 0);
+	safe_strcpy(this->name, name, sizeof(this->name));
 	event_fd = eventfd(0, EFD_SEMAPHORE);
 	if (event_fd < 0)
 	{
@@ -35,13 +35,13 @@ release1:
 	close(event_fd);
 	return rc;
 }
-EventQueue::~EventQueue()
+S5EventQueue::~S5EventQueue()
 {
 	if (current_queue)
 		destroy();
 }
 
-void EventQueue::destroy()
+void S5EventQueue::destroy()
 {
 	current_queue = NULL;
 	queue1.destroy();
@@ -49,7 +49,7 @@ void EventQueue::destroy()
 	close(event_fd);
 }
 
-int EventQueue::post_event(int type, int arg_i, void* arg_p)
+int S5EventQueue::post_event(int type, int arg_i, void* arg_p)
 {
 	AutoSpinLock(lock);
 	return current_queue->enqueue(S5Event{ type, arg_i, arg_p });
@@ -71,7 +71,7 @@ int EventQueue::post_event(int type, int arg_i, void* arg_p)
  * @return 0 on success, negative code on error.
  *
  */
-int EventQueue::get_event(fixed_size_queue** /*out*/ q)
+int S5EventQueue::get_event(fixed_size_queue** /*out*/ q)
 {
 	int64_t v;
 	if( unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
@@ -84,4 +84,3 @@ int EventQueue::get_event(fixed_size_queue** /*out*/ q)
 	current_queue = current_queue == &queue1 ? &queue2 : &queue1;
 	return 0;
 }
-

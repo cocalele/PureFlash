@@ -159,16 +159,16 @@ public:
 	 */
 	int parse_file();
 
-	/** 
+	/**
 	 * Read value of key in section specified
-	 * 
+	 *
 	 * If function successfully returned, value will be stored in parameter 'val'. 'val' is reference of pointer of string.
 	 * User is forbidden to modify its buffer and can long term retain it.
 	 *
 	 * @param[in]		section		section name
 	 * @param[in]		key			key name
 	 * @param[in,out]	val			where result will be store if function returns successfully
-	 * 
+	 *
 	 * @return	0 on success and negative errno will be returned if errors occur
 	 * @retval	0			success
 	 * @retval	-ENOENT		section or key specified cannot be found in configuration data
@@ -176,15 +176,15 @@ public:
 	int read(const std::string &section, const std::string &key,
 	         std::string** val) const;
 
-	/** 
+	/**
 	 * Get const head iterator of section in configuration data.
 	 */
 	const_section_iter_t sections_begin() const;
-	/** 
+	/**
 	 * Get const tail iterator of section in configuration data.
 	 */
 	const_section_iter_t sections_end() const;
-	/** 
+	/**
 	 * Static function to trim white space in a string,
 	 *
 	 * In the "C" and "POSIX" locales, white space includes space, form-feed ('\\f'), newline ('\\n'), carriage return
@@ -192,7 +192,7 @@ public:
 	 * object.
 	 *
 	 * @param[in,out]		str				string to trim, and trimmed string will also be assigned to it.
-	 * @param[in]			strip_internal	if false, only white space in head and tail of string will be trimmed, or 
+	 * @param[in]			strip_internal	if false, only white space in head and tail of string will be trimmed, or
 	 *										else, all white space will be trimmed.
 	 */
 	static void trim_whitespace(std::string &str, bool strip_internal);
@@ -203,7 +203,7 @@ public:
 	 * whitespace is stored as underscores.  The main reason for selecting this
 	 * normal form is so that in common/config.cc, we can use a macro to stringify
 	 * the field names of md_config_t and get a key in normal form.
-	 * 
+	 *
 	 * @param[in]		key			string to normalize
 	 *
 	 * @return	string normalized
@@ -213,12 +213,12 @@ public:
 
 	std::string conf_file;			///< configuration file path
 private:
-	/** 
+	/**
 	 * Parse configuration file content in buf and construct structured data.
 	 *
 	 * Before this api is called, configuration file has been loaded into memory space. This function is just
 	 * used to process configuration file in buffer line by line and init structured data of configuration data
-	 * in ConfFile object. 
+	 * in ConfFile object.
 	 *
 	 * @param[in]		buf			buffer of configuration file in memory spcae
 	 * @param[in]		sz			buffer size in bytes
@@ -248,7 +248,7 @@ private:
 	 * @retval		-S5_CONF_ERR	line to process does not conform to configuration rules
 	 */
 	int process_line(int line_no, const char *line, ConfLine* conf_line);
-	std::map <std::string, ConfSection> sections;		///< sections in configuration file 
+	std::map <std::string, ConfSection> sections;		///< sections in configuration file
 
 	ConfFile();		///< leave undefined
 };

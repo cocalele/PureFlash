@@ -8,10 +8,11 @@ class ObjectMemoryPool
 public:
 	int init(int cap) {
 		int rc = 0;
+		obj_count = cap;
 		rc = pthread_spin_init(&lock);
 		if (rc)
 			return -rc;
-		rc = free_obj_queue.init(cap);
+		rc = free_obj_queue.init(cap+1);
 		if(rc)
 		{
 			S5LOG_ERROR("Failed init queue in memory pool, rc:%d", rc);
@@ -60,5 +61,6 @@ private:
 	pthread_spin_lock lock;
 	fixed_size_queue<T*> free_obj_queue;
 	T* data;
+	int obj_count;
 };
 #endif // s5_mempool_h__

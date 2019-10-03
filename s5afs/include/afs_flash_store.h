@@ -3,15 +3,16 @@
 #include <uuid/uuid.h>
 #include <unordered_map>
 #include <stdint.h>
-#include "fixed_size_queue.h"
+#include "s5_fixed_size_queue.h"
 #include "s5conf.h"
+#include "s5_mempool.h"
 
-#define META_RESERVE_SIZE (128L*1024*1024)
-#define OBJ_SIZE (4L*1024*1024)  //4M byte per object
-#define OBJ_SIZE_ORDER 22 //4M = 2 ^ 22
+#define META_RESERVE_SIZE (40<<30) //40GB
 #define PAGE_SIZE 4096
 #define PAGE_SIZE_ORDER 12
 
+#define OBJ_SIZE_ORDER 24
+#define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
 struct toedaemon;
 
 /**
@@ -21,6 +22,14 @@ struct lmt_key
 {
 	uint64_t vol_id;
 	int64_t slba; //align on 4M block
+	int64_t rsv1;
+	int64_t rsv2;
+};
+static_assert(sizeof(lmt_key) == 32);
+enum EntryStatus: uint32_t {
+	UNINIT = 0, //not initialized
+	NORMAL = 1,
+	COPYING = 2, //COW on going
 };
 /**
  * represent a 4M block entry
@@ -29,41 +38,73 @@ struct lmt_entry
 {
 	int64_t offset; //offset of this 4M block in device. in bytes
 	uint32_t snap_seq;
+	uint32_t status; // type EntryStatus
+	lmt_entry* prev_snap;
+	void* waiting_io;
 };
+static_assert(sizeof(lmt_entry) == 32);
+
 inline bool operator == (const lmt_key &k1, const lmt_key &k2) { return k1.vol_id == k2.vol_id && k1.slba == k2.slba; }
 
-	struct lmt_hash
+struct lmt_hash
+{
+	std::size_t operator()(const struct lmt_key& k) const
 	{
-		std::size_t operator()(const struct lmt_key& k) const
-		{
-			using std::size_t;
-			using std::hash;
-			using std::string;
+		using std::size_t;
+		using std::hash;
+		using std::string;
 
-			// Compute individual hash values for first,
-			// second and third and combine them using XOR
-			// and bit shifting:
-			const size_t _FNV_offset_basis = 14695981039346656037ULL;
-			const size_t _FNV_prime = 1099511628211ULL;
-			return (((k.vol_id << 8)*k.slba) ^ _FNV_offset_basis)*_FNV_prime;
+		// Compute individual hash values for first,
+		// second and third and combine them using XOR
+		// and bit shifting:
+		const size_t _FNV_offset_basis = 14695981039346656037ULL;
+		const size_t _FNV_prime = 1099511628211ULL;
+		return (((k.vol_id << 8)*k.slba) ^ _FNV_offset_basis)*_FNV_prime;
 
-		}
-	};
+	}
+};
 
+#ifdef USE_SPDK
+struct ns_entry* dev_handle_t;
+#else
+typedef int dev_handle_t;
+#endif
 
-class flash_store
+class S5FlashStore
 {
 public:
+	struct HeadPage {
+		uint32_t magic;
+		uint32_t version;
+		unsigned char uuid[16];
+		uint32_t key_size;
+		uint32_t entry_size;
+		uint64_t objsize;
+		uint32_t objsize_order; //objsize = 2 ^ objsize_order
+		uint32_t rsv1; //to make alignment at 8 byte
+		uint64_t dev_capacity;
+		uint64_t meta_size;
+		uint64_t free_list_position;
+		uint64_t free_list_size;
+		uint64_t trim_list_position;
+		uint64_t trim_list_size;
+		uint64_t lmt_position;
+		uint64_t lmt_size;
+		uint64_t metadata_md5_position;
+		uint64_t head_backup_position;
+		uint64_t redolog_position;
+		uint64_t redolog_size;
+		char create_time[32];
+	};
 	char dev_name[256];
-	uuid_t  uuid;
-	int64_t dev_capacity; //total capacity of device, in byte,
-	int64_t meta_size;//reserved size for meta data, remaining for user store, general 50G byte
+	HeadPage head;
 
+	dev_handle_t dev_fd;
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
-	fixed_size_queue<int> free_obj_queue;
+	S5FixedSizeQueue<int32_t> free_obj_queue;
+	S5FixedSizeQueue<int32_t> trim_obj_queue;
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
 
-	int dev_fd;
 
 
 /**

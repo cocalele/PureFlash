@@ -24,7 +24,7 @@ extern "C" {
 #define MAX_NAME_LEN 96	///< max length of name used in s5 modules.
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
 
-#define S5_DAEMON_PORT    3000  ///< default s5daemon listen port 
+#define S5_DAEMON_PORT    3000  ///< default s5daemon listen port
 #define TOE_SERVER_FOR_BD_PORT 10000 ///< default toe listen port.
 #define	LBA_LENGTH		4096	///< LBA's length.
 #define LBA_LENGTH_ORDER 12
@@ -192,25 +192,26 @@ const char* get_msg_status_name(msg_status_t msg_status);
  */
 typedef struct s5_message_head
 {
-	int32		magic_num;		///< 0x3553424e, magic number.
-	int32		msg_type;		///< type.
-	int32		transaction_id;	///< transaction id. bit[0~8]:ictx->node_cache index, bit[9~21]:submitted io counter, bit[22~31]:submitted io index
-	int64		slba;			///< start of LBA.
-	int32		data_len;		///< the length of  s5message's data, unit is byte.
-	uint64		volume_id;		///< volume id, s5message assosiated.
-	int32		user_id;		///< user id, not to be used currently.
-	int32		pool_id;		///< pool id, not to be used currently.
-	int32		nlba;			///< count of LBAs.
-	int32		obj_ver;		///< s5 block object version, not to be used currently.
-	int32		listen_port;	///< listen port for receiving snap_change_notify in open-image listen_port for toe port in open-image-reply.
-	int32		snap_seq;		///< snap sequence, not to be used currently.
-	int32		status;			///< handle status of this s5message, valid in reply message..
+	uint32_t		magic_num;		///< 0x3553424e, magic number.
+	uint32_t		msg_type;		///< type.
+	uint32_t		transaction_id;	///< transaction id. bit[0~8]:ictx->node_cache index, bit[9~21]:submitted io counter, bit[22~31]:submitted io index
+	uint64_t		slba;			///< start of LBA.
+	uint32_t		data_len;		///< the length of  s5message's data, unit is byte.
+	uint64_t		volume_id;		///< volume id, s5message assosiated.
+	uint32_t		user_id;		///< user id, not to be used currently.
+	uint32_t		pool_id;		///< pool id, not to be used currently.
+	uint32_t		nlba;			///< count of LBAs.
+	uint32_t		obj_ver;		///< s5 block object version, not to be used currently.
+	uint32_t		listen_port;	///< listen port for receiving snap_change_notify in open-image listen_port for toe port in open-image-reply.
+	uint32_t		snap_seq;		///< snap sequence, not to be used currently.
+	uint32_t		status;			///< handle status of this s5message, valid in reply message..
 	uchar       iops_density;	///< iops density.
 	uchar       is_head;		///< 0: is not head version, 1: is head version.
 	uchar       read_unit;		///< 0:read block size(4KB) 1:read block size(8KB) 2:read block size(16KB).
 	char		reserve[1];		///< reserve.
 } s5_message_head_t;
 
+STATIC_ASSERT(sizeof(s5_message_head) == 64);
 /**
  *   s5message's tail data structure definition.
  */
@@ -236,6 +237,25 @@ typedef struct s5_message
     void* data;             ///< s5message data field.
 } s5_message_t;
 
+struct s5_handshake_message {
+	int16_t recfmt;
+	union {
+		int16_t qid;
+		int16_t crqsize; //server return this on accept's private data, indicates real IO depth
+	};
+	int16_t hrqsize;//host receive queue size
+	int16_t hsqsize;//host send queue size, i.e. max IO queue depth for ULP
+	uint64_t vol_id; //srv1 defined by NVMe over Fabric
+	int32_t snap_seq;
+	union {
+		int16_t protocol_ver; //on client to server, this is protocol version
+		int16_t hs_result; //on server to client, this is  shake result, 0 for success, others for failure.
+	}
+	uint16_t rsv1
+	uint32_t rsv2;
+	uint64_t rsv3;
+};
+STATIC_ASSERT(sizeof(struct s5_handshake_message) == 32);
 #pragma pack()
 
 /**

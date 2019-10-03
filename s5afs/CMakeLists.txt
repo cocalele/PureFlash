@@ -45,12 +45,13 @@ INCLUDE_DIRECTORIES(include ../sld/include ../Common/include)
 set (S5AFS_SRC 
 	src/afs_cluster.cpp
 	src/afs_flash_store.cpp
-	src/afs_s5message.cpp
-	src/afs_server.cpp 
-	src/afs_socket.cpp
-	src/afs_socket_impl.cpp
 	src/afs_main.cpp
 	src/afs_request.cpp
+	src/afs_s5message.cpp
+	src/afs_server.cpp
+	src/afs_socket.cpp
+	src/afs_socket_impl.cpp
+	src/s5_dispatcher.cpp
 )
 file(GLOB_RECURSE INCS "*.h")
 

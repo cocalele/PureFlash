@@ -165,15 +165,43 @@ void s5log(int level, const char * format, ...)
 	va_start(args, format);
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
-	if (log_writer)
-		log_writer(level, buffer);
+	char time_buf[100];
+	time_t now = time(0);
+	strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&now));
+	fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
+	if (level == S5LOG_LEVEL_FATAL)
+		exit(-1);
+}
+
+std::string&& format_string(int level, const char * format, ...)
+{
+	static __thread char buffer[2048];
+	va_list args;
+	va_start(args, format);
+	len = vsnprintf(buffer, sizeof(buffer), format, args);
+	va_end(args);
+	if (len < sizeof buffer)
+		// we fit in the buffer
+		return{ buf, len };
 	else
+		return{ buf };
+}
+
+std::string&& get_socket_addr(int sock_fd)
+{
+	struct sockaddr_in local_addr, remote_addr;
+	int rc = getsockname(sock_fd, (struct sockaddr *)&local_addr, sizeof(local_addr));
+	if(rc != 0)
 	{
-		char time_buf[100];
-		time_t now = time(0);
-		strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&now));
-		fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
-		if (level == S5LOG_LEVEL_FATAL)
-			exit(-1);
+		S5LOG_ERROR("Failed get local addr, sock:%d, rc:%d", sock_fd, -errno);
+		return "[Unknow socket addr]";
 	}
+	int rc = getpeername(sock_fd, (struct sockaddr *)&remote_addr, sizeof(remote_addr));
+	if (rc != 0)
+	{
+		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);
+		return "[Unknow socket addr]";
+	}
+	return format_string("TCP://%s:%d<=%s:%d", inet_ntoa(local_addr.sin_addr), local_addr.sin_port,
+		inet_ntoa(remote_addr.sin_addr), remote_addr.sin_port);
 }

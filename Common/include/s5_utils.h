@@ -13,6 +13,8 @@
 #include "assert.h"
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <string>
+#include <functional>
 
 #include "s5conf.h"
 #include "s5log.h"
@@ -31,7 +33,8 @@
 #define S5ASSERT(x)
 #endif
 
-#define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1];
+//#define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1];
+#define STATIC_ASSERT static_assert
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,7 +43,8 @@ extern "C" {
 
 #define max(a,b)    (((a) > (b)) ? (a) : (b))		///<get the bigger from two numbers.
 #define min(a,b)    (((a) < (b)) ? (a) : (b))		///<get the smaller from two numbers.
-
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
 /**
 * free memory macro.
 *
@@ -136,8 +140,21 @@ BOOL isIpValid(const char* ip);
  */
 uint64_t get_cbs_by_iops(uint64_t iops);
 
+inline uint64_t up_align(uint64_t number, uint64_t alignment)
+{
+	return ((number + alignment - 1) / alignment)*alignment;
+}
+
 #ifdef __cplusplus
 }
 #endif
 
+std::string&& format_string(int level, const char * format, ...);
+std::string&& get_socket_addr(int sock_fd);
+class DeferCall {
+	std::function<void(void)> f;
+public:
+	DeferCall(std::function<void(void)> _f) :f(_f){}
+	~DeferCall() { f(); }
+};
 #endif

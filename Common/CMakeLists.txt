@@ -21,48 +21,42 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(include)
 include_directories(../S5bd/include)
-include_directories(include/sqlite3)
-include_directories(include/hash)
 
 set (S5COMMON_SRC 
-	src/s5socket.cpp
-	src/s5message.cpp
-	src/s5list.cpp
-	src/s5socket_impl.cpp
-	src/s5errno.cpp 
-	src/s5utf8.cpp
-	src/s5conf_utils.cpp
-	src/s5conf.cpp
-	src/s5strtol.cpp
 	src/cmdopt.c
-	src/s5_utils.cpp
     src/md5.c
+	src/s5_buffer.cpp
+	src/s5_event_queue.cpp
+	src/s5_event_thread.cpp
+	src/s5_performance_profiler.c
+	src/s5_poller.cpp
+	src/s5_tcp_connection.cpp
+	src/s5_utils.cpp
+	src/s5conf.cpp
+	src/s5conf_utils.cpp
+	src/s5errno.cpp
+	src/s5list.cpp
+	src/s5message.cpp
+	src/s5socket.cpp
+	src/s5socket_impl.cpp
+	src/s5strtol.cpp
+	src/s5utf8.cpp	
 	src/special_vol_mgr.c
   )	
 file(GLOB_RECURSE INCS "*.h")
 
-set_source_files_properties(src/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-w")
-set (S5SQLITE3_SRC src/sqlite3/sqlite3.c src/sqlite3/s5_sql.c)
+#set_source_files_properties(src/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-w")
+#set (S5SQLITE3_SRC src/sqlite3/sqlite3.c src/sqlite3/s5_sql.c)
 
-ADD_LIBRARY(s5sqlite3 SHARED ${S5SQLITE3_SRC}) 
-set_target_properties(s5sqlite3 PROPERTIES SKIP_BUILD_RPATH true)
-set_target_properties(s5sqlite3 PROPERTIES CLEAN_DIRECT_OUTPUT 1)
+#ADD_LIBRARY(s5sqlite3 SHARED ${S5SQLITE3_SRC}) 
+#set_target_properties(s5sqlite3 PROPERTIES SKIP_BUILD_RPATH true)
+#set_target_properties(s5sqlite3 PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
-ADD_LIBRARY(s5sqlite3_static STATIC ${S5SQLITE3_SRC}) 
-set_target_properties(s5sqlite3_static PROPERTIES OUTPUT_NAME "s5sqlite3")
-set_target_properties(s5sqlite3_static PROPERTIES SKIP_BUILD_RPATH true)
-set_target_properties(s5sqlite3_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 add_definitions(-D__WITH_MURMUR)
 set (S5HASH_SRC src/hash/murmur.c src/hash/hashtable.c)
 set_source_files_properties(${S5HASH_SRC} PROPERTIES COMPILE_FLAGS "-w")
 
-
-ADD_LIBRARY(s5hash STATIC ${S5HASH_SRC}) 
-set_target_properties(s5hash PROPERTIES OUTPUT_NAME "s5hash")
-set_target_properties(s5hash PROPERTIES SKIP_BUILD_RPATH true)
-set_target_properties(s5hash PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-	
 
 
 add_library(s5common STATIC  ${S5COMMON_SRC} ${INCS})
