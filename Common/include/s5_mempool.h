@@ -1,18 +1,27 @@
 #ifndef s5_mempool_h__
 #define s5_mempool_h__
-#include "fixed_size_queue.h"
+#include <pthread.h>
+
+#include "s5_fixed_size_queue.h"
+#include "s5_lock.h"
 
 template<typename T>
 class ObjectMemoryPool
 {
 public:
+	pthread_spinlock_t lock;
+	S5FixedSizeQueue<T*> free_obj_queue;
+	T* data;
+	int obj_count;
+
+public:
 	int init(int cap) {
 		int rc = 0;
 		obj_count = cap;
-		rc = pthread_spin_init(&lock);
+		rc = pthread_spin_init(&lock, 0);
 		if (rc)
 			return -rc;
-		rc = free_obj_queue.init(cap+1);
+		rc = free_obj_queue.init(cap);
 		if(rc)
 		{
 			S5LOG_ERROR("Failed init queue in memory pool, rc:%d", rc);
@@ -38,7 +47,7 @@ public:
 	}
 
 	T* alloc() {
-		AutoSpinLock(lock);
+		AutoSpinLock _l(&lock);
 		if (free_obj_queue.is_empty())
 			return NULL;
 		return free_obj_queue.dequeue();
@@ -47,20 +56,23 @@ public:
 	/**
 	 * throw logic_error
 	 */
-	void free(T* p) throw(std::logic_error) {
+	void free(T* p) {
 		if (free_obj_queue.is_full())
-			throw logic_error("call free to full memory pool");
+			throw std::logic_error("call free to full memory pool");
 		free_obj_queue.enqueue(p);
 	}
 	void destroy() {
-		free_obj_queue.destroy();
-		free(data);
-		pthread_spin_destroy(&lock);
+		if(data != NULL)
+		{
+			free_obj_queue.destroy();
+			free(data);
+			pthread_spin_destroy(&lock);
+			data = NULL;
+		}
 	}
-private:
-	pthread_spin_lock lock;
-	fixed_size_queue<T*> free_obj_queue;
-	T* data;
-	int obj_count;
+	~ObjectMemoryPool()
+	{
+		destroy();
+	}
 };
 #endif // s5_mempool_h__

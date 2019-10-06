@@ -1,6 +1,6 @@
 
-#include "heap-profiler.h"
-#include "profiler.h"
+#include "gperftools/heap-profiler.h"
+#include "gperftools/profiler.h"
 #include "s5_performance_profiler.h"
 
 #define SA_NODEFER		0x40000000

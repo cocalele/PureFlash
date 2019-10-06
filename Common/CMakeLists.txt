@@ -28,7 +28,6 @@ set (S5COMMON_SRC
 	src/s5_buffer.cpp
 	src/s5_event_queue.cpp
 	src/s5_event_thread.cpp
-	src/s5_performance_profiler.c
 	src/s5_poller.cpp
 	src/s5_tcp_connection.cpp
 	src/s5_utils.cpp
@@ -37,11 +36,14 @@ set (S5COMMON_SRC
 	src/s5errno.cpp
 	src/s5list.cpp
 	src/s5message.cpp
-	src/s5socket.cpp
-	src/s5socket_impl.cpp
 	src/s5strtol.cpp
-	src/s5utf8.cpp	
-	src/special_vol_mgr.c
+	src/s5utf8.cpp
+	src/s5_app_ctx.cpp
+	src/s5_buffer.cpp
+	src/s5_event_queue.cpp
+	src/s5_event_thread.cpp
+	src/s5_poller.cpp
+	src/s5_tcp_connection.cpp
   )	
 file(GLOB_RECURSE INCS "*.h")
 

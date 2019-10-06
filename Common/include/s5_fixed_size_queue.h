@@ -1,6 +1,9 @@
 #ifndef _FIXED_SIZE_QUEUE_H_
 #define _FIXED_SIZE_QUEUE_H_
 
+#include <stdlib.h>
+#include <errno.h>
+#include "s5_utils.h"
 
 /**
  * Copyright (C), 2014-2019.
@@ -48,6 +51,14 @@ public:
 	int head;			///< head pointer
 	int queue_depth;	///< queue depth, max number of element can be put to this queue plus 1
 	T* data;		///< memory used by this queue, it's size of queue_depth * ele_size
+//	char name[32];
+
+	S5FixedSizeQueue():tail(0),head(0),queue_depth(0),data(NULL)
+	{ }
+	~S5FixedSizeQueue()
+	{
+		destroy();
+	}
 /**
  * Initialize a queue.
  *
@@ -60,11 +71,11 @@ public:
  * @param[in]		queue_depth_order	queue depth order value
  * @return 0 on success, -ENOMEM on fail
  */
-int init(int queue_depth)
+int init(int _queue_depth)
 {
-	head = queue->tail = 0;
-	this->queue_depth = queue_depth;
-	data = (T*)calloc((size_t)queue->queue_depth, sizeof(T));
+	head = tail = 0;
+	this->queue_depth = _queue_depth+1;
+	data = (T*)calloc((size_t)queue_depth, sizeof(T));
 	if (data == NULL)
 		return -ENOMEM;
 	return 0;
@@ -94,9 +105,9 @@ void destroy()
  */
 inline int enqueue(/*in*/const T& element)
 {
-	if (fsq_is_full(this))
+	if (is_full())
 		return -EAGAIN;
-	data[queue->tail] = element;
+	data[tail] = element;
 	tail = (tail + 1)%queue_depth;
 	return 0;
 }
@@ -117,8 +128,8 @@ inline int enqueue(/*in*/const T& element)
 inline T dequeue()
 {
 	if (unlikely(is_empty()))
-		throw std::logic_error(format_string("queue:%s is empty", name));
-	T t = data[queue->head];
+		throw std::logic_error(format_string("queue:%s is empty", "noname"));
+	T t = data[head];
 	head = (head+1)% queue_depth;
 	return t;
 }
@@ -148,7 +159,7 @@ inline bool is_full() {	return QUEUE_SPACE(queue_depth, head, tail) == 0; }
  *
  * @return available space in queue.
  */
-inline int space(queue) { 	return QUEUE_SPACE((queue)->queue_depth, (queue)->head, (queue)->tail); }
+inline int space() { 	return QUEUE_SPACE(queue_depth, head, tail); }
 
 /**
  * get the valid entries count in queue
@@ -157,7 +168,7 @@ inline int space(queue) { 	return QUEUE_SPACE((queue)->queue_depth, (queue)->hea
  *
  * @return valid element number in queue.
  */
-inline int count(queue) {	return QUEUE_COUNT((queue)->queue_depth, (queue)->head, (queue)->tail); }
+inline int count() {	return QUEUE_COUNT(queue_depth, head, tail); }
 } ;
 
 

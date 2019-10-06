@@ -4,14 +4,15 @@
 #include <unistd.h>
 #include <malloc.h>
 #include "s5_md5.h"
+#include "basetype.h"
 
-void MD5Stream::MD5Stream(dev_handle_t dev_fd)
+MD5Stream::MD5Stream(dev_handle_t dev_fd)
 {
 	this->dev_fd = dev_fd;
 	buffer = NULL;
 	reset(0);
 }
-void MD5Stream::~MD5Stream()
+MD5Stream::~MD5Stream()
 {
 	free(buffer);
 }
@@ -34,14 +35,14 @@ void MD5Stream::reset(off_t offset)
 }
 
 
-ssize_t MD5Stream::read(void *buf, size_t count, off_t offset)
+int MD5Stream::read(void *buf, size_t count, off_t offset)
 {
 	if (-1 == pread(dev_fd, buf, count, base_offset + offset))
 		return -errno;
 	return 0;
 }
 
-ssize_t MD5Stream::write(void *buf, size_t count, off_t offset)
+int MD5Stream::write(void *buf, size_t count, off_t offset)
 {
 	if (-1 == pwrite(dev_fd, buf, count, base_offset + offset))
 		return -errno;

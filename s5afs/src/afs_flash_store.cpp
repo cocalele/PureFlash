@@ -19,14 +19,16 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <malloc.h>
+#include <string.h>
 
 #include "afs_flash_store.h"
 #include "s5_utils.h"
 #include "afs_server.h"
-#include "s5log.h"
+#include "s5_log.h"
 #include "s5message.h"
 #include "afs_cluster.h"
 #include "s5_md5.h"
+#include "s5_redolog.h"
 
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
 
@@ -88,41 +90,50 @@ int S5FlashStore::init(const char* mngt_ip, const char* dev_name)
 		S5LOG_WARN("New device found, initializing  (%s) now ...", dev_name);
 		if(!is_disk_clean(dev_fd))
 		{
-			S5LOG_ERROR("disk %d is not clean and will not be initialized." dev_name);
+			S5LOG_ERROR("disk %s is not clean and will not be initialized.", dev_name);
 			goto error1;
 		}
 		if ((ret = initialize_store_head()) != 0)
 		{
-			S5LOG_ERROR("initialize_store_head failed ret(%d)", ret);
+			S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
 			goto error1;
 		}
-		int64_t obj_count = (head.dev_capacity - head.meta_size) >> head.objsize_order;
-		int qd = (int)((obj_count + 1023) & 0xfffffc00);
-		ret = free_obj_queue.init(qd);
+		int obj_count = (int) ((head.dev_capacity - head.meta_size) >> head.objsize_order);
+
+		ret = free_obj_queue.init(obj_count);
 		if (ret)
 		{
-			S5LOG_ERROR("free_obj_queue inititalize failed ret(%d)", ret);
+			S5LOG_ERROR("free_obj_queue initialize failed ret(%d)", ret);
 			goto error1;
 		}
 		for (int i = 0; i < obj_count; i++)
 		{
 			free_obj_queue.enqueue(i);
 		}
+		ret = trim_obj_queue.init(obj_count);
+		if (ret)
+		{
+			S5LOG_ERROR("trim_obj_queue initialize failed ret(%d)", ret);
+			goto error1;
+		}
+
 		obj_lmt.reserve(obj_count * 2);
-		ret  = trim_obj_queue.init(qd);
-		if(ret){
-			TODO
+		redolog = new S5RedoLog();
+		ret = redolog->init(this);
+		if (ret)
+		{
+			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
+			goto error1;
 		}
 		save_meta_data();
 	}
 	else
 		goto error1;
 	return ret;
-error2:
-	fsq_int_destory(&free_obj_queue);
+
 error1:
-	close(store->dev_fd);
-	store->dev_fd = 0;
+	close(dev_fd);
+	dev_fd = 0;
 	return ret;
 }
 
@@ -188,7 +199,7 @@ int S5FlashStore::write(uint64_t vol_id, int64_t slba,
 
 int S5FlashStore::initialize_store_head()
 {
-	memset(head, 0, sizeof(head));
+	memset(&head, 0, sizeof(head));
 	long numblocks;
 	if (ioctl(dev_fd, BLKGETSIZE, &numblocks))
 	{
@@ -243,7 +254,7 @@ class LmtEntrySerializer {
 public:
 	size_t offset;
 	void* buf;
-	ssize_t buf_size;
+	size_t buf_size;
 	off_t pos;
 	MD5Stream* md5_stream;
 	LmtEntrySerializer(off_t offset, void* ser_buf, unsigned int ser_buf_size, bool write, MD5Stream* stream);
@@ -348,7 +359,7 @@ int LmtEntrySerializer::flush_buffer()
 }
 
 
-template <type T>
+template <typename T>
 static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
 {
 	memset(buf, 0, buf_size);
@@ -360,11 +371,11 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	{
 		return -errno;
 	}
-	int src = 0;
+	size_t src = 0;
 	while(src < q->queue_depth*sizeof(T))
 	{
 		memset(buf, 0, buf_size);
-		int s = min(q->queue_depth * sizeof(T) - src, buf_size);
+		size_t s = std::min(q->queue_depth * sizeof(T) - src, (size_t)buf_size);
 		memcpy(buf, ((char*)q->data) + src, s);
 		if (-1 == stream->write(buf, up_align(s, PAGE_SIZE), offset + src + PAGE_SIZE))
 		{
@@ -372,9 +383,10 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 		}
 		src += s;
 	}
+	return 0;
 }
 
-template<type T>
+template<typename T>
 static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
 {
 	int rc = stream->read(buf, PAGE_SIZE, offset);
@@ -385,14 +397,14 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	if (rc)
 		return rc;
 
-	free_obj_queue.head = buf_as_int[1];
-	free_obj_queue.tail = buf_as_int[2];
+	q->head = buf_as_int[1];
+	q->tail = buf_as_int[2];
 
-	int src = 0;
+	size_t src = 0;
 	while (src < q->queue_depth * sizeof(T))
 	{
 		memset(buf, 0, buf_size);
-		int s = min(q->queue_depth * sizeof(T) - src, buf_size);
+		unsigned long s = std::min(q->queue_depth * sizeof(T) - src, (size_t)buf_size);
 		if (-1 == stream->read(buf, up_align(s, PAGE_SIZE), offset + src + PAGE_SIZE))
 		{
 			return -errno;
@@ -401,9 +413,7 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 		src += s;
 	}
 
-	if (-1 == pread(dev_fd, free_obj_queue.data, (size_t)free_obj_queue.queue_depth * sizeof(int), 2 << PAGE_SIZE_ORDER))
-		goto error1;
-
+	return 0;
 }
 /*
   SSD head layout in LBA(4096 byte):
@@ -424,26 +434,26 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 int S5FlashStore::save_meta_data()
 {
 	int buf_size = 1 << 20;
-	char* buf = aligned_alloc(PAGE_SIZE, buf_size);
+	void* buf = aligned_alloc(PAGE_SIZE, buf_size);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in save_meta_data");
 		return -ENOMEM;
 	}
-	DeferCall ([buf]() {
+	DeferCall _c([buf]()->void {
 		free(buf);
 	});
 	int rc = 0;
 	MD5Stream stream(dev_fd);
 	rc = stream.init();
 	if (rc) return rc;
-	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, buf, buf_size);
+	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed to save free obj queue, dev:%s rc:%d", dev_name, rc);
 		return rc;
 	}
-	rc = save_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, buf, buf_size);
+	rc = save_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc != 0)
 	{
 		S5LOG_ERROR("Failed to save trim obj queue, dev:%s rc:%d", dev_name, rc);
@@ -486,13 +496,13 @@ int S5FlashStore::save_meta_data()
 int S5FlashStore::load_meta_data()
 {
 	int buf_size = 1 << 20;
-	char* buf = aligned_alloc(PAGE_SIZE, buf_size);
+	void* buf = aligned_alloc(PAGE_SIZE, buf_size);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in save_meta_data");
 		return -ENOMEM;
 	}
-	DeferCall([buf]() {
+	DeferCall _c([buf]() {
 		free(buf);
 	});
 
@@ -504,13 +514,13 @@ int S5FlashStore::load_meta_data()
 		S5LOG_ERROR("Failed to init md5 stream, dev:%s rc:%d", dev_name, rc);
 		return rc;
 	}
-	rc = load_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, buf, buf_size);
+	rc = load_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc)
 	{
 		S5LOG_ERROR("Failed to load free obj queue, dev:%s rc:%d", dev_name, rc);
 		return rc;
 	}
-	rc = load_fixed_queue(&trim_obj_queue, &stream, head.trim_list_position, buf, buf_size);
+	rc = load_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc)
 	{
 		S5LOG_ERROR("Failed to load trim obj queue, dev:%s rc:%d", dev_name, rc);
@@ -599,7 +609,7 @@ int S5FlashStore::delete_obj(uint64_t vol_id, int64_t slba,
 
 int S5FlashStore::read_store_head()
 {
-	char* buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	void* buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in read_store_head");

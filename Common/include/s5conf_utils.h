@@ -18,7 +18,7 @@
 #include <set>
 #include <string>
 
-#include "s5utils.h"
+#include "s5_utils.h"
 
 /*
  * Line content parsed from S5 configuration file.

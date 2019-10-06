@@ -1,15 +1,16 @@
 #ifndef s5_lock_h__
 #define s5_lock_h__
+#include <pthread.h>
 
 class AutoSpinLock {
-	pthread_spin_lock* l;
+	pthread_spinlock_t* lock;
 public:
-	inline AutoSpinLock(pthread_spin_lock& l){
-		this->l = &l;
-		pthread_spin_lock(l);
+	inline AutoSpinLock(pthread_spinlock_t* l){
+		this->lock = l;
+		pthread_spin_lock(lock);
 	}
 	inline ~AutoSpinLock() {
-		pthread_spin_unlock(l);
+		pthread_spin_unlock(lock);
 	}
 
 };

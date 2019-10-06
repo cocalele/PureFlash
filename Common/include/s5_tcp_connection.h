@@ -5,24 +5,22 @@
 #include "s5_buffer.h"
 #include "s5_poller.h"
 #include "s5_utils.h"
+#include "s5message.h"
 
 class S5TcpConnection : public S5Connection
 {
 public:
-	S5TcpConnection():sock_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
+	S5TcpConnection():socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
 		recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
 		readable(FALSE), writeable(FALSE),need_reconnect(FALSE){}
 	virtual int post_recv(BufferDescriptor* buf);
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf);
 	virtual int post_write(BufferDescriptor* buf);
-	virtual int on_destroy();
-	virtual int on_close();
 
 	int init(int sock_fd, S5Poller *poller, int send_q_depth, int recv_q_depth);
-	void destroy();
 
-	int sock_fd;
+	int socket_fd;
 	S5Poller *poller;
 
 	void* recv_buf;
@@ -57,7 +55,7 @@ private:
 	void start_send(BufferDescriptor* bd);
 	void start_recv(BufferDescriptor* bd);
 	int rcv_with_error_handle();
-
+	int send_with_error_handle();
 };
 
 #endif // s5_tcp_connection_h__

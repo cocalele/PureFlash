@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include "spy.h"
 #include "basetype.h"
-#include "s5log.h"
+#include "s5_log.h"
 #include "s5utils.h"
 
 using namespace std;

@@ -1,33 +1,40 @@
+#include <semaphore.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/epoll.h>
+#include <string.h>
+#include <sys/prctl.h>
+
 #include "s5_poller.h"
+#include "s5_log.h"
+S5Poller::S5Poller() :epfd(0),tid(0),max_fd(0)
+{
+
+}
+S5Poller::~S5Poller()
+{
+	if(epfd != 0)
+	{
+		close(epfd);
+		epfd=0;
+	}
+}
 static void on_ctl_event(int fd, uint32_t event, void* user_arg)
 {
 	S5Poller* poller = (S5Poller*)user_arg;
-	fixed_size_queue<S5Event>* q;
-	if (poller->ctrl_queue.get_event(&q) == 0 && q != NULL)
+	S5FixedSizeQueue<S5Event>* q;
+	if (poller->ctrl_queue.get_events(&q) == 0 && q != NULL)
 	{
 		while(!q->is_empty())
 		{
 			S5Event evt = q->dequeue();
 			switch (evt.type)
 			{
-			case EVT_EPCTL_DEL:
+
+			case EVT_SYNC_INVOKE:
 			{
-				struct epctl_del_arg* arg = (struct epctl_del_arg*)evt.arg_p;
-				arg->rc = poller->async_del_fd(arg->fd);
-				sem_post(&arg->sem);
-				break;
-			}
-			case EVT_EPCTL_ADD:
-			{
-				struct epctl_add_arg* arg = (struct epctl_add_arg*)evt.arg_p;
-				arg->rc = poller->async_add_fd(arg->fd, arg->events, arg->event_handler, arg->handler_arg);
-				sem_post(&arg->sem);
-				break;
-			}
-			case EVT_LAMBDA_CALL:
-			{
-				struct lambda_call_args* arg = (struct lambda_call_args*)evt->arg_p;
-				arg->rc = arg->lambda();
+				struct SyncInvokeArg* arg = (struct SyncInvokeArg*)evt.arg_p;
+				arg->rc = arg->func();
 				sem_post(&arg->sem);
 				break;
 			}
@@ -38,7 +45,8 @@ static void on_ctl_event(int fd, uint32_t event, void* user_arg)
 
 	}
 }
-int S5Poller::init(char* name, int max_fd_count)
+
+int S5Poller::init(const char* name, int max_fd_count)
 {
 	int rc = 0;
 	safe_strcpy(this->name, name, sizeof(this->name));
@@ -47,35 +55,37 @@ int S5Poller::init(char* name, int max_fd_count)
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed init desc_pool for poller:%s, rc:%d", name, rc);
-		goto release1;
+		return rc;
 	}
-	rc = ctrl_queue.init(128);
+	rc = ctrl_queue.init("ctrl_q", 128, TRUE);
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed init ctrl_queue for poller:%s, rc:%d", name, rc);
-		goto release2;
+		return rc;
 	}
 	epfd = epoll_create(max_fd_count);
 	if (epfd <= 0)
 	{
 		rc = -errno;
 		S5LOG_ERROR("Failed init epfd for poller:%s, rc:%d", name, rc);
-		goto release3;
+		return rc;
 	}
 	int flags = fcntl(ctrl_queue.event_fd, F_GETFL, 0);
 	fcntl(ctrl_queue.event_fd, F_SETFL, flags | O_NONBLOCK);
-	async_add_fd(ctrl_queue.fd, EPOLLIN, on_ctl_event, this);
+	async_add_fd(ctrl_queue.event_fd, EPOLLIN, on_ctl_event, this);
 	rc = pthread_create(&tid, NULL, thread_entry, this);
 	if (rc != 0)
 	{
+		tid=0;
 		S5LOG_ERROR("Failed to start poller thread, rc:%d", rc);
-		goto release4;
+		return -rc;
+
 	}
 	return 0;
 
 }
 
-void* S5poller::thread_entry(void* arg)
+void* S5Poller::thread_entry(void* arg)
 {
 	S5Poller* p = (S5Poller*)arg;
 	p->run();
@@ -84,37 +94,39 @@ void* S5poller::thread_entry(void* arg)
 
 int S5Poller::add_fd(int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
 {
-	if (pthread_self() == poller->tid)
+	if (pthread_self() == tid)
 	{
 		return async_add_fd( fd, events, event_handler, handler_arg);
 	}
 	else
-		return sync_lambda_call([this, fd, events, event_handler, handler_arg]()->int {
+		return ctrl_queue.sync_invoke([this, fd, events, event_handler, handler_arg]()->int {
 			return this->async_add_fd(fd, events, event_handler, handler_arg);
 	});
 }
 
 int S5Poller::del_fd(int fd)
 {
-	if (pthread_self() == poller->tid)
+	if (pthread_self() == tid)
 	{
-		return async_poller_del(poller, fd);
+		return async_del_fd(fd);
 	}
 	else
-		return sync_lambda_call([fd, events, event_handler, handler_arg]()->int {
-			return this->async_del_fd(fd, events, event_handler, handler_arg);
+		return ctrl_queue.sync_invoke([this, fd]()->int {
+			return this->async_del_fd(fd);
 	});
 }
 
 void S5Poller::destroy()
 {
-	pthread_cancel(poller->tid);
-	pthread_join(poller->tid, NULL);
-	qfa_release_mem_pool(&poller->desc_pool);
-	close(poller->epfd);
+	pthread_cancel(tid);
+	pthread_join(tid, NULL);
+	tid=0;
+	desc_pool.destroy();
+	close(epfd);
+	epfd = 0;
 }
 
-int S5Poller::async_add_fd( int fd, uint32_t events, qpoll_event_handler event_handler, void* handler_arg)
+int S5Poller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
 {
 	struct PollerFd* desc = desc_pool.alloc();
 	if (desc == NULL)
@@ -124,11 +136,11 @@ int S5Poller::async_add_fd( int fd, uint32_t events, qpoll_event_handler event_h
 	}
 	memset(desc, 0, sizeof(*desc));
 	desc->fd = fd;
-	desc->callback = event_handler;
+	desc->handler = event_handler;
 	desc->cbk_arg = handler_arg;
-	desc->events.events = events;
-	desc->events.data.ptr = desc;
-	int rc = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &desc->events);
+	desc->events_to_watch.events = events;
+	desc->events_to_watch.data.ptr = desc;
+	int rc = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &desc->events_to_watch);
 	if (rc)
 	{
 		S5LOG_ERROR("Failed call epoll_ctl. rc: %d", -errno);
@@ -159,3 +171,27 @@ int S5Poller::async_del_fd(int fd)
 	return -ENOENT;
 }
 
+void S5Poller::run()
+{
+	prctl(PR_SET_NAME, name);
+	struct epoll_event rev[max_fd];
+	while (1)
+	{
+
+		int nfds = epoll_wait(epfd, rev, max_fd, -1);
+		if (nfds == -1)
+		{
+			//interrupted, no message in
+		}
+		else if (nfds == 0)
+		{
+			//time out
+		}
+
+		for (int i = 0; i < nfds; i++)
+		{
+			PollerFd* desc = (PollerFd*)rev[i].data.ptr;
+			desc->handler(desc->fd, rev[i].events, desc->cbk_arg);
+		}
+	}
+}

@@ -17,8 +17,8 @@ public:
 	int init();
 	void destroy();
 	void reset(off_t offset);
-	ssize_t read(void *buf, size_t count, off_t offset);
-	ssize_t write(void *buf, size_t count, off_t offset);
+	int read(void *buf, size_t count, off_t offset);
+	int write(void *buf, size_t count, off_t offset);
 
 	//finalize the md5 calculation with a 0 block, then write the md5 checksum to disk at position: offset.
 	int finalize(off_t offset, int is_read);

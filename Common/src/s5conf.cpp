@@ -11,7 +11,7 @@ using namespace std;
 #include "s5conf_utils.h"
 #include "s5conf.h"
 #include "s5strtol.h"
-#include "s5log.h"
+#include "s5_log.h"
 
 
 #define CHECK_PARAM_NOT_NULL_OR_RETURN(name,rval) \
@@ -115,7 +115,7 @@ double conf_get_double(conf_file_t conf, const char *section, const char *key, d
 	}
 
 	std::string err;
-	double value = strict_strtod(buf, 10, &err);
+	double value = strict_strtod(buf, &err);
 	if (!err.empty())
 	{
 		errno = EINVAL;

@@ -13,10 +13,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "/usr/include/signal.h" //avoid confuse with Ceph's signal.h
-#include "s5log.h"
+#include "s5_log.h"
 
 #include "basetype.h"
-#include "s5utils.h"
+#include "s5_utils.h"
 
 #define MAXLINE 4096
 void write_pid_file(const char* filename)
@@ -132,19 +132,28 @@ uint64_t get_cbs_by_iops(uint64_t iops)
 }
 
 //get now time in nano seconds
-uint64_t now_time_nsec()
+uint64_t now_time_usec()
 {
 	struct timespec tp;
 	clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
-	return tp.tv_sec * 1000000000LL + tp.tv_nsec;
+	return tp.tv_sec * 1000000LL + tp.tv_nsec/1000;
 }
 
-#define now_time_usec() (now_time_usec()/1000)
-#define now_time_msec() (now_time_usec()/1000000)
 
-static char** log_level_str;
-static char* stderr_log[] = { KRED"CRIT"KNRM, KRED"FATA"KNRM, KRED"ERRO"KNRM, KYEL"WARN"KNRM, KBLU"INFO"KNRM, KGRN"DEBU"KNRM };
-static char* file_log[] = { "CRIT", "FATA", "ERRO", "WARN", "INFO", "DEBU" };
+
+
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
+static const char** log_level_str;
+static const char* stderr_log[] = { KRED "CRIT" KNRM, KRED "FATA" KNRM, KRED "ERRO" KNRM, KYEL "WARN" KNRM, KBLU "INFO" KNRM, KGRN "DEBU" KNRM };
+static const char* file_log[] = { "CRIT", "FATA", "ERRO", "WARN", "INFO", "DEBU" };
 
 static void __attribute__((constructor)) initialize()
 {
@@ -173,30 +182,31 @@ void s5log(int level, const char * format, ...)
 		exit(-1);
 }
 
-std::string&& format_string(int level, const char * format, ...)
+const std::string format_string(const char * format, ...)
 {
 	static __thread char buffer[2048];
 	va_list args;
 	va_start(args, format);
-	len = vsnprintf(buffer, sizeof(buffer), format, args);
+	int len = vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
-	if (len < sizeof buffer)
+	if (len < (int)sizeof buffer)
 		// we fit in the buffer
-		return{ buf, len };
+		return{ buffer, len };
 	else
-		return{ buf };
+		return{ buffer };
 }
 
-std::string&& get_socket_addr(int sock_fd)
+const std::string get_socket_addr(int sock_fd)
 {
 	struct sockaddr_in local_addr, remote_addr;
-	int rc = getsockname(sock_fd, (struct sockaddr *)&local_addr, sizeof(local_addr));
+	socklen_t len = sizeof(local_addr);
+	int rc = getsockname(sock_fd, (struct sockaddr *)&local_addr, &len);
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed get local addr, sock:%d, rc:%d", sock_fd, -errno);
 		return "[Unknow socket addr]";
 	}
-	int rc = getpeername(sock_fd, (struct sockaddr *)&remote_addr, sizeof(remote_addr));
+	rc = getpeername(sock_fd, (struct sockaddr *)&remote_addr, &len);
 	if (rc != 0)
 	{
 		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);

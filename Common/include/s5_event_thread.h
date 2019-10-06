@@ -1,14 +1,22 @@
 #ifndef s5_event_thread_h__
 #define s5_event_thread_h__
+#include <functional>
+#include "s5_event_queue.h"
 
-class EventThread
+class S5EventThread
 {
 public:
-	EventQueue event_queue;
+	S5EventQueue event_queue;
+	pthread_t tid;
 	char name[32];
-	int start();
-	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
 
-	static void *start_routine(void* arg);
+	virtual ~S5EventThread();
+	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
+	int start();
+
+	static void *thread_proc(void* arg);
+
+	int sync_invoke(std::function<int(void)> _f);
+
 };
 #endif // s5_event_thread_h__

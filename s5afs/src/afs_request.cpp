@@ -9,7 +9,7 @@
 #include "afs_adaptor.h"
 #include "afs_request.h"
 #include "afs_server.h"
-#include "s5utils.h"
+#include "s5_utils.h"
 #include "spy.h"
 #include "s5message.h"
 #include "afs_flash_store.h"
@@ -23,7 +23,7 @@ static int32_t reply_ok_count;
 static int32_t delete_op_count;
 static int32_t client_info_op_count;
 
-struct flash_store flash_stores[16]; //support at most 16 store
+
 static int store_count = 0;
 
 

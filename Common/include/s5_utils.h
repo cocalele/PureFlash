@@ -17,7 +17,7 @@
 #include <functional>
 
 #include "s5conf.h"
-#include "s5log.h"
+#include "s5_log.h"
 #include "basetype.h"
 #include "pthread.h"
 
@@ -41,8 +41,8 @@ extern "C" {
 #endif
 #define S5ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))	///<get the item's count of array.
 
-#define max(a,b)    (((a) > (b)) ? (a) : (b))		///<get the bigger from two numbers.
-#define min(a,b)    (((a) < (b)) ? (a) : (b))		///<get the smaller from two numbers.
+//#define max(a,b)    (((a) > (b)) ? (a) : (b))		///<get the bigger from two numbers.
+//#define min(a,b)    (((a) < (b)) ? (a) : (b))		///<get the smaller from two numbers.
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 /**
@@ -148,9 +148,10 @@ inline uint64_t up_align(uint64_t number, uint64_t alignment)
 #ifdef __cplusplus
 }
 #endif
-
-std::string&& format_string(int level, const char * format, ...);
-std::string&& get_socket_addr(int sock_fd);
+uint64_t now_time_usec();
+#define US2MS(u) ((u)/1000)
+const std::string format_string(const char * format, ...);
+const std::string get_socket_addr(int sock_fd);
 class DeferCall {
 	std::function<void(void)> f;
 public:

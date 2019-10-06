@@ -2,57 +2,6 @@
 
 #include "s5message.h"
 
-int s5msg_release_all(s5_message_t ** msg)
-{
-	//release msg
-	if (*msg)
-	{
-		if ((*msg)->data)
-		{
-			free((*msg)->data);
-			(*msg)->data = NULL;
-		}
-		free((*msg));
-		(*msg) = NULL;
-	}
-	return 0;
-}
-
-/**
- * @return a s5 message object allocated on heap,
- *         NULL on error. errno set to ENOMEM on error
- */ 
-s5_message_t* s5msg_create(int data_size)
-{
-	if(data_size < 0)
-		return NULL;
-	s5_message_t* msg = (s5_message_t*)malloc(sizeof(s5_message_t));
-	if (!msg)
-	{
-		return NULL;
-	}
-	memset(msg, 0, sizeof(s5_message_t));
-
-	msg->head.magic_num = S5MESSAGE_MAGIC;
-	msg->head.data_len = data_size;
-	if (data_size > 0)
-	{
-		msg->data = malloc((size_t)data_size);
-		if (!msg->data)
-		{
-			free(msg);
-			msg = NULL;
-			return msg;
-		}
-		memset(msg->data, 0, (size_t)data_size);
-	}
-	else
-	{
-		msg->data = NULL;
-	}
-	
-	return msg;
-}
 
 const char* get_msg_type_name(msg_type_t msg_tp)
 {

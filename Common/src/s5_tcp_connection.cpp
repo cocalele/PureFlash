@@ -1,14 +1,19 @@
 #include <sys/epoll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
 #include "s5_tcp_connection.h"
 #include "s5_utils.h"
 
 int S5TcpConnection::init(int sock_fd, S5Poller* poller, int send_q_depth, int recv_q_depth)
 {
 	int rc = 0;
-	this->sock_fd = sock_fd;
+	this->socket_fd = sock_fd;
 	this->poller = poller;
 	int const1 = 1;
-	rc = setsockopt(connfd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
+	rc = setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
 	if (rc)
 	{
 		S5LOG_ERROR("set TCP_NODELAY failed!");
@@ -59,7 +64,7 @@ void S5TcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 			S5LOG_ERROR("Failed get event from send_q, rc:%d", rc);
 			return;
 		}
-		conn->start_send(evt.arg_p);
+		conn->start_send((BufferDescriptor*)evt.arg_p);
 	}
 }
 void S5TcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
@@ -76,7 +81,7 @@ void S5TcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 			S5LOG_ERROR("Failed get event from recv_q, rc:%d", rc);
 			return;
 		}
-		conn->start_recv(evt.arg_p);
+		conn->start_recv((BufferDescriptor*)evt.arg_p);
 	}
 }
 void S5TcpConnection::start_send(BufferDescriptor* bd)
@@ -109,7 +114,8 @@ void S5TcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 		{
 			S5LOG_INFO("TCP connection closed by peer, %s", conn->connection_info.c_str());
 		}
-		close();
+		conn->close();
+		return;
 	}
 	if (events & (EPOLLIN | EPOLLPRI))
 	{
@@ -130,16 +136,16 @@ void S5TcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 	}
 }
 
-static inline int rcv_with_error_handle(S5TcpConnection *conn)
+int S5TcpConnection::rcv_with_error_handle()
 {
-	while (conn->recved_len < conn->wanted_recv_len)
+	while (recved_len < wanted_recv_len)
 	{
 		ssize_t rc = 0;
-		rc = recv(conn->socket_fd, conn->recv_buf + conn->recved_len,
-			(size_t)(conn->wanted_recv_len - conn->recved_len), MSG_DONTWAIT);
+		rc = recv(socket_fd, (char*)recv_buf + recved_len,
+			(size_t)(wanted_recv_len - recved_len), MSG_DONTWAIT);
 
 		if (likely(rc > 0))
-			conn->recved_len += (int)rc;
+			recved_len += (int)rc;
 		else if (rc == 0)
 		{
 			S5LOG_DEBUG("recv return rc:0");
@@ -149,7 +155,7 @@ static inline int rcv_with_error_handle(S5TcpConnection *conn)
 		{
 			if (errno == EAGAIN)
 			{
-				conn->readable = FALSE; //all data has readed, wait next
+				readable = FALSE; //all data has readed, wait next
 				return -EAGAIN;
 			}
 			else if (errno == EINTR)
@@ -160,13 +166,13 @@ static inline int rcv_with_error_handle(S5TcpConnection *conn)
 			else if (errno == EFAULT)
 			{
 				S5LOG_FATAL("Recv function return EFAULT, for buffer addr:0x%p, rcv_len:%d",
-					conn->recv_buf, conn->wanted_recv_len - conn->recved_len);
+					recv_buf, wanted_recv_len - recved_len);
 			}
 			else
 			{
-				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, conn->connection_info.c_str());
-				conn->readable = FALSE;
-				conn->need_reconnect = TRUE;
+				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
+				readable = FALSE;
+				need_reconnect = TRUE;
 				return -errno;
 			}
 		}
@@ -182,7 +188,7 @@ int S5TcpConnection::do_receive()
 	do {
 		if (recv_bd == NULL)
 			return 0;
-		rc = rcv_with_error_handle(this);
+		rc = rcv_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
 			close();
@@ -190,7 +196,7 @@ int S5TcpConnection::do_receive()
 		}
 		if (wanted_recv_len == recved_len)
 		{
-			rc = recv_bd->on_work_complete(recv_bd);
+			rc = recv_bd->on_work_complete(recv_bd, this, NULL);
 			if (unlikely(rc != 0))
 			{
 				S5LOG_WARN("on_recv_complete rc:%d", rc);
@@ -206,15 +212,15 @@ int S5TcpConnection::do_receive()
 
 }
 
-static int send_with_error_handler(S5TcpConnection *conn)
+int S5TcpConnection::send_with_error_handle()
 {
-	if (conn->wanted_send_len > conn->sent_len)
+	if (wanted_send_len > sent_len)
 	{
-		ssize_t rc = send(conn->socket_fd, conn->send_buf + conn->sent_len,
-			conn->wanted_send_len - conn->sent_len, MSG_DONTWAIT);
+		ssize_t rc = send(socket_fd, (char*)send_buf + sent_len,
+			wanted_send_len - sent_len, MSG_DONTWAIT);
 		if (rc > 0)
 		{
-			conn->sent_len += (int)rc;
+			sent_len += (int)rc;
 		}
 		else if (unlikely(rc == 0))
 		{
@@ -224,7 +230,7 @@ static int send_with_error_handler(S5TcpConnection *conn)
 		{
 			if (likely(errno == EAGAIN))
 			{
-				conn->writeable = FALSE; //cann't send more, wait next
+				writeable = FALSE; //cann't send more, wait next
 				return -errno;
 			}
 			else if (errno == EINTR)
@@ -238,9 +244,9 @@ static int send_with_error_handler(S5TcpConnection *conn)
 			}
 			else
 			{
-				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, conn->connection_info.c_str());
-				conn->writeable = FALSE;
-				conn->need_reconnect = TRUE;
+				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
+				writeable = FALSE;
+				need_reconnect = TRUE;
 				return -errno;
 			}
 		}
@@ -254,7 +260,7 @@ int S5TcpConnection::do_send()
 	do {
 		if (send_bd == NULL)
 			return 0;
-		rc = send_with_error_handler(this);
+		rc = send_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
 			close();
@@ -263,7 +269,7 @@ int S5TcpConnection::do_send()
 
 		if (wanted_send_len == sent_len)
 		{
-			rc = send_bd->on_work_complete(send_bd);
+			rc = send_bd->on_work_complete(send_bd, this, send_bd->cbk_data);
 			if (unlikely(rc != 0 && rc != -EAGAIN))
 			{
 				S5LOG_DEBUG("Failed on_work_complete rc:%d", rc);

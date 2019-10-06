@@ -18,7 +18,7 @@ extern "C" {
 #include "s5_meta.h"
 #include "s5message.h"
 #include "s5list.h"
-#include "s5log.h"
+#include "s5_log.h"
 
 #define MQ_NAME_LEN		1024
 

@@ -7,12 +7,9 @@
 #ifndef __TOEDAEMON_CACHE_MGR__
 #define __TOEDAEMON_CACHE_MGR__
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
 #include "afs_adaptor.h"
 #include "s5message.h"
-#include "s5socket.h"
 struct toedaemon;
 /**
  *  Initialize cache management data for S5afs 
@@ -69,9 +66,7 @@ int cachemgr_block_delete_request(s5_message_t *msg, PS5CLTSOCKET socket);
 
 int cachemgr_nic_client_info_request(s5_message_t *msg, PS5CLTSOCKET socket);
 int flash_store_config(struct toedaemon* toe_daemon, conf_file_t fp);
-#ifdef __cplusplus
-}
-#endif
+
 
 #endif	//__TOEDAEMON_CACHE_MGR__
 

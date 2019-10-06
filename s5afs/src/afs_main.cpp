@@ -6,17 +6,16 @@
  */
 #include <signal.h>
 #include <unistd.h>
+#include <string.h>
+
 #include "cmdopt.h"
-#include "afs_request.h"
-#include "s5utils.h"
-#include "spy.h"
+#include "s5_utils.h"
 #include "afs_server.h"
 #include "s5errno.h"
 #include "afs_cluster.h"
+#include "s5_app_ctx.h"
 
-
-
-struct afsc_st afsc;
+S5AfsAppContext app_context;
 
 void sigroutine(int dunno)
 {
@@ -34,12 +33,6 @@ void sigroutine(int dunno)
 }
 
 
-int release_afs(struct toedaemon *toe_daemon)
-{
-	release_store_server(toe_daemon);
-	free(afsc.srv_toe_bd);
-	return 0;
-}
 
 static void printUsage()
 {
@@ -50,13 +43,9 @@ static void printUsage()
 
 int main(int argc, char *argv[])
 {
-	BOOL daemon_mode = FALSE;
 	int rc = -1;
-	int spy_port = 2000;
-
 	const char*	s5daemon_conf = NULL;
 
-	struct toedaemon* toe_daemon = NULL;
     S5LOG_INFO("Toedaemon start.");
  	if (argc < 3)
 	{
@@ -66,6 +55,7 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 
+ 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
 	while(opt_error_code() == 0 && opt_has_next())
 	{
@@ -98,7 +88,7 @@ int main(int argc, char *argv[])
         S5LOG_ERROR("Failed to find S5afs conf(%s)", s5daemon_conf);
         return -S5_CONF_ERR;
     }
-    const char *zk_ip = conf_get(fp, "zookeeper", "ip");
+    const char *zk_ip = conf_get(fp, "zookeeper", "ip", NULL, true);
     if(!zk_ip)
     {
         S5LOG_ERROR("Failed to find key(zookeeper:ip) in s5afs conf(%s).", s5daemon_conf);
@@ -106,13 +96,13 @@ int main(int argc, char *argv[])
     }
 
 
-	const char *this_mngt_ip = conf_get(fp, "afs", "mngt_ip");
+	const char *this_mngt_ip = conf_get(fp, "afs", "mngt_ip", NULL, true);
 	if (!this_mngt_ip)
 	{
 		S5LOG_ERROR("Failed to find key(conductor:mngt_ip) in s5afs conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
-	safe_strcpy(toe_daemon->mngt_ip, this_mngt_ip, sizeof(toe_daemon->mngt_ip));
+	app_context.mngt_ip = this_mngt_ip;
     rc = init_cluster(zk_ip);
     if (rc)
     {
@@ -125,47 +115,21 @@ int main(int argc, char *argv[])
         S5LOG_ERROR("Failed to register store");
         return rc;
     }
-	toe_daemon->s5daemon_conf_file = s5daemon_conf;
 
-	rc = init_store_server(toe_daemon);
-	if(rc)
-	{
-		S5LOG_ERROR("Failed on init_store_server rc:%d.", rc);
-		goto RELEASE;
-	}
-	if(spy_port)
-	{
-		spy_start(spy_port);
-	}
+    app_context.tcp_server=new S5TcpServer();
+    rc = app_context.tcp_server->init();
+    if(rc)
+    {
+    	S5LOG_ERROR("Failed to init tcp server:%d", rc);
+    	return rc;
+    }
 	set_store_node_state(this_mngt_ip, NS_OK, TRUE);
     signal(SIGTERM, sigroutine);
     signal(SIGINT, sigroutine);
 
-	char ch;
-	if(!daemon_mode)
-	{
-		do {
-			S5LOG_INFO("Input 'x' to exit s5sdaemon.");
-			ch=(char)getchar();
-		} while(ch != 'x');
-		S5LOG_INFO("You have input '%c', exit.", ch);
-	}
-	else
-	{
-		while(!sleep(1));
-	}
+	while(!sleep(1));
 
-RELEASE:
-	rc = release_afs(toe_daemon);
-	if(rc)
-		S5LOG_INFO("Error:release_src rc:%d.", rc);
 
-	if(toe_daemon)
-	{
-		free(toe_daemon);
-		toe_daemon = NULL;
-	}
-	remove("afs.pid");
 FINALLY:
     S5LOG_INFO("toe_daemon exit.");
     return rc;

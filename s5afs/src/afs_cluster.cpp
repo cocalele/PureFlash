@@ -4,7 +4,7 @@
 #include <string.h>
 #include "afs_cluster.h"
 #include "zookeeper.h"
-#include "s5log.h"
+#include "s5_log.h"
 static zhandle_t* zookeeper_handler;
 
 int init_cluster(const char* zk_ip_port)

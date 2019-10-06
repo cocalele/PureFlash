@@ -1,12 +1,27 @@
 #include <sys/prctl.h>
 #include "s5_event_thread.h"
-void *EventThread::start_routine(void* arg)
+
+S5EventThread::~S5EventThread()
 {
-	prctl(PR_SET_NAME, buf);
-	EventThread* pThis = (EventThread*)arg;
-	fixed_size_queue* q;
+
+}
+int S5EventThread::start()
+{
+	int rc = pthread_create(&tid, NULL, thread_proc, this);
+	if(rc)
+	{
+		S5LOG_ERROR("Failed create thread:%s, rc:%d", name, rc);
+		return rc;
+	}
+	return 0;
+}
+void *S5EventThread::thread_proc(void* arg)
+{
+	//prctl(PR_SET_NAME, buf);
+	S5EventThread* pThis = (S5EventThread*)arg;
+	S5FixedSizeQueue<S5Event>* q;
 	int rc = 0;
-	while ((rc = pThis->event_queue.get_event(&q)) == 0)
+	while ((rc = pThis->event_queue.get_events(&q)) == 0)
 	{
 		while(!q->is_empty())
 		{
@@ -16,5 +31,11 @@ void *EventThread::start_routine(void* arg)
 		}
 	}
 	return NULL;
+}
+
+int S5EventThread::sync_invoke(std::function<int(void)> _f)
+{
+	S5LOG_FATAL("sync_invoke not implemented");
+	return 0;
 }
 

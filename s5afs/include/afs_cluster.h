@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <uuid/uuid.h>
 
-#include "s5utils.h"
+#include "s5_utils.h"
 
 //node state 
 #define NS_OK "OK"
@@ -25,7 +25,7 @@
  *         负数表示失败, 数字为-errno
  * 
  * @implementation
- *  该函数的实现，调用 
+ *  该函数的实现，调用
  *            static zhandle_t* zookeeper_handler;
  *            zookeeper_handler = createClient(zk_ip_port, &ctx);
  * 成功建立zookeeper连接后，zookeeper_handler作为静态变量保留，其他的API实现中会使用该变量

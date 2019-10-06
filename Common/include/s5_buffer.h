@@ -1,3 +1,5 @@
+#ifndef _S5_BUFFER_H_
+#define _S5_BUFFER_H_
 /**
  * Copyright (C), 2019.
  *
@@ -10,14 +12,18 @@
  * buffer 会按照最大长度分配，比如我们允许的最大IO是64K byte， 那么bufer将会分配64K byte，也就是buf_size
  * 是65536。然而当处理一个4K byte IO请求时，有效数据的长度,即data_len是4096
  */
+
+#include "s5_fixed_size_queue.h"
+
 class BufferPool;
+class S5Connection;
+
 struct BufferDescriptor
 {
-	char* buf;
+	void* buf;
 	int data_len; /// this is the validate data len in the buffer.
 	int(*on_work_complete)(BufferDescriptor* bd, S5Connection* conn, void* cbk_data);
 	void* cbk_data;
-private:
 	int buf_size; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
 };
@@ -32,3 +38,5 @@ private:
 	S5FixedSizeQueue<BufferDescriptor*> free_bds;
 	void* data_buf;
 };
+#endif //_S5_BUFFER_H_
+

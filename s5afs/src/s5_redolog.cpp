@@ -1,13 +1,19 @@
+#include <unistd.h>
+#include <string.h>
+
 #include "s5_redolog.h"
+
+#define STORE_META_AUTO_SAVE_INTERVAL 60
+
 int S5RedoLog::init(struct S5FlashStore* s)
 {
 	int rc = 0;
 	int64_t *p;
 	this->store = s;
 	fd = s->dev_fd;
-	this->start_offset = s->head.redo_log_position;
+	this->start_offset = s->head.redolog_position;
 	this->current_offset = this->start_offset + PAGE_SIZE;
-	this->size = s->head.redo_log_size;
+	this->size = s->head.redolog_size;
 	this->phase = 0;//will be increased to 1 on the followed discard() call
 	entry_buff = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
 	if (entry_buff == NULL)
@@ -27,15 +33,15 @@ int S5RedoLog::init(struct S5FlashStore* s)
 		rc = -errno;
 		goto release1;
 	}
-	auto_save_thread = std::thread([]() {
+	auto_save_thread = std::thread([this]() {
 		while (1)
 		{
 			if (sleep(STORE_META_AUTO_SAVE_INTERVAL) != 0)
-				return NULL;
-			store->receiver.sync_lambda_call([store]()->int {
-				if (store->redo_log.current_offset == store->redo_log.start_offset + PAGE_SIZE)
+				return 0;
+			store->sync_invoke([this]()->int {
+				if (current_offset == start_offset + PAGE_SIZE)
 					return 0;
-				store->save_metadata();
+				store->save_meta_data();
 				return 0;
 			});
 		}
@@ -43,24 +49,68 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	});
 
 	return 0;
-release2:
-	pthread_cancel(meta_data_write_thread);
-	pthread_join(meta_data_write_thread, NULL);
+
 release1:
-	neon_free(entry_buff);
-	golog(NEON_LOG_ERROR, "Failed to init redo log, rc:%d", rc);
+	free(entry_buff);
+	entry_buff = NULL;
+	S5LOG_ERROR("Failed to init redo log, rc:%d", rc);
 	return rc;
 }
-int S5RedoLog::load(struct qfa_ssd_info* ssd);
-int S5RedoLog::replay();
-int S5RedoLog::discard();
-int S5RedoLog::log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head);
-int S5RedoLog::log_free(int block_id, int trim_list_head, int free_list_tail);
-int S5RedoLog::log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail);
-int S5RedoLog::redo_allocation(LogEntry* e);
-int S5RedoLog::redo_trim(LogEntry* e);
-int S5RedoLog::redo_free(LogEntry* e);
+int S5RedoLog::load()
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::replay()
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::discard()
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::log_free(int block_id, int trim_list_head, int free_list_tail)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::redo_allocation(Item* e)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::redo_trim(Item* e)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+int S5RedoLog::redo_free(Item* e)
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
 
-private:
-	int write_entry();
+int S5RedoLog::write_entry()
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
 
+int S5RedoLog::stop()
+{
+	pthread_cancel(auto_save_thread.native_handle());
+	auto_save_thread.join();
+	return 0;
+}

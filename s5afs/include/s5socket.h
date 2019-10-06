@@ -10,14 +10,11 @@
 */
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include <string.h>
 #include "s5list.h"
 #include "s5message.h"
-#include "s5utils.h"
+#include "s5_utils.h"
 
 /**
  * Receive message hook of s5socket.
@@ -346,9 +343,6 @@ void s5socket_wait_cond(PS5CLTSOCKET socket);
  */
 void s5socket_signal_cond(PS5CLTSOCKET socket);
 
-#ifdef __cplusplus
-}
-#endif
 
 
 #endif	/*__s5socket__*/

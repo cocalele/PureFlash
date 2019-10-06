@@ -4,16 +4,18 @@
 #include <unordered_map>
 #include <stdint.h>
 #include "s5_fixed_size_queue.h"
+#include "basetype.h"
 #include "s5conf.h"
 #include "s5_mempool.h"
+#include "s5_event_queue.h"
+#include "s5_event_thread.h"
 
-#define META_RESERVE_SIZE (40<<30) //40GB
-#define PAGE_SIZE 4096
-#define PAGE_SIZE_ORDER 12
+
+#define META_RESERVE_SIZE (40LL<<30) //40GBsetype.h"
 
 #define OBJ_SIZE_ORDER 24
 #define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
-struct toedaemon;
+class S5RedoLog;
 
 /**
  * key of 4M block
@@ -70,7 +72,7 @@ struct ns_entry* dev_handle_t;
 typedef int dev_handle_t;
 #endif
 
-class S5FlashStore
+class S5FlashStore : public S5EventThread
 {
 public:
 	struct HeadPage {
@@ -104,8 +106,7 @@ public:
 	S5FixedSizeQueue<int32_t> free_obj_queue;
 	S5FixedSizeQueue<int32_t> trim_obj_queue;
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
-
-
+	S5RedoLog* redolog;
 
 /**
  * init flash store from device. this function will create meta data
@@ -141,10 +142,11 @@ int write(uint64_t vol_id, int64_t slba,
  */
 int delete_obj(uint64_t vol_id, int64_t slba,
 	int32_t snap_seq, int32_t nlba);
+
+	int save_meta_data();
 private:
 	int read_store_head();
 	int initialize_store_head();
-	int save_meta_data();
 	int load_meta_data();
 };
 

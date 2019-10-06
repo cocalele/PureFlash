@@ -1,6 +1,12 @@
 #ifndef s5_poller_h__
 #define s5_poller_h__
-typedef void epoll_evt_handler(int fd, uint32_t event, void* user_arg)
+#include <stdint.h>
+#include <sys/epoll.h>
+
+#include "s5_event_queue.h"
+#include "s5_mempool.h"
+
+typedef void (*epoll_evt_handler)(int fd, uint32_t event, void* user_arg);
 struct PollerFd
 {
 	int fd;
@@ -12,13 +18,15 @@ class S5Poller
 {
 public:
 	int epfd;
-	struct EventQueue ctrl_queue;
-	struct ObjectMemoryPool<PollerFd> desc_pool;
+	struct S5EventQueue ctrl_queue;
+	ObjectMemoryPool<PollerFd> desc_pool;
 	pthread_t tid;
 	char name[32];
 	int max_fd;
 
-	int init(int max_fd_count);
+	S5Poller();
+	~S5Poller();
+	int init(const char* name, int max_fd_count);
 	int add_fd(int fd, uint32_t events, epoll_evt_handler callback, void* callback_data);
 	int del_fd(int fd);
 	void destroy();

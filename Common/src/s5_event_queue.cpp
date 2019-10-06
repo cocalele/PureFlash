@@ -1,6 +1,11 @@
+#include <sys/eventfd.h>
+#include <unistd.h>
+
 #include "s5_utils.h"
 #include "s5_event_queue.h"
-S5EventQueue::S5EventQueue()
+#include "s5_lock.h"
+
+S5EventQueue::S5EventQueue():event_fd(0)
 {
 	current_queue = NULL;
 }
@@ -8,7 +13,7 @@ int S5EventQueue::init(const char* name, int size, BOOL semaphore_mode)
 {
 	pthread_spin_init(&lock, 0);
 	safe_strcpy(this->name, name, sizeof(this->name));
-	event_fd = eventfd(0, EFD_SEMAPHORE);
+	event_fd = eventfd(0, semaphore_mode ? EFD_SEMAPHORE:0);
 	if (event_fd < 0)
 	{
 		S5LOG_ERROR("Failed create eventfd for EventQueue:%s, rc:%d", name, -errno);
@@ -51,7 +56,7 @@ void S5EventQueue::destroy()
 
 int S5EventQueue::post_event(int type, int arg_i, void* arg_p)
 {
-	AutoSpinLock(lock);
+	AutoSpinLock _l(&lock);
 	return current_queue->enqueue(S5Event{ type, arg_i, arg_p });
 	//if (current_queue->is_full())
 	//	return -EAGAIN;
@@ -71,7 +76,7 @@ int S5EventQueue::post_event(int type, int arg_i, void* arg_p)
  * @return 0 on success, negative code on error.
  *
  */
-int S5EventQueue::get_event(fixed_size_queue** /*out*/ q)
+int S5EventQueue::get_events(S5FixedSizeQueue<S5Event>** /*out*/ q)
 {
 	int64_t v;
 	if( unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
@@ -79,8 +84,42 @@ int S5EventQueue::get_event(fixed_size_queue** /*out*/ q)
 		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
 		return -errno;
 	}
-	AutoSpinLock(lock);
+	AutoSpinLock _l(&lock);
 	*q = current_queue;
 	current_queue = current_queue == &queue1 ? &queue2 : &queue1;
 	return 0;
+}
+
+int S5EventQueue::get_event(S5Event* /*out*/ evt)
+{
+	int64_t v;
+	if( unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
+	{
+		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
+		return -errno;
+	}
+	AutoSpinLock _l(&lock);
+	if(current_queue->is_empty())
+		return -ENOENT;
+	*evt = current_queue->data[current_queue->head];
+	current_queue->head++;
+	current_queue->head %= current_queue->queue_depth;
+	return 0;
+}
+
+int S5EventQueue::sync_invoke(std::function<int()> f)
+{
+	SyncInvokeArg  arg;
+	arg.func = f;
+	sem_init(&arg.sem, 0, 0);
+	int rc = post_event(EVT_SYNC_INVOKE, 0, &arg);
+	if (rc)
+	{
+		sem_destroy(&arg.sem);
+		S5LOG_ERROR("Failed post EVT_SYNC_INVOKE event");
+		return rc;
+	}
+	sem_wait(&arg.sem);
+	sem_destroy(&arg.sem);
+	return arg.rc;
 }

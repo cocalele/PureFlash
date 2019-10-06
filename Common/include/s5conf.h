@@ -11,6 +11,7 @@
  *
  * @author xxx
  */
+#include "basetype.h"
 
 typedef void* conf_file_t;		///< configuration object
 
@@ -168,7 +169,7 @@ int conf_get_int(conf_file_t conf , const char* section, const char* key, int de
  * @param[in]	    fatal_on_error	whether to LOG_FATAL if config not found
  * @returns		value of configuration item.
  */
-int conf_get_double(conf_file_t conf, const char* section, const char* key, double def_val, BOOL fatal_on_error);
+double conf_get_double(conf_file_t conf, const char* section, const char* key, double def_val, BOOL fatal_on_error);
 
 
 #ifdef __cplusplus

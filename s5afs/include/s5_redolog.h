@@ -1,5 +1,10 @@
 #ifndef s5_redolog_h__
 #define s5_redolog_h__
+#include <stdint.h>
+#include <thread>
+
+#include "afs_flash_store.h"
+
 class S5RedoLog
 {
 	enum class ItemType : uint32_t {
@@ -34,14 +39,14 @@ public:
 	int64_t phase;
 	size_t size;
 	struct S5FlashStore* store;
-	int fd;
+	dev_handle_t fd;
 	off_t start_offset;
 	off_t current_offset;
 	void* entry_buff;
 	std::thread auto_save_thread;
 
 	int init(struct S5FlashStore* ssd);
-	int load(struct S5FlashStore* ssd);
+	int load();
 	int replay();
 	int discard();
 	int log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head);
@@ -50,7 +55,7 @@ public:
 	int redo_allocation(Item* e);
 	int redo_trim(Item* e);
 	int redo_free(Item* e);
-
+	int stop();
 private:
 	int write_entry();
 };

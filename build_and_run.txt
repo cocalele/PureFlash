@@ -8,7 +8,7 @@ SPureFlash can be build with cmake tools.
     # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
   
   - Ohters
-    # yum install -y cmake libuuid libuuid-devel
+    # yum install -y cmake libuuid libuuid-devel gperftools-devel
   
 1) check out code
   # git clone https://github.com/cocalele/PureFlash.git

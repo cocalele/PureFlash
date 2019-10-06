@@ -9,10 +9,6 @@
 * This file includes all s5 message data structures and interfaces, which are used by S5 modules.
 */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -190,7 +186,7 @@ const char* get_msg_status_name(msg_status_t msg_status);
 /**
  *   s5message's head data structure definition.
  */
-typedef struct s5_message_head
+struct s5_message_head
 {
 	uint32_t		magic_num;		///< 0x3553424e, magic number.
 	uint32_t		msg_type;		///< type.
@@ -205,37 +201,22 @@ typedef struct s5_message_head
 	uint32_t		listen_port;	///< listen port for receiving snap_change_notify in open-image listen_port for toe port in open-image-reply.
 	uint32_t		snap_seq;		///< snap sequence, not to be used currently.
 	uint32_t		status;			///< handle status of this s5message, valid in reply message..
-	uchar       iops_density;	///< iops density.
-	uchar       is_head;		///< 0: is not head version, 1: is head version.
-	uchar       read_unit;		///< 0:read block size(4KB) 1:read block size(8KB) 2:read block size(16KB).
-	char		reserve[1];		///< reserve.
-} s5_message_head_t;
+	uint8_t         iops_density;	///< iops density.
+	uint8_t         is_head;		///< 0: is not head version, 1: is head version.
+	uint8_t         read_unit;		///< 0:read block size(4KB) 1:read block size(8KB) 2:read block size(16KB).
+	uint8_t		    reserve[1];		///< reserve.
+};
 
-STATIC_ASSERT(sizeof(s5_message_head) == 64);
-/**
- *   s5message's tail data structure definition.
- */
-typedef struct s5_message_tail
-{
-
-	/**
-	* flag represent how to handle s5message.
-	* bit0: discard the message yes or no.
-	* bit1: with crc yes or no.
-	*/
-	int32		flag;
-	int32		crc;	///< crc value of s5message's data.
-} s5_message_tail_t;
+static_assert(sizeof(s5_message_head) == 64);
 
 /**
  * s5message's data structure definition.
  */
-typedef struct s5_message
+struct s5_message
 {
-    s5_message_head_t head; ///< s5message head field.
-    s5_message_tail_t tail; ///< s5message tail field.
+    s5_message_head head; ///< s5message head field.
     void* data;             ///< s5message data field.
-} s5_message_t;
+};
 
 struct s5_handshake_message {
 	int16_t recfmt;
@@ -250,31 +231,12 @@ struct s5_handshake_message {
 	union {
 		int16_t protocol_ver; //on client to server, this is protocol version
 		int16_t hs_result; //on server to client, this is  shake result, 0 for success, others for failure.
-	}
-	uint16_t rsv1
-	uint32_t rsv2;
-	uint64_t rsv3;
+	};
+	uint16_t rsv1;
+	uint64_t rsv2;
 };
-STATIC_ASSERT(sizeof(struct s5_handshake_message) == 32);
+static_assert(sizeof(struct s5_handshake_message) == 32);
 #pragma pack()
-
-/**
- * Release s5message.
- *
- * @param[in] msg	 pointer to pointer to s5message.
- * @return 	0 on success.
- */
-int32 s5msg_release_all(s5_message_t ** msg);
-
-/**
- * Create s5message refer to data size.
- *
- * @param[in] data_size	 size of s5message's data need to malloc.
- * @return	pointer to s5message.
- * @retval	NULL		Error occur when no memory.
- * @retval	non-NULL	success.
- */
-s5_message_t* s5msg_create(int32 data_size);
 
 
 #define debug_data_len 10	///< debug data length.
@@ -293,11 +255,6 @@ s5_message_t* s5msg_create(int32 data_size);
 	}while(0);                                \
 	buf;                                      \
 })
-
-
-#ifdef __cplusplus
-}
-#endif
 
 
 #endif	/*__S5MESSAGE__*/

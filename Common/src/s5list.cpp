@@ -1,5 +1,5 @@
 #include "s5list.h"
-#include "s5log.h"
+#include "s5_log.h"
 #include <errno.h>
 #include <stdio.h>
 
