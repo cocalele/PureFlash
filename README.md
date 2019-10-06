@@ -1,5 +1,6 @@
-1. What's PureFlash
-===================
+# 1. What's PureFlash
+
+
 PureFlash is a ServerSAN system designed for flash based storage device, such as PCIe flash card, NVMe SSD, SATA SSD. 
 PureFlash has the following features:
 
@@ -12,8 +13,9 @@ PureFlash has the following features:
   * 7) volume snap shot
   * 8) volume clone
   
-2. Why need a new ServerSAN software?
-=====================================
+# 2. Why need a new ServerSAN software?
+
+
 Flash storage device is totally different than traditional HDD. The essential different is that SSD don't need seek time
 before read/write. So SSD has outstanding random read/write performance. 
 
@@ -23,10 +25,11 @@ software stack exhaust system's compute power and make the SSD useless. PureFlas
  * 2) manage raw SSD directly instead of using file system
  * 3) provide block service only
 
-3. Software design
-========================
+# 3. Software design
+
+
 The whole system include 3 modules (View graph with tabstop=4 and monospaced font)
-			   
+<pre>			   
                                                             +---------------+
                                                             |               |
                                                        +--->+  MetaDB       |
@@ -45,7 +48,7 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
 | space client)     |        | (Max 1024 nodes) |
 +-------------------+        +------------------+
 
-
+</pre>
 
 ## 3.1 S5afs, S5 All Flash System
   This module is the server daemon, provide all data service on store. include:
