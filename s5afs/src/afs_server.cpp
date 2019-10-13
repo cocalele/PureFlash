@@ -152,7 +152,7 @@ release2:
 release1:
 	return;
 }
-int on_tcp_handshake_recved(BufferDescriptor* bd, S5Connection* conn_, void* cbk_data)
+int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection* conn_, void* cbk_data)
 {
 	S5TcpConnection* conn = (S5TcpConnection*)conn_;
 	s5_handshake_message* hs_msg = (s5_handshake_message*)bd->buf;

@@ -1,5 +1,6 @@
 /**
  * Copyright (C), 2019.
+ * @endcode GBK
  *
  * @file this file include comments in Chinese. please open this file with UTF-8 encoding.
  * flash_store 就是一个存储单元，即，一个SSD或者flash卡。flash_store这个类的功能包括：

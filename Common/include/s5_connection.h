@@ -23,12 +23,14 @@ public:
 	int role;
 	uint64_t last_heartbeat_time;
 	int io_depth;
+	std::string connection_info;
 
 	virtual int post_recv(BufferDescriptor* buf)=0;
 	virtual int post_send(BufferDescriptor* buf)=0;
 	virtual int post_read(BufferDescriptor* buf)=0;
 	virtual int post_write(BufferDescriptor* buf)=0;
-	virtual int close();
+	virtual int do_close() = 0;
+	int close();
 
 	void (*on_close)(S5Connection*);
 	void (*on_destroy)(S5Connection*);

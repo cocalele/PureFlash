@@ -43,7 +43,7 @@ set (S5COMMON_SRC
 	src/s5_event_queue.cpp
 	src/s5_event_thread.cpp
 	src/s5_poller.cpp
-	src/s5_tcp_connection.cpp
+	src/s5_connection.cpp
   )	
 file(GLOB_RECURSE INCS "*.h")
 

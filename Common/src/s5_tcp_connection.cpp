@@ -3,10 +3,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <unistd.h>
 
 #include "s5_tcp_connection.h"
 #include "s5_utils.h"
 
+S5TcpConnection::S5TcpConnection() :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
+                                    recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
+                                    readable(FALSE), writeable(FALSE),need_reconnect(FALSE)
+                                    {}
+S5TcpConnection::~S5TcpConnection()    { }
 int S5TcpConnection::init(int sock_fd, S5Poller* poller, int send_q_depth, int recv_q_depth)
 {
 	int rc = 0;
@@ -50,6 +56,63 @@ release1:
 	S5LOG_ERROR("Failed init connection, rc:%d", rc);
 	return rc;
 }
+
+int S5TcpConnection::do_close()
+{
+	poller->del_fd(send_q.event_fd);
+	poller->del_fd(recv_q.event_fd);
+	poller->del_fd(socket_fd);
+	::close(socket_fd);
+
+	if (pthread_self() == poller->tid)
+		flush_wr();
+	else
+		poller->ctrl_queue.sync_invoke([this]()->int {
+			this->flush_wr();
+			return 0;
+		});
+	return 0;
+}
+
+void S5TcpConnection::flush_wr()
+{
+	if (recv_bd)
+	{
+		recv_bd->on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
+		recv_bd = NULL;
+	}
+	if (send_bd)
+	{
+		send_bd->on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
+		send_bd = NULL;
+	}
+	S5FixedSizeQueue<S5Event>* q;
+	int rc = recv_q.get_events(&q);
+	if(rc == 0)
+	{
+		while(!q->is_empty())
+		{
+			S5Event* t = &q->data[q->head];
+			q->head = (q->head + 1) % q->queue_depth;
+			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
+			bd->on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+		}
+
+	}
+
+	rc = send_q.get_events(&q);
+	if(rc == 0)
+	{
+		while(!q->is_empty())
+		{
+			S5Event* t = &q->data[q->head];
+			q->head = (q->head + 1) % q->queue_depth;
+			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
+			bd->on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+		}
+
+	}
+}
 void S5TcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 {
 	S5TcpConnection* conn = (S5TcpConnection*)c;
@@ -84,7 +147,7 @@ void S5TcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 		conn->start_recv((BufferDescriptor*)evt.arg_p);
 	}
 }
-void S5TcpConnection::start_send(BufferDescriptor* bd)
+void S5TcpConnection::start_recv(BufferDescriptor* bd)
 {
 	recv_bd = bd;
 	recv_buf = bd->buf;
@@ -92,7 +155,7 @@ void S5TcpConnection::start_send(BufferDescriptor* bd)
 	recved_len = 0;
 	do_receive();
 }
-void S5TcpConnection::start_recv(BufferDescriptor* bd)
+void S5TcpConnection::start_send(BufferDescriptor* bd)
 {
 	send_bd = bd;
 	send_buf = bd->buf;
@@ -196,7 +259,7 @@ int S5TcpConnection::do_receive()
 		}
 		if (wanted_recv_len == recved_len)
 		{
-			rc = recv_bd->on_work_complete(recv_bd, this, NULL);
+			rc = recv_bd->on_work_complete(recv_bd, TCP_WC_SUCCESS, this, NULL);
 			if (unlikely(rc != 0))
 			{
 				S5LOG_WARN("on_recv_complete rc:%d", rc);
@@ -269,7 +332,7 @@ int S5TcpConnection::do_send()
 
 		if (wanted_send_len == sent_len)
 		{
-			rc = send_bd->on_work_complete(send_bd, this, send_bd->cbk_data);
+			rc = send_bd->on_work_complete(send_bd, TCP_WC_SUCCESS, this, send_bd->cbk_data);
 			if (unlikely(rc != 0 && rc != -EAGAIN))
 			{
 				S5LOG_DEBUG("Failed on_work_complete rc:%d", rc);
@@ -281,4 +344,24 @@ int S5TcpConnection::do_send()
 
 	return 0;
 
+}
+
+int S5TcpConnection::post_recv(BufferDescriptor *buf)
+{
+	return recv_q.post_event(EVT_IO_REQ, 0, buf);
+}
+
+int S5TcpConnection::post_send(BufferDescriptor *buf)
+{
+	return send_q.post_event(EVT_IO_REQ, 0, buf);
+}
+
+int S5TcpConnection::post_read(BufferDescriptor *buf)
+{
+	S5LOG_FATAL("post_read should not used");
+}
+
+int S5TcpConnection::post_write(BufferDescriptor *buf)
+{
+	S5LOG_FATAL("post_write should not used");
 }

@@ -2,7 +2,7 @@
 #define _S5_BUFFER_H_
 /**
  * Copyright (C), 2019.
- *
+ * @endcode GBK
  * @file
  * 一个buffer就是一块连续的内存。一般情况下一个指针加上一个长度就可以描述一块内存。在使用RDMA访问时
  * 这个内存需要额外的信息，即local key, remote key, offset。且对不同的RDMA设备，注册后会有各自对应
@@ -18,14 +18,28 @@
 class BufferPool;
 class S5Connection;
 
+//Work complete status
+enum WcStatus {
+	TCP_WC_SUCCESS = 0,
+	TCP_WC_FLUSH_ERR = 5,
+};
+
+//Work request op code
+enum WrOpcode {
+	TCP_WR_SEND = 0,
+	TCP_WR_RECV = 128,
+};
+
 struct BufferDescriptor
 {
+	WrOpcode wr_op;// work request op code
 	void* buf;
 	int data_len; /// this is the validate data len in the buffer.
-	int(*on_work_complete)(BufferDescriptor* bd, S5Connection* conn, void* cbk_data);
+	int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_size; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
+
 };
 
 class BufferPool

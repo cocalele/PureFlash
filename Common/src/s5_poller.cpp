@@ -72,7 +72,12 @@ int S5Poller::init(const char* name, int max_fd_count)
 	}
 	int flags = fcntl(ctrl_queue.event_fd, F_GETFL, 0);
 	fcntl(ctrl_queue.event_fd, F_SETFL, flags | O_NONBLOCK);
-	async_add_fd(ctrl_queue.event_fd, EPOLLIN, on_ctl_event, this);
+	rc = async_add_fd(ctrl_queue.event_fd, EPOLLIN, on_ctl_event, this);
+	if(rc != 0)
+	{
+		S5LOG_ERROR("Failed add ctrl_queue to poller:%s, rc:%d", name, rc);
+		return rc;
+	}
 	rc = pthread_create(&tid, NULL, thread_entry, this);
 	if (rc != 0)
 	{
@@ -124,6 +129,8 @@ void S5Poller::destroy()
 	desc_pool.destroy();
 	close(epfd);
 	epfd = 0;
+	del_fd(ctrl_queue.event_fd);
+	ctrl_queue.destroy();
 }
 
 int S5Poller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)

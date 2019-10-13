@@ -10,13 +10,13 @@
 class S5TcpConnection : public S5Connection
 {
 public:
-	S5TcpConnection():socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
-		recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
-		readable(FALSE), writeable(FALSE),need_reconnect(FALSE){}
+	S5TcpConnection();
+	virtual ~S5TcpConnection();
 	virtual int post_recv(BufferDescriptor* buf);
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf);
 	virtual int post_write(BufferDescriptor* buf);
+	virtual int do_close();
 
 	int init(int sock_fd, S5Poller *poller, int send_q_depth, int recv_q_depth);
 
@@ -41,7 +41,6 @@ public:
 	S5EventQueue recv_q;
 	S5EventQueue send_q;
 
-	std::string connection_info;
 	struct s5_handshake_message handshake_msg;
 
 	int do_receive();
@@ -56,6 +55,7 @@ private:
 	void start_recv(BufferDescriptor* bd);
 	int rcv_with_error_handle();
 	int send_with_error_handle();
+	void flush_wr();
 };
 
 #endif // s5_tcp_connection_h__
