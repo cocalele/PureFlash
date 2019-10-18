@@ -21,12 +21,21 @@ ELSE()
 ENDIF()
 set(THIRDPARTY ${CMAKE_CURRENT_SOURCE_DIR}/thirdParty)
 
-
-set(ZOOKEEPER_INC ${THIRDPARTY}/zookeeper-3.4.6/src/c/include ${THIRDPARTY}/zookeeper-3.4.6/src/c/generated)
-set(ZOOKEEPER_BIN ${THIRDPARTY}/zookeeper-3.4.6/src/c/.libs)
+set(ZOOKEEPER_SOURCE ${THIRDPARTY}/zookeeper/zookeeper-client/zookeeper-client-c)
+set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
+#set(ZOOKEEPER_BIN ${THIRDPARTY}/zookeeper-3.4.6/src/c/.libs)
 macro(USE_ZOOKEEPER)
+foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
+  if(NOT EXISTS "${f}")
+    execute_process(COMMAND ant clean
+            WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
+    execute_process(COMMAND ant compile_jute
+            WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
+  endif()
+endforeach()
 include_directories(${ZOOKEEPER_INC})
-link_directories(${ZOOKEEPER_BIN})
+add_subdirectory(${ZOOKEEPER_SOURCE})
+#link_directories(${ZOOKEEPER_BIN})
 endmacro()
 
 
@@ -57,12 +66,12 @@ file(GLOB_RECURSE INCS "*.h")
 add_executable(s5afs  ${S5AFS_SRC} ${INCS})
 set_target_properties(s5afs PROPERTIES SKIP_BUILD_RPATH true)
 
-TARGET_LINK_LIBRARIES(s5afs pthread ${ZOOKEEPER_BIN}/libzookeeper_mt.a uuid s5common ${GCOV})
+TARGET_LINK_LIBRARIES(s5afs pthread zookeeper uuid s5common ${GCOV})
 add_custom_command(TARGET s5afs POST_BUILD 
-	COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
+        #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
 	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/s5afs_template.conf ${CMAKE_BINARY_DIR}
-	COMMAND cp ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0
-	COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2
-	COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
+        #COMMAND cp ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0
+        #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2
+        #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
 	DEPENDS ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 
 )
