@@ -8,18 +8,15 @@ SPureFlash can be build with cmake tools.
     # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
   
   - Ohters
-    # yum install -y cmake libuuid libuuid-devel gperftools-devel
+    # yum install -y cmake libuuid libuuid-devel gperftools-devel ant
   
 1) check out code
   # git clone https://github.com/cocalele/PureFlash.git
   # set PFHOME=$(pwd)/PureFlash
+  # git submodule init
+  # git submodule update
 
-2) build zookeeper
-   # cd $PFHOME/s5afs/thirdParty/zookeeper-3.4.6/src/c
-   # CFLAGS=-Wno-error=format-overflow= ./configure
-   # make
-
-3) run cmake to generate ninja scripts
+2) run cmake to generate ninja scripts
   # cd PureFlash; 
   # mkdir build_deb; cd build_deb
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
@@ -27,7 +24,7 @@ SPureFlash can be build with cmake tools.
 The above command will generate scripts for Debug build. To do a release build, run command:
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
   
-4) run ninja to do build
+3) run ninja to do build
   $ ninja
 
 after build finish, all binary should be found under  * bin * dir
