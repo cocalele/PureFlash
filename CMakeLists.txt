@@ -6,6 +6,11 @@ endif()
 
 project(PureFlash)
 
+find_program(ANT ant)
+if(NOT ANT)
+    message(FATAL_ERROR "ant not found! need it to build zookeeper c client")
+endif()
+
 set(CMAKE_BINARY_DIR ${CMAKE_BINARY_DIR}/bin)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
