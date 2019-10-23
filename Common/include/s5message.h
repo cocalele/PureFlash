@@ -207,7 +207,7 @@ struct s5_message_head
 	uint8_t		    reserve[1];		///< reserve.
 };
 
-static_assert(sizeof(s5_message_head) == 64);
+static_assert(sizeof(s5_message_head) == 64, "s5_message_head");
 
 /**
  * s5message's data structure definition.
@@ -235,7 +235,7 @@ struct s5_handshake_message {
 	uint16_t rsv1;
 	uint64_t rsv2;
 };
-static_assert(sizeof(struct s5_handshake_message) == 32);
+static_assert(sizeof(struct s5_handshake_message) == 32, "s5_handshake_message");
 #pragma pack()
 
 

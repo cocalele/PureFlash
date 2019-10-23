@@ -27,7 +27,7 @@ struct lmt_key
 	int64_t rsv1;
 	int64_t rsv2;
 };
-static_assert(sizeof(lmt_key) == 32);
+static_assert(sizeof(lmt_key) == 32, "lmt_key");
 enum EntryStatus: uint32_t {
 	UNINIT = 0, //not initialized
 	NORMAL = 1,
@@ -44,7 +44,7 @@ struct lmt_entry
 	lmt_entry* prev_snap;
 	void* waiting_io;
 };
-static_assert(sizeof(lmt_entry) == 32);
+static_assert(sizeof(lmt_entry) == 32, "lmt_entry");
 
 inline bool operator == (const lmt_key &k1, const lmt_key &k2) { return k1.vol_id == k2.vol_id && k1.slba == k2.slba; }
 
