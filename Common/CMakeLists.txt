@@ -6,7 +6,7 @@ endif()
 
 project(S5Common)
 set(CMAKE_C_FLAGS   "-Wall -Wconversion -std=c99 -I/usr/include ${CXX_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -fPIC ${CXX_FLAG_GCOV}")
+set(CMAKE_CXX_FLAGS   "-Wall -std=c++11 -Wconversion -fPIC ${CXX_FLAG_GCOV}")
 
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g ")
 set(CMAKE_CXX_COMPILER g++)
