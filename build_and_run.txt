@@ -1,15 +1,20 @@
 SPureFlash can be build with cmake tools.
-   
+
 1. Build on Linux
 =================
 0) Prerequisite to build on CentOS 7
-  - ninja 
+  - ninja
     # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
     # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
-  
+
   - Ohters
-    # yum install -y cmake libuuid libuuid-devel gperftools-devel ant
-  
+    # yum install -y  libuuid libuuid-devel gperftools-devel ant cppunit-devel
+    # wget https://github.com/Kitware/CMake/releases/download/v3.15.4/cmake-3.15.4.tar.gz
+    # tar xzf cmake-3.15.4.tar.gz
+    # cd make-3.15.4
+    # ./bootstrap && make && sudo make install
+
+
 1) check out code
   # git clone https://github.com/cocalele/PureFlash.git
   # set PFHOME=$(pwd)/PureFlash
@@ -17,18 +22,18 @@ SPureFlash can be build with cmake tools.
   # git submodule update
 
 2) run cmake to generate ninja scripts
-  # cd PureFlash; 
+  # cd PureFlash;
   # mkdir build_deb; cd build_deb
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
 
 The above command will generate scripts for Debug build. To do a release build, run command:
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
-  
+
 3) run ninja to do build
   $ ninja
 
 after build finish, all binary should be found under  * bin * dir
 
 
-2. Run 
+2. Run
 =================

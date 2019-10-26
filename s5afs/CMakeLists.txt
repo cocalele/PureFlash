@@ -19,24 +19,8 @@ ELSE()
    SET(CXX_FLAG_GCOV "")
    SET(GCOV "")
 ENDIF()
-set(THIRDPARTY ${CMAKE_CURRENT_SOURCE_DIR}/thirdParty)
 
-set(ZOOKEEPER_SOURCE ${THIRDPARTY}/zookeeper/zookeeper-client/zookeeper-client-c)
-set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
-#set(ZOOKEEPER_BIN ${THIRDPARTY}/zookeeper-3.4.6/src/c/.libs)
-macro(USE_ZOOKEEPER)
-foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
-  if(NOT EXISTS "${f}")
-    execute_process(COMMAND ant clean
-            WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
-    execute_process(COMMAND ant compile_jute
-            WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
-  endif()
-endforeach()
-include_directories(${ZOOKEEPER_INC})
-add_subdirectory(${ZOOKEEPER_SOURCE})
-#link_directories(${ZOOKEEPER_BIN})
-endmacro()
+
 
 
 USE_ZOOKEEPER()

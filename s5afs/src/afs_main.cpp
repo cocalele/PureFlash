@@ -36,7 +36,7 @@ void sigroutine(int dunno)
 
 static void printUsage()
 {
-	S5LOG_ERROR("Usage: s5afs -c <s5daemon_conf_file> [-d] [-sp spy_port]\n\t\t-d daemon mode.");
+	S5LOG_ERROR("Usage: s5afs -c <s5daemon_conf_file> \n");
 }
 
 
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 	int rc = -1;
 	const char*	s5daemon_conf = NULL;
 
-    S5LOG_INFO("Toedaemon start.");
+    S5LOG_INFO("S5afs start...");
  	if (argc < 3)
 	{
 		printUsage();
@@ -82,6 +82,8 @@ int main(int argc, char *argv[])
 	opt_uninitialize();
 
     conf_file_t fp = NULL;
+    if(s5daemon_conf == NULL)
+	    s5daemon_conf = "/etc/pureflash/s5afs.conf";
     fp = conf_open(s5daemon_conf);
     if(!fp)
     {
@@ -127,7 +129,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigroutine);
     signal(SIGINT, sigroutine);
 
-	while(!sleep(1));
+	while(!sleep(1) == 0);
 
 
 FINALLY:

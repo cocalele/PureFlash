@@ -21,6 +21,7 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(include)
 include_directories(../S5bd/include)
+USE_ZOOKEEPER()
 
 set (S5COMMON_SRC 
 	src/cmdopt.c
@@ -44,7 +45,7 @@ set (S5COMMON_SRC
 	src/s5_event_thread.cpp
 	src/s5_poller.cpp
 	src/s5_connection.cpp
-  )	
+    src/s5_zk_client.cpp )
 file(GLOB_RECURSE INCS "*.h")
 
 #set_source_files_properties(src/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-w")
