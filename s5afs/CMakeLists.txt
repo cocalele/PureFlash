@@ -60,6 +60,7 @@ set (S5AFS_SRC
 	src/s5_dispatcher.cpp
 	src/s5_md5.cpp
 	src/s5_redolog.cpp
+        src/s5_block_tray.cpp
 )
 file(GLOB_RECURSE INCS "*.h")
 

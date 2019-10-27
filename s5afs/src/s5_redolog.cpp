@@ -10,7 +10,7 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	int rc = 0;
 	int64_t *p;
 	this->store = s;
-	fd = s->dev_fd;
+	tray = s->tray;
 	this->start_offset = s->head.redolog_position;
 	this->current_offset = this->start_offset + PAGE_SIZE;
 	this->size = s->head.redolog_size;
@@ -19,7 +19,7 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	if (entry_buff == NULL)
 		return -ENOMEM;
 	memset(entry_buff, 0, PAGE_SIZE);
-	if (-1 == pwrite(fd, entry_buff, PAGE_SIZE, current_offset))
+	if (-1 == tray->sync_write(entry_buff, PAGE_SIZE, current_offset))
 	{
 		rc = -errno;
 		goto release1;
@@ -28,7 +28,7 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	p = (int64_t*)entry_buff;
 	p[0] = size;
 	p[1] = phase;
-	if (-1 == pwrite(fd, entry_buff, PAGE_SIZE, start_offset))
+	if (-1 == tray->sync_write(entry_buff, PAGE_SIZE, start_offset))
 	{
 		rc = -errno;
 		goto release1;

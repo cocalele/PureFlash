@@ -2,17 +2,18 @@
 #define s5_md5_h__
 #include <stdlib.h>
 #include "s5_utils.h"
+#include "s5_tray.h"
 
 class MD5_CTX;
 typedef int dev_handle_t;
 
 class MD5Stream
 {
-	dev_handle_t dev_fd;
+	Tray *tray;
 	off_t base_offset;
 	char* buffer;
 public:
-	MD5Stream(dev_handle_t dev_fd);
+	MD5Stream(Tray *tray);
 	~MD5Stream();
 	int init();
 	void destroy();
