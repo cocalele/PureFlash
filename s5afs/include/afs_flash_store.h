@@ -9,6 +9,7 @@
 #include "s5_mempool.h"
 #include "s5_event_queue.h"
 #include "s5_event_thread.h"
+#include "s5_tray.h"
 
 
 #define META_RESERVE_SIZE (40LL<<30) //40GBsetype.h"
@@ -66,12 +67,6 @@ struct lmt_hash
 	}
 };
 
-#ifdef USE_SPDK
-struct ns_entry* dev_handle_t;
-#else
-typedef int dev_handle_t;
-#endif
-
 class S5FlashStore : public S5EventThread
 {
 public:
@@ -84,7 +79,7 @@ public:
 		uint64_t objsize;
 		uint32_t objsize_order; //objsize = 2 ^ objsize_order
 		uint32_t rsv1; //to make alignment at 8 byte
-		uint64_t dev_capacity;
+		uint64_t tray_capacity;
 		uint64_t meta_size;
 		uint64_t free_list_position;
 		uint64_t free_list_size;
@@ -98,10 +93,10 @@ public:
 		uint64_t redolog_size;
 		char create_time[32];
 	};
-	char dev_name[256];
+	char tray_name[256];
 	HeadPage head;
 
-	dev_handle_t dev_fd;
+	Tray *tray;
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 	S5FixedSizeQueue<int32_t> free_obj_queue;
 	S5FixedSizeQueue<int32_t> trim_obj_queue;
