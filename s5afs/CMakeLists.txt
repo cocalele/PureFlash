@@ -30,7 +30,6 @@ set(CMAKE_CXX_FLAGS   "-Wall -Wconversion --std=c++11 -fms-extensions -Wno-varia
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
 add_definitions(-D_XOPEN_SOURCE)
-add_definitions(-DTHREADED)# to use zookeeper multi thread library
 set(CMAKE_CXX_COMPILER g++)
 
 INCLUDE_DIRECTORIES(include ../sld/include ../Common/include)

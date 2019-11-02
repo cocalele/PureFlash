@@ -115,7 +115,9 @@ public:
  * @return 0 on success, negative for error
  * @retval -ENOENT  device not exist or failed to open
  */
-int init(const char* mngt_ip, const char* dev_name);
+int init(const char* dev_name);
+
+int process_event(int event_type, int arg_i, void* arg_p);
 
 /**
  * read data to buffer.

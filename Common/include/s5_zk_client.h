@@ -14,7 +14,7 @@ public:
 	S5ZkClient(){ zkhandle = NULL; }
 	~S5ZkClient();
 	int init(const char* zk_ip, int zk_timeout, const char* cluster_name);
-	int create_node(std::string node_path, bool is_ephemeral, const std::string& node_data);
+	int create_node(const std::string& node_path, bool is_ephemeral, const char* node_data);
 
 	//members:
 	zhandle_t *zkhandle;

@@ -30,7 +30,7 @@
  *            zookeeper_handler = createClient(zk_ip_port, &ctx);
  * 成功建立zookeeper连接后，zookeeper_handler作为静态变量保留，其他的API实现中会使用该变量
  */
-int init_cluster(const char* zk_ip_port);
+int init_cluster(const char* zk_ip_port, const char* cluster_name);
 
 /**
  * 向zookeeper注册节点，注册的过程就是在zookeeper的/s5/stores节点下面，建立如下的节点结构：

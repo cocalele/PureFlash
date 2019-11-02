@@ -5,11 +5,12 @@ if(COMMAND cmake_policy)
 endif()
 
 project(PureFlash)
-
+if(LINUX)
 find_program(ANT ant)
 if(NOT ANT)
     message(FATAL_ERROR "ant not found! need it to build zookeeper c client")
 endif()
+endif(LINUX)
 
 set(CMAKE_BINARY_DIR ${CMAKE_BINARY_DIR}/bin)
 
@@ -20,6 +21,7 @@ set(ZOOKEEPER_SOURCE ${THIRDPARTY}/zookeeper/zookeeper-client/zookeeper-client-c
 set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
 #set(ZOOKEEPER_BIN ${THIRDPARTY}/zookeeper-3.4.6/src/c/.libs)
 macro(USE_ZOOKEEPER)
+    if(LINUX)
     foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
         if(NOT EXISTS "${f}")
             execute_process(COMMAND ant clean
@@ -28,10 +30,12 @@ macro(USE_ZOOKEEPER)
                     WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
         endif()
     endforeach()
+    endif(LINUX)
+    add_definitions(-DTHREADED)# to use zookeeper multi thread library
     include_directories(${ZOOKEEPER_INC})
     #link_directories(${ZOOKEEPER_BIN})
 endmacro()
-
+USE_ZOOKEEPER()
 add_compile_options (-fdiagnostics-color=always)
 add_subdirectory(${ZOOKEEPER_SOURCE})
 

@@ -72,7 +72,7 @@ release1:
  * @return 0 on success, negative for error
  * @retval -ENOENT  device not exist or failed to open
  */
-int S5FlashStore::init(const char* mngt_ip, const char* dev_name)
+int S5FlashStore::init(const char* dev_name)
 {
 	int ret = 0;
 	safe_strcpy(this->dev_name, dev_name, sizeof(this->dev_name));
@@ -627,4 +627,10 @@ int S5FlashStore::read_store_head()
 	if(head.version != 0x00010000) //S5 version
 		return -EUCLEAN;
 	return 0;
+}
+
+int S5FlashStore::process_event(int event_type, int arg_i, void* arg_p)
+{
+    S5LOG_FATAL("S5FlashStore::process_event not implemented");
+    return 0;
 }

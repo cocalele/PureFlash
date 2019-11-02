@@ -68,7 +68,7 @@ void zk_completion(int rc, const struct Stat *stat, const void *data)
 	sem_post(&s->sem);
 }
 
-int S5ZkClient::create_node(const std::string& node_path, bool is_ephemeral, const std::string& node_data)
+int S5ZkClient::create_node(const std::string& node_path, bool is_ephemeral, const char* node_data)
 {
 
 
@@ -77,6 +77,28 @@ int S5ZkClient::create_node(const std::string& node_path, bool is_ephemeral, con
 		full_path="/"+cluster_name+"/"+node_path;
 	size_t pos = full_path.find_last_of('/');
 	string parent = full_path.substr(0, pos);
-	if(zoo_aexists())
-
+	int rc = zoo_exists(zkhandle, parent.c_str(), 0, NULL);
+	if(rc == ZNONODE)
+	{
+		rc = create_node(parent, 0, NULL);
+		if(rc)
+		{
+			return rc;
+		}
+	}
+	else if(rc == ZOK)
+	{
+		rc = zoo_create(zkhandle, full_path.c_str(), node_data, (int)strlen(node_data), &ZOO_CREATOR_ALL_ACL,
+			is_ephemeral ? ZOO_EPHEMERAL : 0, NULL, 0);
+		if(rc != ZOK)
+		{
+			S5LOG_ERROR("Failed to create ZK node:%s, rc:%d", full_path.c_str(), rc);
+		}
+		return rc;
+	}
+	else
+	{
+		S5LOG_ERROR("Failed to create ZK node:%s, rc:%d", parent.c_str(), rc);
+	}
+	return rc;
 }

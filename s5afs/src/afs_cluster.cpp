@@ -2,18 +2,20 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <afs_main.h>
 #include "afs_cluster.h"
 #include "zookeeper.h"
 #include "s5_log.h"
-static zhandle_t* zookeeper_handler;
 
-int init_cluster(const char* zk_ip_port)
+#define ZK_TIMEOUT_SEC 3
+
+int init_cluster(const char* zk_ip_port, const char* cluster_name)
 {
-	zookeeper_handler = zookeeper_init(zk_ip_port, NULL, 50000, 0, 0, 0);
-	if (!zookeeper_handler)
+    int rc = app_context.zk_client.init(zk_ip_port, ZK_TIMEOUT_SEC, cluster_name);
+	if (rc)
 	{
-		S5LOG_ERROR("Failed to zookeeper_init, errno:%d ", errno);
-		return -errno;
+		S5LOG_ERROR("Failed to connect zk, errno:%d", rc);
+		return rc;
 	}
 	return 0;
 }
@@ -37,13 +39,13 @@ int init_cluster(const char* zk_ip_port)
  */
 static int zk_update(const char* node, const char* value, int val_len)
 {
-	int rc = zoo_create(zookeeper_handler, node, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
+	int rc = zoo_create(app_context.zk_client.zkhandle, node, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 	if (rc != ZOK && rc != ZNODEEXISTS)
 	{
 		S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", node, rc);
 		return rc;
 	}
-	rc = zoo_set(zookeeper_handler, node, value, value ? val_len : -1, -1);
+	rc = zoo_set(app_context.zk_client.zkhandle, node, value, value ? val_len : -1, -1);
 	if (rc != ZOK)
 	{
 		S5LOG_ERROR("Failed to update zookeeper node value node:%s rc:%d", node, rc);
@@ -63,7 +65,7 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive)
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/alive", mngt_ip);
 	if(alive)
 	{
-		rc = zoo_create(zookeeper_handler, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
+		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 		if (rc != ZOK && rc != ZNODEEXISTS)
 		{
 			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
@@ -72,7 +74,7 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive)
 	}
 	else
 	{
-		rc = zoo_delete(zookeeper_handler, zk_node_name, -1);
+		rc = zoo_delete(app_context.zk_client.zkhandle, zk_node_name, -1);
 		return rc;
 	}
 	return ZOK;
@@ -110,7 +112,7 @@ int set_tray_state(const char* mngt_ip, const uuid_t uuid, const char* state, BO
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/online", mngt_ip, uuid_str);
 	if (online)
 	{
-		rc = zoo_create(zookeeper_handler, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
+		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 		if (rc != ZOK && rc != ZNODEEXISTS)
 		{
 			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
@@ -119,7 +121,7 @@ int set_tray_state(const char* mngt_ip, const uuid_t uuid, const char* state, BO
 	}
 	else
 	{
-		rc = zoo_delete(zookeeper_handler, zk_node_name, -1);
+		rc = zoo_delete(app_context.zk_client.zkhandle, zk_node_name, -1);
 		return rc;
 	}
 	return ZOK;
