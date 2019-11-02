@@ -15,7 +15,7 @@ int S5ZkClient::init(const char *zk_ip, int zk_timeout, const char* cluster_name
 	int rc = 0;
 	this->cluster_name = cluster_name;
 	zoo_set_debug_level(ZOO_LOG_LEVEL_WARN);
-	S5LOG_ERROR("Connecting to zk:%s ...", zk_ip);
+	S5LOG_INFO("Connecting to zk:%s ...", zk_ip);
 	zkhandle = zookeeper_init(zk_ip, NULL, zk_timeout, NULL, NULL, 0);
 	if (zkhandle == NULL) {
 		rc = -errno;

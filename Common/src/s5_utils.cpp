@@ -152,7 +152,7 @@ uint64_t now_time_usec()
 #define KWHT  "\x1B[37m"
 
 static const char** log_level_str;
-static const char* stderr_log[] = { KRED "CRIT" KNRM, KRED "FATA" KNRM, KRED "ERRO" KNRM, KYEL "WARN" KNRM, KBLU "INFO" KNRM, KGRN "DEBU" KNRM };
+static const char* stderr_log[] = { KRED "FATA" KNRM, KRED "ERRO" KNRM, KYEL "WARN" KNRM, KBLU "INFO" KNRM, KGRN "DEBU" KNRM };
 static const char* file_log[] = { "CRIT", "FATA", "ERRO", "WARN", "INFO", "DEBU" };
 
 static void __attribute__((constructor)) initialize()

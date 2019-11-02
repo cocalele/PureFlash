@@ -34,12 +34,12 @@
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
 
 #define OFFSET_HEAD 0
-#define OFFSET_FREE_LIST 4091
-#define OFFSET_TRIM_LIST (64<<20)
-#define OFFSET_LMT_MAP (128<<20)
-#define OFFSET_MD5 ((1<<30) - 4096)
-#define OFFSET_META_COPY (1<<30)
-#define OFFSET_REDO_LOG (2<<30)
+#define OFFSET_FREE_LIST 4096
+#define OFFSET_TRIM_LIST (64LL<<20)
+#define OFFSET_LMT_MAP (128LL<<20)
+#define OFFSET_MD5 ((1LL<<30) - 4096)
+#define OFFSET_META_COPY (1LL<<30)
+#define OFFSET_REDO_LOG (2LL<<30)
 
 static BOOL is_disk_clean(int fd)
 {
@@ -76,6 +76,7 @@ int S5FlashStore::init(const char* dev_name)
 {
 	int ret = 0;
 	safe_strcpy(this->dev_name, dev_name, sizeof(this->dev_name));
+	S5LOG_INFO("Loading tray (%s) ...", dev_name);
 	dev_fd = open(dev_name, O_RDWR, O_DIRECT);
 	if (dev_fd == -1)
 		return -errno;
@@ -85,6 +86,7 @@ int S5FlashStore::init(const char* dev_name)
 		ret = load_meta_data();
 		if (ret)
 			goto error1;
+		S5LOG_INFO("Load tray (%s) complete.", dev_name);
 	}
 	else if (ret == -EUCLEAN)
 	{
@@ -127,6 +129,7 @@ int S5FlashStore::init(const char* dev_name)
 			goto error1;
 		}
 		save_meta_data();
+		S5LOG_INFO("Init new tray (%s) complete.", dev_name);
 	}
 	else
 		goto error1;
@@ -208,7 +211,7 @@ int S5FlashStore::initialize_store_head()
 		return -errno;
 	}
 	head.magic = 0x3553424e; //magic number, NBS5
-	head.version= 0x00020000; //S5 version
+	head.version= S5_VERSION; //S5 version
 	uuid_generate(head.uuid);
 
 	head.key_size=sizeof(lmt_key);
@@ -240,7 +243,7 @@ int S5FlashStore::initialize_store_head()
 	memset(buf, 0, PAGE_SIZE);
 	memcpy(buf, &head, sizeof(head));
 	int rc = 0;
-	if (-1 == pwrite(dev_fd, buf, sizeof(PAGE_SIZE), 0))
+	if (-1 == pwrite(dev_fd, buf, PAGE_SIZE, 0))
 	{
 		rc = -errno;
 		goto release1;
@@ -280,7 +283,8 @@ LmtEntrySerializer::LmtEntrySerializer(off_t offset, void* ser_buf, unsigned int
 }
 LmtEntrySerializer::~LmtEntrySerializer()
 {
-	free(buf);
+	//buf is external provided, I'm not owner and should not free it
+	//free(buf);
 }
 
 int LmtEntrySerializer::read_key(lmt_key* key)
@@ -583,7 +587,7 @@ int S5FlashStore::load_meta_data()
 		/*just for update md5*/
 		if (key_count == 0)
 			reader.load_buffer();
-		S5LOG_INFO("Load block map, key:%d(%d) ", key_count);
+		S5LOG_INFO("Load block map, key:%d ", key_count);
 	}
 
 	return 0;
@@ -624,7 +628,7 @@ int S5FlashStore::read_store_head()
 	memcpy(&head, buf, sizeof(head));
 	if (head.magic != 0x3553424e) //magic number, NBS5
 		return -EUCLEAN;
-	if(head.version != 0x00010000) //S5 version
+	if(head.version != S5_VERSION) //S5 version
 		return -EUCLEAN;
 	return 0;
 }

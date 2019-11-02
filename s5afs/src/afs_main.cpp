@@ -93,6 +93,7 @@ int main(int argc, char *argv[])
 		S5LOG_FATAL("Failed to find S5afs conf(%s)", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
+	app_context.conf = fp;
 	const char *zk_ip = conf_get(fp, "zookeeper", "ip", NULL, true);
 	if(!zk_ip)
 	{
@@ -120,6 +121,8 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to connect zookeeper");
 		return rc;
 	}
+
+	S5LOG_INFO("Register store to ZK.");
 	rc = register_store_node(this_mngt_ip);
 	if (rc)
 	{
@@ -145,6 +148,8 @@ int main(int argc, char *argv[])
 		{
 			app_context.trays.push_back(s);
 		}
+		register_tray(this_mngt_ip, s->head.uuid, s->dev_name, s->head.dev_capacity);
+
 	}
 	app_context.tcp_server=new S5TcpServer();
 	rc = app_context.tcp_server->init();
@@ -157,7 +162,7 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
 
-	while(!sleep(1) == 0);
+	while(sleep(1) == 0);
 
 
 FINALLY:

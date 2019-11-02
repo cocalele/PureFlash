@@ -15,6 +15,8 @@
 
 #define OBJ_SIZE_ORDER 24
 #define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
+#define S5_VERSION 0x00020000
+
 class S5RedoLog;
 
 /**

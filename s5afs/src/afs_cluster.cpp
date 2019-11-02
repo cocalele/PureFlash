@@ -7,11 +7,11 @@
 #include "zookeeper.h"
 #include "s5_log.h"
 
-#define ZK_TIMEOUT_SEC 3
+#define ZK_TIMEOUT_MSEC 3000
 
 int init_cluster(const char* zk_ip_port, const char* cluster_name)
 {
-    int rc = app_context.zk_client.init(zk_ip_port, ZK_TIMEOUT_SEC, cluster_name);
+    int rc = app_context.zk_client.init(zk_ip_port, ZK_TIMEOUT_MSEC, cluster_name);
 	if (rc)
 	{
 		S5LOG_ERROR("Failed to connect zk, errno:%d", rc);

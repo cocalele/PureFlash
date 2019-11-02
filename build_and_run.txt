@@ -37,3 +37,15 @@ after build finish, all binary should be found under  * bin * dir
 
 2. Run
 =================
+
+0) Prerequisite to run,
+
+   - Setup a loopback device for debug environment
+
+    # truncate  -s 50G /etc/pureflash/data0.img
+	the file size should great than 40GB, for the meta data will use 40GB.
+	
+    # losetup /dev/loop0 /etc/pureflash/data0.img
+### 2.4 Start zookeeper
+
+    # $ZOOBINDIR/zkServer.sh start
