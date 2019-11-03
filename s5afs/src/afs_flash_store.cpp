@@ -30,6 +30,7 @@
 #include "afs_cluster.h"
 #include "s5_md5.h"
 #include "s5_redolog.h"
+#include "s5_block_tray.h"
 
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
 
@@ -41,13 +42,13 @@
 #define OFFSET_META_COPY (1LL<<30)
 #define OFFSET_REDO_LOG (2LL<<30)
 
-static BOOL is_disk_clean(int fd)
+static BOOL is_disk_clean(Tray *tray)
 {
 	void *buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
 	BOOL rc = TRUE;
 	int64_t* p = (int64_t*)buf;
 
-	if (-1 == pread(fd, buf, PAGE_SIZE, 0))
+	if (-1 == tray->sync_read(buf, PAGE_SIZE, 0))
 	{
 		rc = FALSE;
 		goto release1;
@@ -66,34 +67,37 @@ release1:
 }
 
 /**
- * init flash store from device. this function will create meta data
- * and initialize the device if a device is not initialized.
+ * init flash store from tray. this function will create meta data
+ * and initialize the tray if a tray is not initialized.
  *
  * @return 0 on success, negative for error
- * @retval -ENOENT  device not exist or failed to open
+ * @retval -ENOENT  tray not exist or failed to open
  */
-int S5FlashStore::init(const char* dev_name)
+
+int S5FlashStore::init(const char* tray_name)
 {
 	int ret = 0;
-	safe_strcpy(this->dev_name, dev_name, sizeof(this->dev_name));
-	S5LOG_INFO("Loading tray (%s) ...", dev_name);
-	dev_fd = open(dev_name, O_RDWR, O_DIRECT);
-	if (dev_fd == -1)
+	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
+	S5LOG_INFO("Loading tray (%s) ...", tray_name);
+	tray = new BlockTray();
+	ret = tray->init(tray_name);
+	if (ret == -1)  {
 		return -errno;
+	}
 
 	if ((ret = read_store_head()) == 0)
 	{
 		ret = load_meta_data();
 		if (ret)
 			goto error1;
-		S5LOG_INFO("Load tray (%s) complete.", dev_name);
+		S5LOG_INFO("Load tray (%s) complete.", tray_name);
 	}
 	else if (ret == -EUCLEAN)
 	{
-		S5LOG_WARN("New device found, initializing  (%s) now ...", dev_name);
-		if(!is_disk_clean(dev_fd))
+		S5LOG_WARN("New tray found, initializing  (%s) now ...", tray_name);
+		if(!is_disk_clean(tray))
 		{
-			S5LOG_ERROR("disk %s is not clean and will not be initialized.", dev_name);
+			S5LOG_ERROR("tray %s is not clean and will not be initialized.", tray_name);
 			goto error1;
 		}
 		if ((ret = initialize_store_head()) != 0)
@@ -101,7 +105,7 @@ int S5FlashStore::init(const char* dev_name)
 			S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
 			goto error1;
 		}
-		int obj_count = (int) ((head.dev_capacity - head.meta_size) >> head.objsize_order);
+		int obj_count = (int) ((head.tray_capacity - head.meta_size) >> head.objsize_order);
 
 		ret = free_obj_queue.init(obj_count);
 		if (ret)
@@ -129,15 +133,15 @@ int S5FlashStore::init(const char* dev_name)
 			goto error1;
 		}
 		save_meta_data();
-		S5LOG_INFO("Init new tray (%s) complete.", dev_name);
+		S5LOG_INFO("Init new tray (%s) complete.", tray_name);
 	}
 	else
 		goto error1;
 	return ret;
 
 error1:
-	close(dev_fd);
-	dev_fd = 0;
+	tray->destroy();
+	delete tray;
 	return ret;
 }
 
@@ -205,9 +209,9 @@ int S5FlashStore::initialize_store_head()
 {
 	memset(&head, 0, sizeof(head));
 	long numblocks;
-	if (ioctl(dev_fd, BLKGETSIZE, &numblocks))
+	if(tray->get_num_blocks(&numblocks))
 	{
-		S5LOG_ERROR("Failed to get device:%s size, rc:%d", dev_name, -errno);
+		S5LOG_ERROR("Failed to get tray:%s size, rc:%d", tray_name, -errno);
 		return -errno;
 	}
 	head.magic = 0x3553424e; //magic number, NBS5
@@ -218,7 +222,7 @@ int S5FlashStore::initialize_store_head()
 	head.entry_size=sizeof(lmt_entry);
 	head.objsize=OBJ_SIZE;
 	head.objsize_order=OBJ_SIZE_ORDER; //objsize = 2 ^ objsize_order
-	head.dev_capacity = numblocks << 9;//512 byte per block
+	head.tray_capacity = numblocks << 9;//512 byte per block
 	head.meta_size = META_RESERVE_SIZE;
 	head.free_list_position = OFFSET_FREE_LIST;
 	head.free_list_size = (64 << 20) - 4096;
@@ -243,7 +247,7 @@ int S5FlashStore::initialize_store_head()
 	memset(buf, 0, PAGE_SIZE);
 	memcpy(buf, &head, sizeof(head));
 	int rc = 0;
-	if (-1 == pwrite(dev_fd, buf, PAGE_SIZE, 0))
+	if (-1 == tray->sync_write(buf, sizeof(PAGE_SIZE), 0))
 	{
 		rc = -errno;
 		goto release1;
@@ -449,19 +453,19 @@ int S5FlashStore::save_meta_data()
 		free(buf);
 	});
 	int rc = 0;
-	MD5Stream stream(dev_fd);
+	MD5Stream stream(tray);
 	rc = stream.init();
 	if (rc) return rc;
 	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc != 0)
 	{
-		S5LOG_ERROR("Failed to save free obj queue, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to save free obj queue, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = save_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc != 0)
 	{
-		S5LOG_ERROR("Failed to save trim obj queue, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to save trim obj queue, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
@@ -473,7 +477,7 @@ int S5FlashStore::save_meta_data()
 	if (-1 == stream.write(buf, PAGE_SIZE, head.lmt_position))
 	{
 		rc = -errno;
-		S5LOG_ERROR("Failed to save lmt head, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to save lmt head, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
@@ -512,34 +516,34 @@ int S5FlashStore::load_meta_data()
 	});
 
 	int rc = 0;
-	MD5Stream stream(dev_fd);
+	MD5Stream stream(tray);
 	rc = stream.init();
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to init md5 stream, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to init md5 stream, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = load_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc)
 	{
-		S5LOG_ERROR("Failed to load free obj queue, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to load free obj queue, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = load_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to load trim obj queue, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to load trim obj queue, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
 	rc = lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to init lmt_entry_pool, dev:%s rc:%d", dev_name, rc);
+		S5LOG_ERROR("Failed to init lmt_entry_pool, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
-	uint64_t obj_count = (head.dev_capacity - head.meta_size) >> OBJ_SIZE_ORDER;
+	uint64_t obj_count = (head.tray_capacity - head.meta_size) >> OBJ_SIZE_ORDER;
 	obj_lmt.reserve(obj_count * 2);
 	if (stream.read(buf, PAGE_SIZE, head.lmt_position) == -1)
 	{
@@ -623,7 +627,7 @@ int S5FlashStore::read_store_head()
 	DeferCall([buf]() {
 		free(buf);
 	});
-	if (-1 == pread(dev_fd, buf, PAGE_SIZE, 0))
+	if (-1 == tray->sync_read(buf, PAGE_SIZE, 0))
 		return -errno;
 	memcpy(&head, buf, sizeof(head));
 	if (head.magic != 0x3553424e) //magic number, NBS5

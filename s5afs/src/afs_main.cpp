@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 		{
 			app_context.trays.push_back(s);
 		}
-		register_tray(this_mngt_ip, s->head.uuid, s->dev_name, s->head.dev_capacity);
+		register_tray(this_mngt_ip, s->head.uuid, s->tray_name, s->head.tray_capacity);
 
 	}
 	app_context.tcp_server=new S5TcpServer();

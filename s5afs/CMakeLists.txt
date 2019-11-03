@@ -43,6 +43,7 @@ set (S5AFS_SRC
 	src/s5_dispatcher.cpp
 	src/s5_md5.cpp
 	src/s5_redolog.cpp
+    src/s5_block_tray.cpp
 )
 file(GLOB_RECURSE INCS "*.h")
 
@@ -58,3 +59,4 @@ add_custom_command(TARGET s5afs POST_BUILD
         #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
 	DEPENDS ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 
 )
+

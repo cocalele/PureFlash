@@ -6,9 +6,9 @@
 #include "s5_md5.h"
 #include "basetype.h"
 
-MD5Stream::MD5Stream(dev_handle_t dev_fd)
+MD5Stream::MD5Stream(Tray *tray)
 {
-	this->dev_fd = dev_fd;
+	this->tray = tray;
 	buffer = NULL;
 	reset(0);
 }
@@ -37,14 +37,14 @@ void MD5Stream::reset(off_t offset)
 
 int MD5Stream::read(void *buf, size_t count, off_t offset)
 {
-	if (-1 == pread(dev_fd, buf, count, base_offset + offset))
+	if (-1 == tray->sync_read(buf, count, base_offset + offset))
 		return -errno;
 	return 0;
 }
 
 int MD5Stream::write(void *buf, size_t count, off_t offset)
 {
-	if (-1 == pwrite(dev_fd, buf, count, base_offset + offset))
+	if (-1 == tray->sync_write(buf, count, base_offset + offset))
 		return -errno;
 	return 0;
 }

@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "afs_flash_store.h"
+#include "s5_tray.h"
 
 class S5RedoLog
 {
@@ -39,7 +40,7 @@ public:
 	int64_t phase;
 	size_t size;
 	struct S5FlashStore* store;
-	dev_handle_t fd;
+	Tray *tray;
 	off_t start_offset;
 	off_t current_offset;
 	void* entry_buff;
