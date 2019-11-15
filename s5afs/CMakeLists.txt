@@ -32,7 +32,7 @@ set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
 add_definitions(-D_XOPEN_SOURCE)
 set(CMAKE_CXX_COMPILER g++)
 
-INCLUDE_DIRECTORIES(include ../sld/include ../Common/include)
+INCLUDE_DIRECTORIES(include ../sld/include ../Common/include ../thirdParty/mongoose)
 
 set (S5AFS_SRC 
 	src/afs_cluster.cpp
@@ -44,10 +44,16 @@ set (S5AFS_SRC
 	src/s5_md5.cpp
 	src/s5_redolog.cpp
     src/s5_block_tray.cpp
+	src/s5_replica.cpp
+	src/s5_restful_server.cpp
 )
+set (HTTP_SRC
+	../thirdParty/mongoose/mongoose.c
+)
+	
 file(GLOB_RECURSE INCS "*.h")
 
-add_executable(s5afs  ${S5AFS_SRC} ${INCS})
+add_executable(s5afs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(s5afs PROPERTIES SKIP_BUILD_RPATH true)
 
 TARGET_LINK_LIBRARIES(s5afs pthread zookeeper uuid s5common ${GCOV})

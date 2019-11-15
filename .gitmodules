@@ -1,3 +1,7 @@
 [submodule "thirdParty/zookeeper"]
 	path = thirdParty/zookeeper
 	url = https://github.com/apache/zookeeper.git
+[submodule "thirdParty/mongoose"]
+	path = thirdParty/mongoose
+	url = https://github.com/cesanta/mongoose.git
+	branch = 6.7.1

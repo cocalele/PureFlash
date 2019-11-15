@@ -1,13 +1,11 @@
 #ifndef s5_replica_h__
 #define s5_replica_h__
+
+#include "afs_volume.h"
+
 class IoSubTask;
 class S5FlashStore;
 
-class S5Replica
-{
-public:
-	virtual int submit_io(IoSubTask* subtask) = 0;
-};
 
 class S5LocalReplica : public S5Replica
 {

@@ -17,6 +17,7 @@
 #include "s5_app_ctx.h"
 
 using namespace std;
+int init_restful_server();
 
 S5AfsAppContext app_context;
 
@@ -161,7 +162,7 @@ int main(int argc, char *argv[])
 	set_store_node_state(this_mngt_ip, NS_OK, TRUE);
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
-
+	init_restful_server();
 	while(sleep(1) == 0);
 
 

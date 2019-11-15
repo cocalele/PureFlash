@@ -1,6 +1,6 @@
 /**
  * Copyright (C), 2014-2015.
- * @file  
+ * @file
  * This file implements the apis to handle requests.
  */
 
@@ -80,7 +80,7 @@ int flash_store_config(struct toedaemon* toe_daemon, conf_file_t fp)
 }
 
 /**
- * Send read reply message, as the unit of 4K. 
+ * Send read reply message, as the unit of 4K.
  * The message type could be: MSG_TYPE_READ or MSG_TYPE_S5_STAT
  */
 void reply_message_read_ok_in_4k(s5_message_t* msg, const char* data, uint32_t len, PS5CLTSOCKET socket)
@@ -121,7 +121,7 @@ void reply_message_status(s5_message_t* msg, uint16_t status, PS5CLTSOCKET socke
 
 	s5_message_t *msg_reply = s5msg_create(0);
 	memcpy(&msg_reply->head, &msg->head, sizeof(s5_message_head_t));
-	msg_reply->head.msg_type = msg->head.msg_type + 1; //reply 
+	msg_reply->head.msg_type = msg->head.msg_type + 1; //reply
 	msg_reply->head.status = status;
 	msg_reply->head.data_len = 0;
 	int rc = s5socket_send_msg(socket, msg_reply);
@@ -143,7 +143,7 @@ int cachemgr_write_request(s5_message_t *msg, PS5CLTSOCKET socket)
 	s5_atomic_add(&write_op_count,1);
 	S5ASSERT(msg->head.nlba == 1);
 	rc = fs_write(&flash_stores[tray_index], msg->head.volume_id, msg->head.slba, msg->head.snap_seq, msg->head.nlba, msg->data);
-	
+
 	if(rc >= 0)
 	{
 		reply_message_status(msg, MSG_STATUS_OK, socket);
@@ -186,7 +186,7 @@ int cachemgr_read_request(s5_message_t *msg, PS5CLTSOCKET socket)
 	s5_atomic_add(&read_op_count,1);
 	S5ASSERT(msg->head.nlba == 1);
 	rc = fs_read(&flash_stores[tray_index], msg->head.volume_id, msg->head.slba, msg->head.snap_seq, msg->head.nlba, buf);
-	
+
 	if(rc >= 0)
 	{
 		reply_message_read_ok_in_4k(msg, buf, (uint32_t)rc, socket);
