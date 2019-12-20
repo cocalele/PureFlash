@@ -5,7 +5,7 @@
 
 #include "s5_utils.h"
 
-//node state 
+//node state
 #define NS_OK "OK"
 #define NS_WARN "WARN"
 #define NS_ERROR	"ERROR"
@@ -23,7 +23,7 @@
  * 部分获得。上面这个例子中，zk_ip_port参数就是"192.168.0.253:2181,localhost:2181"
  * @return 0表示成功，
  *         负数表示失败, 数字为-errno
- * 
+ *
  * @implementation
  *  该函数的实现，调用
  *            static zhandle_t* zookeeper_handler;
@@ -36,8 +36,9 @@ int init_cluster(const char* zk_ip_port, const char* cluster_name);
  * 向zookeeper注册节点，注册的过程就是在zookeeper的/s5/stores节点下面，建立如下的节点结构：
  *         /s5/stores/
  *               |
- *               +<mngt_ip>   #store节点的管理IP, 内容也为管理IP
+ *               +<id>   #store节点的ID,
  *                   |
+ *                   +mngt_ip #内容为store节点的管理IP,
  *                   +state  #状态， 内容为：ERROR, WARN, OK
  *                   +alive  #EPHEMERAL类型，表示该store节点是否在线，alive存在就表示在线,内容为空
  *                   +trays
@@ -51,11 +52,11 @@ int init_cluster(const char* zk_ip_port, const char* cluster_name);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int register_store_node(const char* mngt_ip);
+int register_store_node(int store_id, const char* mngt_ip);
 
 /**
- * 向zookeeper注册一个tray，注册的过程就是在zookeeper的/s5/stores/<mngt_ip>trays下对应存储系节点下面，建立如下的节点结构：
- * /s5/stores/<mngt_ip>/trays
+ * 向zookeeper注册一个tray，注册的过程就是在zookeeper的/s5/stores/<id>trays下对应存储系节点下面，建立如下的节点结构：
+ * /s5/stores/<id>/trays
  *						|
  *						+ <UUID>  #tray 的UUID作为结点名字
  *							|
@@ -73,14 +74,14 @@ int register_store_node(const char* mngt_ip);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, int64_t capacity);
+int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity);
 
 /**
- * set store node's state. create `state` and `alive` node on zookeeper, if not exists. 
+ * set store node's state. create `state` and `alive` node on zookeeper, if not exists.
  * @seealso register_store for tree structure of store node in zookeeper
- * @param mngt_ip  management IP of store node, use as ID of store node
+ * @param store_id  ID of store node, use as ID of store node
  * @param state store node's state, value can NS_OK, NS_WARN, NS_ERROR
- * @param alive TRUE for alive, FALSE for not 
+ * @param alive TRUE for alive, FALSE for not
  * @return 0 on success, negative value on error. On error, an error message is logged.
  * @retval ZNONODE the parent node does not exist.
  * @retval ZNOAUTH the client does not have permission.
@@ -89,12 +90,12 @@ int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, i
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
 */
-int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive);
+int set_store_node_state(int store_id, const char* state, BOOL alive);
 
 /**
- * set tray state. create `state` and `online` node on zookeeper, if not exists. 
+ * set tray state. create `state` and `online` node on zookeeper, if not exists.
  * @seealso register_tray for tree structure of tray node in zookeeper.
- * @param mngt_ip IP of store node of the tray
+ * @param store_id ID of store node of the tray
  * @param tray_uuid uuid of tray to set
  * @param state, tray state, can be TS_OK, TS_WARN, TS_ERROR
  * @online TRUE for online, FALSE for not
@@ -106,6 +107,6 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int set_tray_state(const char* mngt_ip, const uuid_t tray_uuid, const char* state, BOOL online);
+int set_tray_state(int store_id, const uuid_t tray_uuid, const char* state, BOOL online);
 
 #endif // afs_cluster_h__

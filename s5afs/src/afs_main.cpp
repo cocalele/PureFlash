@@ -123,8 +123,13 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 
+	int store_id = conf_get_int(fp, "afs", "id", 0, TRUE);
+	if(store_id == 0)
+	{
+		S5LOG_FATAL("afs.id not defined in conf file");
+	}
 	S5LOG_INFO("Register store to ZK.");
-	rc = register_store_node(this_mngt_ip);
+	rc = register_store_node(store_id, this_mngt_ip);
 	if (rc)
 	{
 		S5LOG_ERROR("Failed to register store");
@@ -149,7 +154,7 @@ int main(int argc, char *argv[])
 		{
 			app_context.trays.push_back(s);
 		}
-		register_tray(this_mngt_ip, s->head.uuid, s->tray_name, s->head.tray_capacity);
+		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
 
 	}
 	app_context.tcp_server=new S5TcpServer();
@@ -159,7 +164,7 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to init tcp server:%d", rc);
 		return rc;
 	}
-	set_store_node_state(this_mngt_ip, NS_OK, TRUE);
+	set_store_node_state(store_id, NS_OK, TRUE);
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
 	init_restful_server();

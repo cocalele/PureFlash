@@ -54,15 +54,15 @@ static int zk_update(const char* node, const char* value, int val_len)
 	return ZOK;
 }
 
-int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive)
+int set_store_node_state(int store_id, const char* state, BOOL alive)
 {
 	char zk_node_name[64];
 	int rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/state", mngt_ip);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/state", store_id);
 	if ((rc = zk_update(zk_node_name, state, (int)strlen(state))) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/alive", mngt_ip);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/alive", store_id);
 	if(alive)
 	{
 		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
@@ -80,7 +80,7 @@ int set_store_node_state(const char* mngt_ip, const char* state, BOOL alive)
 	return ZOK;
 
 }
-int register_store_node(const char* mngt_ip)
+int register_store_node(int store_id, const char* mngt_ip)
 {
 	char zk_node_name[64];
 	int rc;
@@ -89,27 +89,30 @@ int register_store_node(const char* mngt_ip)
 	if ((rc = zk_update("/s5/stores", NULL, 0)) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s", mngt_ip);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d", store_id);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+		return rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/mngt_ip", store_id);
+	if ((rc = zk_update(zk_node_name, mngt_ip, strlen(mngt_ip))) != ZOK)
 		return rc;
 
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays", mngt_ip);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays", store_id);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 	return 0;
 }
 
-int set_tray_state(const char* mngt_ip, const uuid_t uuid, const char* state, BOOL online)
+int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL online)
 {
 	char zk_node_name[128];
 	char uuid_str[64];
 	int rc;
 	uuid_unparse(uuid, uuid_str);
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/state", mngt_ip, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/state", store_id, uuid_str);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/online", mngt_ip, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/online", store_id, uuid_str);
 	if (online)
 	{
 		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
@@ -127,23 +130,23 @@ int set_tray_state(const char* mngt_ip, const uuid_t uuid, const char* state, BO
 	return ZOK;
 }
 
-int register_tray(const char* mngt_ip, const uuid_t uuid, const char* devname, int64_t capacity)
+int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity)
 {
 	char zk_node_name[128];
 	char value_buf[128];
 	char uuid_str[64];
 	int rc;
 	uuid_unparse(uuid, uuid_str);
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s", mngt_ip, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s", store_id, uuid_str);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/devname", mngt_ip, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/devname", store_id, uuid_str);
 	if ((rc = zk_update(zk_node_name, devname, (int)strlen(devname))) != ZOK)
 		return rc;
 
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%s/trays/%s/capacity", mngt_ip, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/capacity", store_id, uuid_str);
 	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
 	if ((rc = zk_update(zk_node_name, value_buf, (int)len)) != ZOK)
 		return rc;

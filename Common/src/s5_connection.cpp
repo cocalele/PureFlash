@@ -20,5 +20,5 @@ int S5Connection::close()
 	do_close();
 	if(on_close)
 		on_close(this);
-
+	return 0;
 }
