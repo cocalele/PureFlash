@@ -1,8 +1,17 @@
+//@encoding=GBK
 
 #include <iostream>
 #include <memory>
 #include "mongoose.h"
+#include <string>
+#include <vector>
+#include <nlohmann/json.hpp>
 #include "s5_log.h"
+#include "s5_utils.h"
+
+using namespace std;
+using nlohmann::json;
+
 
 static void handle_api(struct mg_connection *nc, int ev, void *p) {
 
@@ -59,3 +68,28 @@ int init_restful_server()
 
 	return 0;
 }
+
+/**
+ * NOTE: this function will throw exception if param is lack and mandatory is true
+ */
+std::string get_http_param_as_string(const struct mg_str *http_content, const char *name, const char* def_val, bool mandatory)
+{
+	char varbuf[256];
+
+	int rc = mg_get_http_var(http_content, name, varbuf, sizeof(varbuf));
+	if (rc > 0)
+		return std::string(varbuf);
+	else if(rc == 0)
+	{
+		if (mandatory)
+			throw std::invalid_argument(format_string("parameter:%s is missing", name));
+		else
+			return std::string(def_val);
+	}
+	else
+	{
+		S5LOG_ERROR("Internal error, buffer too small");
+		throw std::overflow_error("Internal error, buffer too small");
+	}
+}
+
