@@ -10,7 +10,7 @@ class replica_arg
 public:
 	int index;
 	int store_id;
-	std::string ssd_uuid;
+	std::string tray_uuid;
 };
 class shard_arg
 {
@@ -23,8 +23,8 @@ class prepare_volume_arg
 public:
 	std::string op;
 	std::string volume_name;
-	uint64_t size;
-	uint64_t id;
+	uint64_t volume_size;
+	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
 	std::vector<shard_arg> shards;

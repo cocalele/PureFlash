@@ -11,7 +11,7 @@ using namespace std;
 void from_json(const json& j, replica_arg& p) {
 	j.at("index").get_to(p.index);
 	j.at("store_id").get_to(p.store_id);
-	j.at("ssd_uuid").get_to(p.ssd_uuid);
+	j.at("tray_uuid").get_to(p.tray_uuid);
 }
 
 void from_json(const json& j, shard_arg& p) {
@@ -22,8 +22,8 @@ void from_json(const json& j, shard_arg& p) {
 void from_json(const json& j, prepare_volume_arg& p) {
 	j.at("op").get_to(p.op);
 	j.at("volume_name").get_to(p.volume_name);
-	j.at("size").get_to(p.size);
-	j.at("id").get_to(p.id);
+	j.at("volume_size").get_to(p.volume_size);
+	j.at("volume_id").get_to(p.volume_id);
 	j.at("shard_count").get_to(p.shard_count);
 	j.at("rep_count").get_to(p.rep_count);
 	//p.shards = j["shards"].get<std::vector<shard_arg> >();
@@ -40,21 +40,21 @@ void from_json(const json& j, prepare_volume_arg& p) {
 *  {
 *      "op":"prepare_volume",
 *      "volume_name":"myvolname",
-*      "size":10000000,
-*      "id":12345678,
+*      "volume_size":10000000,
+*      "volume_id":12345678,
 *      "shard_count":1,
 *      "rep_count":3,
 *      "shards":[
 *               { "index":0, "replicas":[
-* 					{ "index":0, "ssd_uuid":"xxxxxxxx", "store_id":1},
-* 					{ "index":1, "ssd_uuid":"xxxxxxxx", "store_id":2},
-* 					{ "index":2, "ssd_uuid":"xxxxxxxx", "store_id":3}
+* 					{ "index":0, "tray_uuid":"xxxxxxxx", "store_id":1},
+* 					{ "index":1, "tray_uuid":"xxxxxxxx", "store_id":2},
+* 					{ "index":2, "tray_uuid":"xxxxxxxx", "store_id":3}
 *					]
 * 			 },
 *               { "index":0, "replicas":[
-* 					{ "index":0, "ssd_uuid" :"xxxxxxxx", "store_id":1},
-* 					{ "index":1, "ssd_uuid" :"xxxxxxxx", "store_id":2},
-* 					{ "index":2, "ssd_uuid" :"xxxxxxxx", "store_id":3}
+* 					{ "index":0, "tray_uuid" :"xxxxxxxx", "store_id":1},
+* 					{ "index":1, "tray_uuid" :"xxxxxxxx", "store_id":2},
+* 					{ "index":2, "tray_uuid" :"xxxxxxxx", "store_id":3}
 *					]
 * 			 }
 * 			]
