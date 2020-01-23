@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
 		if(devname == NULL)
 			break;
 		auto s = new S5FlashStore();
-		int rc = s->init(devname);
+		rc = s->init(devname);
 		if(rc)
 		{
 			S5LOG_ERROR("Failed init tray:%s, rc:%d", devname, rc);
@@ -155,6 +155,20 @@ int main(int argc, char *argv[])
 			app_context.trays.push_back(s);
 		}
 		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
+
+	}
+	for (i = 0; i < MAX_PORT_COUNT; i++)
+	{
+		string name = format_string("port.%d", i);
+		const char* ip = conf_get(fp, name.c_str(), "ip", NULL, false);
+		if (ip == NULL)
+			break;
+		int purpose = conf_get_int(fp, name.c_str(), "purpose", DATA_PORT, false);
+		rc = register_port(store_id, ip, purpose);
+		if(rc) {
+			S5LOG_ERROR("Failed register port:%s, rc:%d", ip, rc);
+			continue;
+		}
 
 	}
 	app_context.tcp_server=new S5TcpServer();

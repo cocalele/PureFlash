@@ -1,7 +1,7 @@
 /**
  * Copyright (C), 2014-2015.
- * @file  
- *    
+ * @file
+ *
  * This file defines the data structure: toedaemon, and defines its initialization and release func.
  */
 
@@ -23,6 +23,10 @@
 class S5TcpServer;
 
 #define MAX_TRAY_COUNT 32
+#define MAX_PORT_COUNT 4
+
+#define DATA_PORT 0
+#define REP_PORT 1
 
 class S5AfsAppContext : public S5AppCtx
 {
@@ -35,5 +39,5 @@ public:
 	std::vector<S5FlashStore*> trays;
 };
 extern S5AfsAppContext app_context;
-#endif	
+#endif
 

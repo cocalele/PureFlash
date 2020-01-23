@@ -5,29 +5,52 @@
 #include <vector>
 #include <stdint.h>
 
-class replica_arg
+class ReplicaArg
 {
 public:
 	int index;
 	int store_id;
 	std::string tray_uuid;
 };
-class shard_arg
+class ShardArg
 {
 public:
 	int index;
-	std::vector<replica_arg> replicas;
+	std::vector<ReplicaArg> replicas;
 };
-class prepare_volume_arg
+class PrepareVolumeArg
 {
 public:
 	std::string op;
+	std::string status;
 	std::string volume_name;
 	uint64_t volume_size;
 	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
-	std::vector<shard_arg> shards;
+	std::vector<ShardArg> shards;
+};
+
+class RestfulReply
+{
+public:
+	std::string reason;
+	std::string op;
+	int ret_code;//code defined in interface RetCode
+	const static int OK = 0;
+	const static int INVALID_OP = 1;
+	const static int INVALID_ARG = 2;
+	const static int DUPLICATED_NODE = 3;
+	const static int DB_ERROR = 4;
+	const static int REMOTE_ERROR = 5;
+	const static int ALREADY_DONE = 6;
+	const static int INVALID_STATE = 7;
+
+	RestfulReply();
+	RestfulReply(std::string op, int ret_code=RestfulReply::OK, const char* reason="");
+
+
+
 };
 
 struct mg_connection;

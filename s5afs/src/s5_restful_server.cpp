@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include "s5_log.h"
 #include "s5_utils.h"
+#include "s5_restful_api.h"
 
 using namespace std;
 using nlohmann::json;
@@ -21,8 +22,10 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 	case MG_EV_HTTP_REQUEST:
 		mg_get_http_var(&hm->query_string, "op", opcode, sizeof(opcode));
 		S5LOG_INFO("api op:%s", opcode);
-		mg_send_head(nc, 200, hm->message.len, "Content-Type: text/plain");
-		mg_printf(nc, "%.*s", (int)hm->message.len, hm->message.p);
+		//mg_send_head(nc, 200, hm->message.len, "Content-Type: text/plain");
+		//mg_printf(nc, "%.*s", (int)hm->message.len, hm->message.p);
+		//mg_printf(nc, "%.*s", (int)hm->body.len, hm->body.p);
+		handle_prepare_volume(nc, hm);
 	}
 
 }
@@ -57,6 +60,10 @@ int init_restful_server()
 	const char* port = "49181";
 	mg_mgr_init(&mgr, NULL);
 	c = mg_bind(&mgr, port, ev_handler);
+	if(c == NULL)
+	{
+		S5LOG_FATAL("Failed to bind on port:%d", port);
+	}
 
 	mg_register_http_endpoint(c, "/api", handle_api);
 	mg_register_http_endpoint(c, "/debug", handle_debug);

@@ -100,6 +100,9 @@ int register_store_node(int store_id, const char* mngt_ip)
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays", store_id);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports", store_id);
+	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+		return rc;
 	return 0;
 }
 
@@ -151,5 +154,21 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	if ((rc = zk_update(zk_node_name, value_buf, (int)len)) != ZOK)
 		return rc;
 
+	return 0;
+}
+
+int register_port(int store_id, const char* ip, int purpose)
+{
+	char zk_node_name[128];
+	char value_buf[128];
+	int rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports/%s", store_id, ip);
+	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+		return rc;
+
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports/%s/purpose", store_id, ip);
+	sprintf(value_buf, "%d", purpose);
+	if ((rc = zk_update(zk_node_name, value_buf, (int)strlen(value_buf))) != ZOK)
+		return rc;
 	return 0;
 }
