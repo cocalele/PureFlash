@@ -40,7 +40,7 @@ public:
 	int64_t phase;
 	size_t size;
 	struct S5FlashStore* store;
-	Tray *tray;
+	S5Tray *tray;
 	off_t start_offset;
 	off_t current_offset;
 	void* entry_buff;

@@ -15,10 +15,14 @@
 #include <pthread.h>
 #include <set>
 #include <vector>
+#include <map>
 
 #include "s5_zk_client.h"
 #include "s5_app_ctx.h"
 #include "afs_flash_store.h"
+#include "s5_replicator.h"
+#include "s5_dispatcher.h"
+
 
 class S5TcpServer;
 
@@ -27,16 +31,26 @@ class S5TcpServer;
 
 #define DATA_PORT 0
 #define REP_PORT 1
-
+class S5Volume;
 class S5AfsAppContext : public S5AppCtx
 {
 public:
 	std::set<S5Connection*> ingoing_connections;
 	std::string mngt_ip;
+	int store_id;
     S5ZkClient zk_client;
 
 	S5TcpServer* tcp_server;
 	std::vector<S5FlashStore*> trays;
+	std::vector<S5Dispatcher*> disps;
+	std::vector<S5Replicator*> replicators;
+
+	pthread_mutex_t lock;
+	std::map<uint64_t, S5Volume*> opened_volumes;
+
+	S5Volume* get_opened_volume(uint64_t vol_id);
+	int get_ssd_index(std::string ssd_uuid);
+	S5AfsAppContext();
 };
 extern S5AfsAppContext app_context;
 #endif

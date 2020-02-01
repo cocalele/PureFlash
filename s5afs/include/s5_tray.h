@@ -5,11 +5,11 @@
 
 /* This a base class for device operations like pread, prwite, aios.
  * The purpose of this class is to separate OS calls from main store class.
- */ 
+ */
 
-class Tray {
+class S5Tray {
     public:
-        virtual ~Tray() {}
+        virtual ~S5Tray() {}
         virtual int init(const char *name) = 0;
         virtual void destroy() = 0;
         virtual int get_num_blocks(long *number) = 0;

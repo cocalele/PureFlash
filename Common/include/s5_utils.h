@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <string>
 #include <functional>
+#include <vector>
 
 #include "s5conf.h"
 #include "s5_log.h"
@@ -157,5 +158,21 @@ class DeferCall {
 public:
 	DeferCall(std::function<void(void)> _f) :f(_f){}
 	~DeferCall() { f(); }
+};
+
+
+class Cleaner {
+	std::vector<std::function<void(void)> > clean_func;
+public:
+	void push_back(std::function<void(void)> f) noexcept {
+		clean_func.push_back(f);
+	}
+	void cancel_all() noexcept {
+		clean_func.clear();
+	}
+	~Cleaner() {
+		for (auto i = clean_func.rbegin(); i != clean_func.rend(); ++i)
+			(*i)();
+	}
 };
 #endif

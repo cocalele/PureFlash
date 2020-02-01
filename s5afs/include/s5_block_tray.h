@@ -3,7 +3,7 @@
 
 #include "s5_tray.h"
 
-class BlockTray : public Tray {
+class BlockTray : public S5Tray {
     public:
         BlockTray();
         ~BlockTray();

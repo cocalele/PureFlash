@@ -2,7 +2,6 @@
  * Copyright (C), 2019.
  * @endcode GBK
  *
- * @file this file include comments in Chinese. please open this file with UTF-8 encoding.
  * flash_store 就是一个存储单元，即，一个SSD或者flash卡。flash_store这个类的功能包括：
  *  1. 初始化Store， 如果一个SSD是干净的未经初始化的，那么就对起初始化。如果这个盘上面有数据，就检查是不是一个
  *     合法的Store，如果是就进行Load过程。
@@ -42,18 +41,18 @@
 #define OFFSET_META_COPY (1LL<<30)
 #define OFFSET_REDO_LOG (2LL<<30)
 
-static BOOL is_disk_clean(Tray *tray)
+static BOOL is_disk_clean(S5Tray *tray)
 {
-	void *buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	void *buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	BOOL rc = TRUE;
 	int64_t* p = (int64_t*)buf;
 
-	if (-1 == tray->sync_read(buf, PAGE_SIZE, 0))
+	if (-1 == tray->sync_read(buf, LBA_LENGTH, 0))
 	{
 		rc = FALSE;
 		goto release1;
 	}
-	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(int64_t); i++)
+	for (uint32_t i = 0; i < LBA_LENGTH / sizeof(int64_t); i++)
 	{
 		if (p[i] != 0)
 		{
@@ -238,16 +237,16 @@ int S5FlashStore::initialize_store_head()
 	strftime(head.create_time, sizeof(head.create_time), "%Y%m%d %H:%M:%S", localtime(&time_now));
 
 
-	void *buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	void *buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	if(!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory");
 		return -ENOMEM;
 	}
-	memset(buf, 0, PAGE_SIZE);
+	memset(buf, 0, LBA_LENGTH);
 	memcpy(buf, &head, sizeof(head));
 	int rc = 0;
-	if (-1 == tray->sync_write(buf, sizeof(PAGE_SIZE), 0))
+	if (-1 == tray->sync_write(buf, sizeof(LBA_LENGTH), 0))
 	{
 		rc = -errno;
 		goto release1;
@@ -376,7 +375,7 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	buf_as_int[0] = q->queue_depth;
 	buf_as_int[1] = q->head;
 	buf_as_int[2] = q->tail;
-	if (-1 == stream->write(buf, PAGE_SIZE, offset))
+	if (-1 == stream->write(buf, LBA_LENGTH, offset))
 	{
 		return -errno;
 	}
@@ -386,7 +385,7 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 		memset(buf, 0, buf_size);
 		size_t s = std::min(q->queue_depth * sizeof(T) - src, (size_t)buf_size);
 		memcpy(buf, ((char*)q->data) + src, s);
-		if (-1 == stream->write(buf, up_align(s, PAGE_SIZE), offset + src + PAGE_SIZE))
+		if (-1 == stream->write(buf, up_align(s, LBA_LENGTH), offset + src + LBA_LENGTH))
 		{
 			return -errno;
 		}
@@ -398,7 +397,7 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 template<typename T>
 static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
 {
-	int rc = stream->read(buf, PAGE_SIZE, offset);
+	int rc = stream->read(buf, LBA_LENGTH, offset);
 	if (rc != 0)
 		return rc;
 	int* buf_as_int = (int*)buf;
@@ -414,7 +413,7 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	{
 		memset(buf, 0, buf_size);
 		unsigned long s = std::min(q->queue_depth * sizeof(T) - src, (size_t)buf_size);
-		if (-1 == stream->read(buf, up_align(s, PAGE_SIZE), offset + src + PAGE_SIZE))
+		if (-1 == stream->read(buf, up_align(s, LBA_LENGTH), offset + src + LBA_LENGTH))
 		{
 			return -errno;
 		}
@@ -443,7 +442,7 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 int S5FlashStore::save_meta_data()
 {
 	int buf_size = 1 << 20;
-	void* buf = aligned_alloc(PAGE_SIZE, buf_size);
+	void* buf = aligned_alloc(LBA_LENGTH, buf_size);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in save_meta_data");
@@ -474,14 +473,14 @@ int S5FlashStore::save_meta_data()
 	buf_as_int[0] = (int)obj_lmt.size();
 	buf_as_int[1] = (int)sizeof(struct lmt_entry);
 	buf_as_int[2] = 0;
-	if (-1 == stream.write(buf, PAGE_SIZE, head.lmt_position))
+	if (-1 == stream.write(buf, LBA_LENGTH, head.lmt_position))
 	{
 		rc = -errno;
 		S5LOG_ERROR("Failed to save lmt head, tray:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
-	LmtEntrySerializer ser(head.lmt_position + PAGE_SIZE, buf, buf_size, true, &stream);
+	LmtEntrySerializer ser(head.lmt_position + LBA_LENGTH, buf, buf_size, true, &stream);
 	for (auto it : obj_lmt)
 	{
 		lmt_key k = it.first;
@@ -505,7 +504,7 @@ int S5FlashStore::save_meta_data()
 int S5FlashStore::load_meta_data()
 {
 	int buf_size = 1 << 20;
-	void* buf = aligned_alloc(PAGE_SIZE, buf_size);
+	void* buf = aligned_alloc(LBA_LENGTH, buf_size);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in save_meta_data");
@@ -545,7 +544,7 @@ int S5FlashStore::load_meta_data()
 
 	uint64_t obj_count = (head.tray_capacity - head.meta_size) >> OBJ_SIZE_ORDER;
 	obj_lmt.reserve(obj_count * 2);
-	if (stream.read(buf, PAGE_SIZE, head.lmt_position) == -1)
+	if (stream.read(buf, LBA_LENGTH, head.lmt_position) == -1)
 	{
 		rc = -errno;
 		S5LOG_ERROR("read block entry head failed rc:%d", rc);
@@ -554,7 +553,7 @@ int S5FlashStore::load_meta_data()
 
 	int key_count = buf_as_int[0];
 
-	LmtEntrySerializer reader(head.lmt_position + PAGE_SIZE, buf, buf_size, 0, &stream);
+	LmtEntrySerializer reader(head.lmt_position + LBA_LENGTH, buf, buf_size, 0, &stream);
 	{
 		for (int i = 0; i < key_count; i++)
 		{
@@ -618,7 +617,7 @@ int S5FlashStore::delete_obj(uint64_t vol_id, int64_t slba,
 
 int S5FlashStore::read_store_head()
 {
-	void* buf = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	void* buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	if (!buf)
 	{
 		S5LOG_ERROR("Failed to alloc memory in read_store_head");
@@ -627,7 +626,7 @@ int S5FlashStore::read_store_head()
 	DeferCall([buf]() {
 		free(buf);
 	});
-	if (-1 == tray->sync_read(buf, PAGE_SIZE, 0))
+	if (-1 == tray->sync_read(buf, LBA_LENGTH, 0))
 		return -errno;
 	memcpy(&head, buf, sizeof(head));
 	if (head.magic != 0x3553424e) //magic number, NBS5

@@ -15,54 +15,6 @@
 
 typedef void* conf_file_t;		///< configuration object
 
-//conf file setion and key's name.
-#define	g_rge_count_key	"rge_count"						///< rge count tag name in S5 configuration file
-#define g_rge_cache_node_count_key  "cache_node_count"	///< rge cache node count tag name in S5 configuration file
-#define g_conductor_ip_key  "front_ip"				///< conductor front-ip tag name of conductor section in S5 configuration file
-
-//should attach the index at the tail.
-#define g_daemon_setion  "daemon."					///< prefix of daemon section name in S5 configuration file
-#define g_daemon_ip_key  "ip"					///< daemon front-ip tag name of daemon section in S5 configuration file
-
-//should attach the index at the tail.
-#define g_conductor_section  "conductor."			///< prefix of conductor section name in S5 configuration file
-#define g_conductor_front_port  "front_port"		///< conductor front-port tag name of conductor section in S5 configuration file
-#define g_conductor_spy_port  "monitor_port"		///< monitor port tag name of conductor section in S5 configuration file
-#define g_conductor_id "id"							///< id of conductor, unique in cluster
-#define g_conductor_metabd "meta_bd"				///< name of block device for meta data
-#define g_conductor_metabd_dir "meta_bd_dir"				///< dir of block device for meta data
-#define g_conductor_metadb "meta_db"				///< path of meta database
-#define g_conductor_etm_bd "etm_bd"					///< name of block device for master error track data
-#define g_conductor_etm_bd_dir "etm_bd_dir"					///< dir of block device for master error track data
-#define g_conductor_ets_bd "ets_bd"					///< name of block device for slave error track data
-#define g_conductor_ets_bd_dir "ets_bd_dir"					///< dir of block device for slave error track data
-#define g_conductor_use_sp_volume "use_sp_volume"			///< use special volume or not
-
-#define g_s5bd_setion  "s5bd"				///< s5bd section name in S5 configuration file
-#define g_port_start_key  "port_start"		///< start port tag name of s5bd section in S5 configuration file
-#define g_port_end_key  "port_end"			///< end port tag name of s5bd section in S5 configuration file
-
-#define g_s5_io_depth	"s5_io_depth"			///< s5 io-depth tag name of s5bd section in S5 configuration file
-#define g_rge_io_depth	"rge_io_depth"			///< rge io-depth tag name of s5bd section in S5 configuration file
-#define g_rge_io_max_lbas	"rge_io_max_lbas"	///< rge io max lbas tag name of s5bd section in S5 configuration file
-
-#define g_nic_setion  "NIC."				///< prefix of NIC section name in S5 configuration file
-#define g_nic_front_ip_key  "front_ip"		///< nic front ip tag name of s5bd section in S5 configuration file
-
-#define g_host_port_section "host_port."	///< prefix of host port section name in S5daemon conf file
-#define g_host_port_ip_key "ip"			///< host port ip tag name of host port section
-
-#define	MAX_NIC_COUNT	16					///< max number of nic in S5
-
-// key for s5afs
-#define g_afs_section		   "afs"			///< global section name in S5afs configuration file
-#define g_max_nic_port_count "max_nic_port_count"
-#define g_max_nic_count      "max_nic_count"
-#define g_max_tray_set_count "max_tray_set_count"		///< max number of tray set board
-
-#define LOCAL_HOST	"127.0.0.1"			///<local host address
-#define LOCAL_HOST_PORT	10000			///<local host port for s5afs
-
 #ifdef __cplusplus
 extern "C" {
 #endif

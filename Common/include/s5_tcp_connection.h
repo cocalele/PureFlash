@@ -1,11 +1,15 @@
 #ifndef s5_tcp_connection_h__
 #define s5_tcp_connection_h__
+#include "s5message.h"
 #include "s5_connection.h"
 #include "s5_event_queue.h"
 #include "s5_buffer.h"
 #include "s5_poller.h"
 #include "s5_utils.h"
-#include "s5message.h"
+
+class S5Poller;
+class S5ClientVolumeInfo;
+class BufferDescriptor;
 
 class S5TcpConnection : public S5Connection
 {
@@ -17,6 +21,14 @@ public:
 	virtual int post_read(BufferDescriptor* buf);
 	virtual int post_write(BufferDescriptor* buf);
 	virtual int do_close();
+	int do_receive();
+	int do_send();
+
+	static void on_send_q_event(int fd, uint32_t event, void* c);
+	static void on_recv_q_event(int fd, uint32_t event, void* c);
+	static void on_socket_event(int fd, uint32_t event, void* c);
+	static S5TcpConnection* connect_to_server(const std::string& ip, short port, S5Poller *poller,
+		S5ClientVolumeInfo* vol, int timeout_sec);
 
 	int init(int sock_fd, S5Poller *poller, int send_q_depth, int recv_q_depth);
 
@@ -40,15 +52,6 @@ public:
 
 	S5EventQueue recv_q;
 	S5EventQueue send_q;
-
-	struct s5_handshake_message handshake_msg;
-
-	int do_receive();
-	int do_send();
-
-	static void on_send_q_event(int fd, uint32_t event, void* c);
-	static void on_recv_q_event(int fd, uint32_t event, void* c);
-	static void on_socket_event(int fd, uint32_t event, void* c);
 
 private:
 	void start_send(BufferDescriptor* bd);

@@ -6,7 +6,9 @@ S5Connection::S5Connection():ref_count(0),state(0),on_destroy(NULL)
 
 S5Connection::~S5Connection()
 {
-
+	cmd_pool.release();
+	data_pool.release();
+	reply_pool.release();
 }
 
 int S5Connection::close()
@@ -21,4 +23,47 @@ int S5Connection::close()
 	if(on_close)
 		on_close(this);
 	return 0;
+}
+
+int S5Connection::init_mempools()
+{
+	int rc = 0;
+	if (io_depth <= 0 || io_depth > MAX_IO_DEPTH)
+		return -EINVAL;
+	rc = cmd_pool.init(sizeof(s5_message_head), io_depth * 2);
+	if (rc)
+		goto release1;
+	rc = data_pool.init(MAX_IO_SIZE, io_depth * 2);
+	if (rc)
+		goto release2;
+	rc = reply_pool.init(sizeof(s5_message_reply), io_depth * 2);
+	if (rc)
+		goto release3;
+	return rc;
+release3:
+	data_pool.release();
+release2:
+	cmd_pool.release();
+release1:
+	return rc;
+}
+
+int parse_net_address(const char* ipv4, short port, /*out*/struct sockaddr_in* ipaddr)
+{
+	struct addrinfo *addr;
+	int rc = getaddrinfo(ipv4, NULL, NULL, &addr);
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to getaddrinfo: %s, %s\n", ipv4, gai_strerror(rc));
+		return -1;
+	}
+	*ipaddr = *(struct sockaddr_in*)addr->ai_addr;
+	ipaddr->sin_port = htons(port);
+	freeaddrinfo(addr);
+	return rc;
+}
+
+int S5Connection::send_heartbeat()
+{
+
 }

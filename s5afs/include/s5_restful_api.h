@@ -11,12 +11,15 @@ public:
 	int index;
 	int store_id;
 	std::string tray_uuid;
+	std::string status;
 };
 class ShardArg
 {
 public:
 	int index;
 	std::vector<ReplicaArg> replicas;
+	int primary_rep_index;
+	std::string status;
 };
 class PrepareVolumeArg
 {
@@ -26,6 +29,8 @@ public:
 	std::string volume_name;
 	uint64_t volume_size;
 	uint64_t volume_id;
+	uint64_t meta_ver;
+	int snap_seq;
 	int shard_count;
 	int rep_count;
 	std::vector<ShardArg> shards;

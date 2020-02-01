@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include "s5_utils.h"
+#include "s5_lock.h"
 
 /**
  * Copyright (C), 2014-2019.
@@ -43,7 +44,7 @@
 /**
  * Data structure of fixed-size queue.
  */
-template <typename T>
+template <class T>
 class S5FixedSizeQueue
 {
 public:
@@ -51,10 +52,11 @@ public:
 	int head;			///< head pointer
 	int queue_depth;	///< queue depth, max number of element can be put to this queue plus 1
 	T* data;		///< memory used by this queue, it's size of queue_depth * ele_size
-//	char name[32];
+	pthread_spinlock_t lock;
+	//	char name[32];
 
 	S5FixedSizeQueue():tail(0),head(0),queue_depth(0),data(NULL)
-	{ }
+	{}
 	~S5FixedSizeQueue()
 	{
 		destroy();
@@ -78,6 +80,7 @@ int init(int _queue_depth)
 	data = (T*)calloc((size_t)queue_depth, sizeof(T));
 	if (data == NULL)
 		return -ENOMEM;
+	pthread_spin_init(&lock, 0);
 	return 0;
 }
 
@@ -89,6 +92,7 @@ void destroy()
 	queue_depth = tail = head = 0;
 	free(data);
 	data = NULL;
+	pthread_spin_destroy(&lock);
 }
 
 /**
@@ -105,10 +109,13 @@ void destroy()
  */
 inline int enqueue(/*in*/const T& element)
 {
-	if (is_full())
+	AutoSpinLock l(&lock);
+	if (is_full()) {
 		return -EAGAIN;
+	}
 	data[tail] = element;
 	tail = (tail + 1)%queue_depth;
+	return -EAGAIN;
 	return 0;
 }
 
@@ -127,8 +134,10 @@ inline int enqueue(/*in*/const T& element)
  */
 inline T dequeue()
 {
-	if (unlikely(is_empty()))
+	AutoSpinLock l(&lock);
+	if (unlikely(is_empty())) {
 		throw std::logic_error(format_string("queue:%s is empty", "noname"));
+	}
 	T t = data[head];
 	head = (head+1)% queue_depth;
 	return t;

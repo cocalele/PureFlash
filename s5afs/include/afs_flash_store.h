@@ -30,7 +30,7 @@ struct lmt_key
 	int64_t rsv1;
 	int64_t rsv2;
 };
-static_assert(sizeof(lmt_key) == 32, "lmt_key");
+static_assert(sizeof(lmt_key) == 32, "unexpected lmt_key size");
 enum EntryStatus: uint32_t {
 	UNINIT = 0, //not initialized
 	NORMAL = 1,
@@ -47,7 +47,7 @@ struct lmt_entry
 	lmt_entry* prev_snap;
 	void* waiting_io;
 };
-static_assert(sizeof(lmt_entry) == 32, "lmt_entry");
+static_assert(sizeof(lmt_entry) == 32, "unexpected lmt_entry size");
 
 inline bool operator == (const lmt_key &k1, const lmt_key &k2) { return k1.vol_id == k2.vol_id && k1.slba == k2.slba; }
 
@@ -98,7 +98,7 @@ public:
 	char tray_name[256];
 	HeadPage head;
 
-	Tray *tray;
+	S5Tray *tray;
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 	S5FixedSizeQueue<int32_t> free_obj_queue;
 	S5FixedSizeQueue<int32_t> trim_obj_queue;

@@ -6,7 +6,7 @@
 #include "s5_md5.h"
 #include "basetype.h"
 
-MD5Stream::MD5Stream(Tray *tray)
+MD5Stream::MD5Stream(S5Tray *tray)
 {
 	this->tray = tray;
 	buffer = NULL;
@@ -20,7 +20,7 @@ MD5Stream::~MD5Stream()
 int MD5Stream::init()
 {
 	int rc =0;
-	buffer  = (char*)aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	buffer  = (char*)aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	if (buffer == NULL)
 	{
 		S5LOG_ERROR("Failed to allocate memory for MD5Stream");

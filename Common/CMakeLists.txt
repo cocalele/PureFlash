@@ -5,8 +5,8 @@ if(COMMAND cmake_policy)
 endif()
 
 project(S5Common)
-set(CMAKE_C_FLAGS   "-Wall -Wconversion -std=c99 -I/usr/include ${CXX_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -std=c++11 -Wconversion -fPIC ${CXX_FLAG_GCOV}")
+set(CMAKE_C_FLAGS   "-Wall -Wno-sign-compare -Wconversion -std=c99 -I/usr/include ${CXX_FLAG_GCOV}")
+set(CMAKE_CXX_FLAGS   "-Wall -Wno-sign-compare -std=c++11 -Wconversion -fPIC ${CXX_FLAG_GCOV}")
 
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g ")
 set(CMAKE_CXX_COMPILER g++)
@@ -45,7 +45,9 @@ set (S5COMMON_SRC
 	src/s5_event_thread.cpp
 	src/s5_poller.cpp
 	src/s5_connection.cpp
-    src/s5_zk_client.cpp )
+    src/s5_zk_client.cpp
+	src/s5_client_api.cpp
+	)
 file(GLOB_RECURSE INCS "*.h")
 
 #set_source_files_properties(src/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-w")

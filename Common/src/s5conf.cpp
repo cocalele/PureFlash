@@ -34,7 +34,7 @@ conf_file_t conf_open(const char *conf_name)
 	int  ret = cf->parse_file();
 	if(ret != 0)
 	{
-		S5LOG_ERROR("Failed to parse file[%s] failed! ret[%d]", conf_name, ret);
+		S5LOG_ERROR("Failed to parse file:%s failed!rc:%d", conf_name, ret);
 		delete cf;
 		errno = -ret;
 		return NULL;

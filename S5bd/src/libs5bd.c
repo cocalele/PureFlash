@@ -18,6 +18,46 @@ S5LOG_INIT("s5bd")
 #define MAX_VOLUME_SIZE_M (MAX_VOLUME_SIZE_B/1024/1024)
 static __thread char __error_str[MAX_ERROR_INFO_LENGTH];
 
+using namespace std;
+/*
+ * for open volume, jconductor will return a json like:
+ *  {
+ *      "op":"open_volume_reply",
+ *	    "status": "OK",
+ *      "volume_name":"myvolname",
+ *      "volume_size":10000000,
+ *      "volume_id":12345678,
+ *      "shard_count":2,
+ *      "rep_count":3,
+ *      "shards":[
+ *               { "index":0, "store_ips":["192.168.3.1", "192.168.3.3"]
+ * 			 },
+ *               { "index":1, "store_ips":["192.168.3.1", "192.168.3.3"]
+ * 			 }
+ * 			]
+ *   }
+ */
+
+class S5ClientShardInfo
+{
+public:
+	int index;
+	std::vector<std::string> store_ips;
+};
+class S5ClientVolumeInfo
+{
+public:
+	std::string status;
+	std::string volume_name;
+	uint64_t volume_size;
+	uint64_t volume_id;
+	int shard_count;
+	int rep_count;
+	std::vector<S5ClientShardInfo> shards;
+
+};
+
+
 int s5_name_info_check(const char* str)
 {
 	if (!str || strlen(str) == 0)

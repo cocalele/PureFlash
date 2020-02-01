@@ -4,10 +4,13 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
+#include <exception>
+#include <fcntl.h>
 
 #include "s5_tcp_connection.h"
 #include "s5_utils.h"
-
+#include "s5_client_priv.h"
+using namespace  std;
 S5TcpConnection::S5TcpConnection() :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
                                     recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
                                     readable(FALSE), writeable(FALSE),need_reconnect(FALSE)
@@ -78,12 +81,12 @@ void S5TcpConnection::flush_wr()
 {
 	if (recv_bd)
 	{
-		recv_bd->on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
+		on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
 		recv_bd = NULL;
 	}
 	if (send_bd)
 	{
-		send_bd->on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
+		on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
 		send_bd = NULL;
 	}
 	S5FixedSizeQueue<S5Event>* q;
@@ -95,7 +98,7 @@ void S5TcpConnection::flush_wr()
 			S5Event* t = &q->data[q->head];
 			q->head = (q->head + 1) % q->queue_depth;
 			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-			bd->on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+			on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
 		}
 
 	}
@@ -108,7 +111,7 @@ void S5TcpConnection::flush_wr()
 			S5Event* t = &q->data[q->head];
 			q->head = (q->head + 1) % q->queue_depth;
 			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-			bd->on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+			on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
 		}
 
 	}
@@ -259,7 +262,7 @@ int S5TcpConnection::do_receive()
 		}
 		if (wanted_recv_len == recved_len)
 		{
-			rc = recv_bd->on_work_complete(recv_bd, TCP_WC_SUCCESS, this, NULL);
+			rc = on_work_complete(recv_bd, TCP_WC_SUCCESS, this, NULL);
 			if (unlikely(rc != 0))
 			{
 				S5LOG_WARN("on_recv_complete rc:%d", rc);
@@ -332,7 +335,7 @@ int S5TcpConnection::do_send()
 
 		if (wanted_send_len == sent_len)
 		{
-			rc = send_bd->on_work_complete(send_bd, TCP_WC_SUCCESS, this, send_bd->cbk_data);
+			rc = on_work_complete(send_bd, TCP_WC_SUCCESS, this, send_bd->cbk_data);
 			if (unlikely(rc != 0 && rc != -EAGAIN))
 			{
 				S5LOG_DEBUG("Failed on_work_complete rc:%d", rc);
@@ -359,9 +362,162 @@ int S5TcpConnection::post_send(BufferDescriptor *buf)
 int S5TcpConnection::post_read(BufferDescriptor *buf)
 {
 	S5LOG_FATAL("post_read should not used");
+	return 0;
 }
 
 int S5TcpConnection::post_write(BufferDescriptor *buf)
 {
 	S5LOG_FATAL("post_write should not used");
+	return 0;
 }
+
+static int s5_tcp_send_all(int fd, void* buf, int len, int flag)
+{
+	int off = 0;
+	int rc = 0;
+	while (off < len)
+	{
+		rc = send(fd, (char*)buf + off, ssize_t(len - off), flag);
+		if (rc == -1)
+			return -errno;
+		else if (rc == 0)
+			return -ECONNABORTED;
+		off += rc;
+	}
+	return len;
+}
+
+static int s5_tcp_recv_all(int fd, void* buf, int len, int flag)
+{
+	int off = 0;
+	int rc = 0;
+	while (off < len)
+	{
+		rc = recv(fd, (char*)buf + off, ssize_t(len - off), flag);
+		if (rc == -1)
+			return -errno;
+		else if (rc == 0)
+			return -ECONNABORTED;
+		off += rc;
+	}
+	return len;
+}
+
+S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short port, S5Poller *poller, S5ClientVolumeInfo* vol, int timeout_sec)
+{
+	Cleaner clean;
+	int rc = 0;
+	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (socket_fd == -1)
+	{
+		rc = -errno;
+		throw runtime_error(format_string("Failed to create socket, rc:%d", rc));
+	}
+	clean.push_back([socket_fd]() {close(socket_fd); });
+	int const1 = 1;
+	rc = setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
+	if (rc)
+	{
+		throw runtime_error("set TCP_NODELAY failed!");
+	}
+
+	rc = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &const1, sizeof(int));
+	if (rc)
+	{
+		throw runtime_error("set SO_REUSEPORT failed!");
+	}
+
+	struct sockaddr_in addr;
+	rc = parse_net_address(ip.c_str(), port, &addr);
+	if (rc)
+	{
+		throw runtime_error(format_string("parse_net_address failed on:%s rc:%d", ip.c_str(), rc));
+	}
+	//set the socket in non-blocking
+	int fdopt = fcntl(fd, F_GETFL);
+	int new_option = fdopt | O_NONBLOCK;
+	fcntl(fd, F_SETFL, new_option);
+
+	rc = connect(socket_fd, (struct sockaddr*)&addr, sizeof(*addr));
+	if (rc == 0)
+	{
+		S5LOG_INFO("connect to %s:%d OK", ip.c_str(), port);
+	}
+	else if (errno != EINPROGRESS)
+	{
+		throw runtime_error(format_string("Failed connect to %s:%d, rc:%d", ip.c_str(), port, errno));
+	}
+	else if (errno == EINPROGRESS)
+	{
+		S5LOG_INFO("connecting to %s:%d", ip.c_str(), port);
+		fd_set wset, eset;
+		FD_ZERO(&wset);
+		FD_ZERO(&eset);
+		FD_SET(socket_fd, &wset);
+
+		struct timeval t_out;
+		t_out.tv_sec = timeout_sec;
+		t_out.tv_usec = 0;
+		// check if the socket is ready
+		int res = select(socket_fd + 1, NULL, &wset, &eset, &t_out);
+		if (res <= 0)
+		{
+			throw runtime_error(format_string("TCP connect timeout. peer:%s.", inet_ntoa(addr.sin_addr)));
+		}
+		else if (res == 1)
+		{
+			if (FD_ISSET(socket_fd, &wset))
+			{
+				S5LOG_INFO("TCP connect success:%s.", inet_ntoa(addr->sin_addr));
+			}
+			else
+			{
+				throw runtime_error("no events on sockfd found.");
+			}
+		}
+	}
+	int error = 0;
+	socklen_t length = sizeof(error);
+	if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &error, &length) < 0) {
+		throw runtime_error("getsockopt fail. erno:%d", errno);
+	}
+	if (error != 0)	{
+		throw runtime_error("socket in error state:%d", error);
+	}
+
+	fcntl(socket_fd, F_SETFL, fdopt);
+	s5_handshake_message* hmsg = new s5_handshake_message;
+	memset(&hmsg, 0, sizeof(s5_handshake_message));
+	hmsg->hsqsize = vol->io_depth;
+	hmsg->vol_id = vol->volume_id;
+	hmsg->snap_seq = vol->snap_seq;;
+	hmsg->protocol_ver = PROTOCOL_VER;
+
+	rc = s5_tcp_send_all(socket_fd, hmsg, sizeof(*hmsg), 0);
+	if (rc == -1)
+	{
+		rc = -errno;
+		throw runtime_error("Failed to send handshake data, rc:%d", rc);
+	}
+	rc = s5_tcp_recv_all(socket_fd, hmsg, sizeof(*hmsg), 0);
+	if (rc == -1) {
+		rc = -errno;
+		throw runtime_error("Failed to receive handshake data, rc:%d", rc);
+	}
+	if (hmsg->hs_result != 0) {
+		if (hmsg->hs_result == MSG_STATUS_INVALID_IO_TIMEOUT) {
+			throw runtime_error("client's io_timeout setting is little than store's %d", hmsg->io_timeout);
+		}
+		throw runtime_error("Connection rejected by server with result: %d", hmsg->hs_result);
+	}
+	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", vol->io_depth, hmsg->crqsize);
+	vol->io_depth = hmsg->crqsize;
+	S5TcpConnection* conn = new S5TcpConnection;
+	clean.push_back([conn]() {delete conn; });
+	rc = conn->init(socket_fd, poller, vol->io_depth, vol->io_depth);
+	if (rc != 0)
+		throw runtime_error(format_string("Failed call connection init, rc:%d", rc));
+	clean.cancel_all();
+	return conn;
+}
+

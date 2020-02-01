@@ -21,7 +21,7 @@ int s5msg_release_all(s5_message_t ** msg)
 /**
  * @return a s5 message object allocated on heap,
  *         NULL on error. errno set to ENOMEM on error
- */ 
+ */
 s5_message_t* s5msg_create(int data_size)
 {
 	if(data_size < 0)
@@ -50,7 +50,7 @@ s5_message_t* s5msg_create(int data_size)
 	{
 		msg->data = NULL;
 	}
-	
+
 	return msg;
 }
 
@@ -107,7 +107,7 @@ const char* get_msg_type_name(msg_type_t msg_tp)
 	case MSG_TYPE_TRIM_REPLY:
 		return "MSG_TYPE_TRIM_REPLY";
 	case MSG_TYPE_FLUSH_REQUEST:
-		return "MSG_TYPE_FLUSH_REQUEST";	
+		return "MSG_TYPE_FLUSH_REQUEST";
 	case MSG_TYPE_FLUSH_REPLY:
 		return "MSG_TYPE_FLUSH_REPLY";
 	case MSG_TYPE_LOAD_REQUEST:
@@ -119,8 +119,8 @@ const char* get_msg_type_name(msg_type_t msg_tp)
 	case MSG_TYPE_SNAP_CHANGED_REPLY:
 		return "MSG_TYPE_SNAP_CHANGED_REPLY";
 	case MSG_TYPE_S5CLT_REQ:
-		return "MSG_TYPE_S5CLT_REQ";	
-			
+		return "MSG_TYPE_S5CLT_REQ";
+
 	case MSG_TYPE_S5CLT_REPLY:
 		return "MSG_TYPE_S5CLT_REPLY";
 	case MSG_TYPE_RGE_BLOCK_DELETE:
@@ -132,7 +132,7 @@ const char* get_msg_type_name(msg_type_t msg_tp)
 	case MSG_TYPE_S5_STAT_REPLY:
 		return "MSG_TYPE_S5_STAT_REPLY";
 	case MSG_TYPE_MAX:
-		return "MSG_TYPE_MAX";	
+		return "MSG_TYPE_MAX";
 
 	default:
 		return "UNKNOWN_TYPE";

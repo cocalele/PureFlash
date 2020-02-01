@@ -11,6 +11,8 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include "s5_tcp_connection.h"
+#include "s5_connection.h"
 #include "s5_poller.h"
 #include "s5errno.h"
 #include "afs_server.h"
@@ -19,18 +21,13 @@
 #include "s5conf.h"
 #include "s5_buffer.h"
 #include "afs_flash_store.h"
-#include "s5_connection.h"
-#include "s5_tcp_connection.h"
+#include "afs_volume.h"
 
 static void *afs_listen_thread(void *param);
 
 static int init_trays()
 {
 	int rc = -1;
-
-
-
-
 	return rc;
 }
 
@@ -152,23 +149,95 @@ release2:
 release1:
 	return;
 }
+
+int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, S5Connection* conn, void* cbk_data)
+{
+	int rc = 0;
+	delete (s5_handshake_message*)bd->buf;
+	bd->buf = NULL;//for debug
+	delete bd;
+
+	if(status == WcStatus::TCP_WC_SUCCESS)
+	{
+		if(conn->state == CONN_CLOSING)
+		{
+			S5LOG_WARN("Handshake sent but connection in state:%d is to be closed, conn:%s", conn->state, conn->connection_info.c_str());
+			conn->state = CONN_OK;//to make close works correctly
+			conn->close();
+			goto release0;
+		}
+		S5LOG_INFO("Handshake sent OK, conn:%s", conn->connection_info.c_str());
+
+
+		conn->state = CONN_OK;
+
+		for(int i=0;i<conn->io_depth*2;i++)
+		{
+			S5Volume* vol = (S5Volume*)conn->ulp_data;
+			BufferDescriptor* cmd_bd = conn->cmd_pool.alloc();
+			if(cmd_bd == NULL)
+			{
+				S5LOG_ERROR("No enough memory for connection:%s", conn->connection_info.c_str());
+				conn->close();
+				rc = -ENOMEM;
+				goto release0;
+			}
+		}
+	}
+	else
+	{
+		S5LOG_ERROR("Failed send handshake for connection:%s", conn->connection_info.c_str());
+		conn->state = CONN_OK;//to make close works correctly
+		conn->close(); //this will cause dec_ref, in on_server_conn_close
+	}
+release0:
+	return rc;
+}
+
 int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection* conn_, void* cbk_data)
 {
+	int rc = 0;
+	S5Volume * vol;
 	S5TcpConnection* conn = (S5TcpConnection*)conn_;
 	s5_handshake_message* hs_msg = (s5_handshake_message*)bd->buf;
+	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
+
 	if(hs_msg->hsqsize > MAX_IO_DEPTH)
 	{
+		S5LOG_ERROR("Request io_depth:%d too large, max allowed:%d", hs_msg->hsqsize, MAX_IO_DEPTH);
 		hs_msg->hsqsize=MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
-		//TODO: schedule a delay call to close this connection
-		return -EINVAL;
+		conn->state = CONN_CLOSING;
+		rc = -EINVAL;
+		goto release0;
 	}
 	hs_msg->hs_result=0;
 	conn->io_depth=hs_msg->hsqsize;
-	conn->state = CONN_OK;
-	//conn->volume = NULL;
-	S5ASSERT(0);//TODO: init volume correctly before continue
-	//TODO: continue to initialize connection, post receive ...
+	bd->data_len = sizeof(s5_handshake_message);
+	vol = app_context.get_opened_volume(hs_msg->vol_id);
+	if(vol == NULL)
+	{
+		S5LOG_ERROR("Request volume:0x%lx not opened", hs_msg->vol_id);
+		hs_msg->hs_result = (int16_t) EINVAL;
+		conn->state = CONN_CLOSING;
+		rc = -EINVAL;
+		goto release0;
+	}
+	conn->ulp_data = vol;
+	rc = conn->init_mempools();
+	if(rc != 0)
+	{
+		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
+		hs_msg->hs_result = (int16_t)-rc; //return a positive value
+		conn->state = CONN_CLOSING;
+		rc = -EINVAL;
+		goto release0;
+	}
+	hs_msg->hs_result = 0;
+release0:
+	S5LOG_INFO("Reply handshake for conn:%s", conn->connection_info.c_str());
+	conn->on_work_complete = on_tcp_handshake_sent;
+	conn->post_send(bd);
 	return 0;
 }
 void server_on_conn_close(S5Connection* conn)
@@ -179,6 +248,14 @@ void server_on_conn_destroy(S5Connection* conn)
 {
 
 }
+
+static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data)
+{
+	throw std::logic_error("Not implemented");
+	return 0;
+}
+
+
 int S5TcpServer::accept_connection()
 {
 	sockaddr_in client_addr;
@@ -224,14 +301,12 @@ int S5TcpServer::accept_connection()
 	}
 	bd->buf_size = sizeof(s5_handshake_message);
 	bd->data_len = 0;
-	bd->on_work_complete = on_tcp_handshake_recved;
-	//add this to debug bad performance in Wdindows driver
+	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
 	conn->role = CONN_ROLE_SERVER;
 	conn->transport = TRANSPORT_TCP;
 	conn->on_close = server_on_conn_close;
 	conn->on_destroy = server_on_conn_destroy;
-
 	rc = conn->post_recv(bd);
 	if(!rc)
 	{

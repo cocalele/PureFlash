@@ -128,6 +128,7 @@ int main(int argc, char *argv[])
 	{
 		S5LOG_FATAL("afs.id not defined in conf file");
 	}
+	app_context.store_id = store_id;
 	S5LOG_INFO("Register store to ZK.");
 	rc = register_store_node(store_id, this_mngt_ip);
 	if (rc)
@@ -184,9 +185,30 @@ int main(int argc, char *argv[])
 	init_restful_server();
 	while(sleep(1) == 0);
 
-
-FINALLY:
 	S5LOG_INFO("toe_daemon exit.");
 	return rc;
 }
 
+int S5AfsAppContext::get_ssd_index(std::string ssd_uuid)
+{
+	for(int i=0;i<trays.size();i++)
+	{
+		if (ssd_uuid == (char*)trays[i]->head.uuid)
+			return i;
+	}
+	return -1;
+}
+
+S5AfsAppContext::S5AfsAppContext()
+{
+	pthread_mutex_init(&lock, NULL);
+}
+
+S5Volume* S5AfsAppContext::get_opened_volume(uint64_t vol_id)
+{
+	pthread_mutex_lock(&app_context.lock);
+	auto pos = opened_volumes.find(vol_id);
+	if (pos == opened_volumes.end())
+		return NULL;
+	return pos->second;
+}

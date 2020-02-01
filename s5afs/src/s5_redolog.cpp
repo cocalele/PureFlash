@@ -12,14 +12,14 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	this->store = s;
 	tray = s->tray;
 	this->start_offset = s->head.redolog_position;
-	this->current_offset = this->start_offset + PAGE_SIZE;
+	this->current_offset = this->start_offset + LBA_LENGTH;
 	this->size = s->head.redolog_size;
 	this->phase = 0;//will be increased to 1 on the followed discard() call
-	entry_buff = aligned_alloc(PAGE_SIZE, PAGE_SIZE);
+	entry_buff = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	if (entry_buff == NULL)
 		return -ENOMEM;
-	memset(entry_buff, 0, PAGE_SIZE);
-	if (-1 == tray->sync_write(entry_buff, PAGE_SIZE, current_offset))
+	memset(entry_buff, 0, LBA_LENGTH);
+	if (-1 == tray->sync_write(entry_buff, LBA_LENGTH, current_offset))
 	{
 		rc = -errno;
 		goto release1;
@@ -28,7 +28,7 @@ int S5RedoLog::init(struct S5FlashStore* s)
 	p = (int64_t*)entry_buff;
 	p[0] = size;
 	p[1] = phase;
-	if (-1 == tray->sync_write(entry_buff, PAGE_SIZE, start_offset))
+	if (-1 == tray->sync_write(entry_buff, LBA_LENGTH, start_offset))
 	{
 		rc = -errno;
 		goto release1;
@@ -39,7 +39,7 @@ int S5RedoLog::init(struct S5FlashStore* s)
 			if (sleep(STORE_META_AUTO_SAVE_INTERVAL) != 0)
 				return 0;
 			store->sync_invoke([this]()->int {
-				if (current_offset == start_offset + PAGE_SIZE)
+				if (current_offset == start_offset + LBA_LENGTH)
 					return 0;
 				store->save_meta_data();
 				return 0;

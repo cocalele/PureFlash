@@ -97,6 +97,7 @@ int ConfFile::parse_file()
 	if (!fp)
 	{
 		ret = -errno;
+		S5LOG_ERROR("Failed open file:%s, rc:%d", conf_file.c_str(), ret);
 		return ret;
 	}
 
@@ -267,7 +268,7 @@ std::ostream &operator<<(std::ostream &oss, const ConfFile &cf)
 	return oss;
 }
 
-void ConfLine::set_val(const std::string &key_, const std::string val_, const std::string newsection_, const std::string comment_, 
+void ConfLine::set_val(const std::string &key_, const std::string val_, const std::string newsection_, const std::string comment_,
 					  int line_no_)
 {
 	key = key_;
@@ -353,7 +354,7 @@ int ConfFile::load_from_buffer(const char *buf, size_t sz)
 			{
 				ret = 0;
 				continue;
-			}			
+			}
 			break;
 		}
 		const std::string &csection(cline->newsection);
@@ -417,7 +418,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 				state = ACCEPT_COMMENT_TEXT;
 			else if (c == ']')
 			{
-				S5LOG_ERROR("Unexpected right bracket at char %ld, line %d in configuration file %s.", 
+				S5LOG_ERROR("Unexpected right bracket at char %ld, line %d in configuration file %s.",
 					(l - line), line_no, conf_file.c_str());
 				return -S5_CONF_ERR;
 			}
@@ -475,7 +476,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 				}
 				else
 				{
-					S5LOG_ERROR("Unexpected character while parsing putative key value at char %ld, line %d in configuration file %s.", 
+					S5LOG_ERROR("Unexpected character while parsing putative key value at char %ld, line %d in configuration file %s.",
 						(l - line), line_no, conf_file.c_str());
 				}
 				return -S5_CONF_ERR;
@@ -485,7 +486,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 				key = normalize_key_name(key);
 				if (key.empty())
 				{
-					S5LOG_ERROR("Failed to parse key name: no key name found at char %ld, line %d in configuration file %s.", 
+					S5LOG_ERROR("Failed to parse key name: no key name found at char %ld, line %d in configuration file %s.",
 						(l - line), line_no, conf_file.c_str());
 					return -S5_CONF_ERR;
 				}
@@ -527,7 +528,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 			{
 				if (escaping)
 				{
-					S5LOG_ERROR("Failed to parse value name: unterminated escape sequence at char %ld, line %d in configuration file %s.", 
+					S5LOG_ERROR("Failed to parse value name: unterminated escape sequence at char %ld, line %d in configuration file %s.",
 						(l - line), line_no, conf_file.c_str());
 					return -S5_CONF_ERR;
 				}
@@ -553,7 +554,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 		case ACCEPT_QUOTED_VAL:
 			if (c == '\0')
 			{
-				S5LOG_ERROR("Failed to find opening quote for value, but not the closing quote at char %ld, line %d in configuration file %s.", 
+				S5LOG_ERROR("Failed to find opening quote for value, but not the closing quote at char %ld, line %d in configuration file %s.",
 					(l - line), line_no, conf_file.c_str());
 				return -S5_CONF_ERR;
 			}
@@ -588,7 +589,7 @@ int ConfFile::process_line(int line_no, const char *line, ConfLine* conf_line)
 			}
 			else
 			{
-				S5LOG_ERROR("Unexpected character at char %ld, line %d in configuration file %s.", 
+				S5LOG_ERROR("Unexpected character at char %ld, line %d in configuration file %s.",
 					(l - line), line_no, conf_file.c_str());
 				return -S5_CONF_ERR;
 			}

@@ -35,7 +35,7 @@ struct BufferDescriptor
 	WrOpcode wr_op;// work request op code
 	void* buf;
 	int data_len; /// this is the validate data len in the buffer.
-	int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
+	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_size; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
