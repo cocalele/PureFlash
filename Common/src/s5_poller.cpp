@@ -13,11 +13,7 @@ S5Poller::S5Poller() :epfd(0),tid(0),max_fd(0)
 }
 S5Poller::~S5Poller()
 {
-	if(epfd != 0)
-	{
-		close(epfd);
-		epfd=0;
-	}
+	destroy();
 }
 static void on_ctl_event(int fd, uint32_t event, void* user_arg)
 {
@@ -78,6 +74,8 @@ int S5Poller::init(const char* name, int max_fd_count)
 		S5LOG_ERROR("Failed add ctrl_queue to poller:%s, rc:%d", name, rc);
 		return rc;
 	}
+
+	//must create thread at last, tid used to indicate this object is fully constructed
 	rc = pthread_create(&tid, NULL, thread_entry, this);
 	if (rc != 0)
 	{
@@ -123,14 +121,16 @@ int S5Poller::del_fd(int fd)
 
 void S5Poller::destroy()
 {
+	if(tid == 0)
+		return;
 	pthread_cancel(tid);
 	pthread_join(tid, NULL);
 	tid=0;
-	desc_pool.destroy();
+	del_fd(ctrl_queue.event_fd);
 	close(epfd);
 	epfd = 0;
-	del_fd(ctrl_queue.event_fd);
 	ctrl_queue.destroy();
+	desc_pool.destroy();
 }
 
 int S5Poller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)

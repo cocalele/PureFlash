@@ -1,4 +1,10 @@
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 #include "s5_connection.h"
+#include "s5_app_ctx.h"
+#include "s5message.h"
 
 S5Connection::S5Connection():ref_count(0),state(0),on_destroy(NULL)
 {
@@ -6,9 +12,9 @@ S5Connection::S5Connection():ref_count(0),state(0),on_destroy(NULL)
 
 S5Connection::~S5Connection()
 {
-	cmd_pool.release();
-	data_pool.release();
-	reply_pool.release();
+	cmd_pool.destroy();
+	data_pool.destroy();
+	reply_pool.destroy();
 }
 
 int S5Connection::close()
@@ -41,14 +47,14 @@ int S5Connection::init_mempools()
 		goto release3;
 	return rc;
 release3:
-	data_pool.release();
+	data_pool.destroy();
 release2:
-	cmd_pool.release();
+	cmd_pool.destroy();
 release1:
 	return rc;
 }
 
-int parse_net_address(const char* ipv4, short port, /*out*/struct sockaddr_in* ipaddr)
+int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr)
 {
 	struct addrinfo *addr;
 	int rc = getaddrinfo(ipv4, NULL, NULL, &addr);
@@ -65,5 +71,6 @@ int parse_net_address(const char* ipv4, short port, /*out*/struct sockaddr_in* i
 
 int S5Connection::send_heartbeat()
 {
-
+	S5LOG_FATAL("send_heartbeat not implemented");
+	return 0;
 }

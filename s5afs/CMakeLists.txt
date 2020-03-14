@@ -62,6 +62,7 @@ set (S5AFS_SRC
 	src/s5_replica.cpp
 	src/s5_restful_server.cpp
 	src/s5_restful_api.cpp
+	src/afs_volume.cpp
 )
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c

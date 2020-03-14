@@ -39,6 +39,7 @@ public:
 
 	S5FlashStore * tray_inst;
 public:
+	virtual ~S5Replica() {} //to avoid compile warning
 	virtual int submit_io(IoSubTask* subtask) = 0;
 };
 

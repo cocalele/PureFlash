@@ -14,6 +14,7 @@
 #define CONN_ROLE_CLIENT 2
 
 #define PROTOCOL_VER 1
+class S5ClientVolumeInfo;
 
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
 class S5Connection
@@ -36,6 +37,7 @@ public:
 	BufferPool data_pool;
 	BufferPool reply_pool;
 
+	S5ClientVolumeInfo* volume;
 
 	S5Connection();
 	virtual ~S5Connection();
@@ -67,6 +69,6 @@ public:
 	int init_mempools();
 };
 
-int parse_net_address(const char* ipv4, short port, /*out*/struct sockaddr_in* ipaddr);
+int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr);
 
 #endif // s5_connection_h__

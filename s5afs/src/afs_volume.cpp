@@ -1,8 +1,10 @@
 #include "afs_volume.h"
+#include "s5_utils.h"
+
 static const char* status_strs[] = { "OK", "ERROR", "DEGRADED" };
 HealthStatus health_status_from_str(const std::string&  status_str)
 {
-	for(int i=0;i<ARRAY_SIZE(status_strs); i++)
+	for(int i=0;i<S5ARRAY_SIZE(status_strs); i++)
 	{
 		if (status_str == status_strs[i])
 			return (HealthStatus)i;

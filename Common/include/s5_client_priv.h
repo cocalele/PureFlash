@@ -1,5 +1,7 @@
 #ifndef s5_client_priv_h__
 #define s5_client_priv_h__
+
+#include <thread>
 #include "s5_mempool.h"
 #include "s5_event_thread.h"
 #include "s5_buffer.h"
@@ -39,7 +41,7 @@ class S5ClientIocb
 public:
 	BufferDescriptor* cmd_bd;
 	BufferDescriptor* data_bd;
-	BufferDescriptor* comp_bd; //Used by dispatcher tasks
+	BufferDescriptor* reply_bd; //Used by dispatcher tasks
 	void* user_buf;			//used by qfa_client to store user buffer
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
@@ -47,8 +49,9 @@ public:
 	S5Connection *conn;
 	BOOL is_timeout;
 
-	uint32_t sent_time; //time the io sent to server
-	uint32_t submit_time;//time the io was submitted by up layer
+	uint64_t sent_time; //time the io sent to server
+	uint64_t submit_time;//time the io was submitted by up layer
+	uint64_t reply_time; // the time get reply from server
 };
 
 class S5ClientShardInfo
@@ -102,14 +105,22 @@ public:
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
 	S5VolumeEventProc *vol_proc;
+	std::thread timeout_thread;
+
 	int next_heartbeat_idx;
 
+	S5Poller* tcp_poller;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
 	int do_open();
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(S5ClientIocb* io);
+	void timeout_check_proc();
+	S5ClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq);
+	void free_iocb(S5ClientIocb* io);
+	S5Connection* get_shard_conn(int shard_index);
+	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 };
 
 

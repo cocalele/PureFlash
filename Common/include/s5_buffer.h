@@ -4,13 +4,13 @@
  * Copyright (C), 2019.
  * @endcode GBK
  * @file
- * Ò»¸öbuffer¾ÍÊÇÒ»¿éÁ¬ĞøµÄÄÚ´æ¡£Ò»°ãÇé¿öÏÂÒ»¸öÖ¸Õë¼ÓÉÏÒ»¸ö³¤¶È¾Í¿ÉÒÔÃèÊöÒ»¿éÄÚ´æ¡£ÔÚÊ¹ÓÃRDMA·ÃÎÊÊ±
- * Õâ¸öÄÚ´æĞèÒª¶îÍâµÄĞÅÏ¢£¬¼´local key, remote key, offset¡£ÇÒ¶Ô²»Í¬µÄRDMAÉè±¸£¬×¢²áºó»áÓĞ¸÷×Ô¶ÔÓ¦
- * µÄlocal key, remote key¡£ÕâÑù£¬¶ÔÓÚÍ¬Ò»¸öbuffer£¬¸ø²»Í¬µÄÉè±¸Ê¹ÓÃ¾ÍÒªÌá¹©²»Í¬µÄ·ÃÎÊÒªËØ¡£Õâ¾ÍÊÇ
- * buffer_descriptor ´æÔÚµÄÒâÒå¡£buffer_descriptorÀïÃæ¼ÇÂ¼ÁËÕâ¸öbuffer¸÷ÖÖ³¡¾°ÏÂµÄ·ÃÎÊĞÅÏ¢¡£
+ * Ò»ï¿½ï¿½bufferï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú´æ¡£Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½È¾Í¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ú´æ¡£ï¿½ï¿½Ê¹ï¿½ï¿½RDMAï¿½ï¿½ï¿½ï¿½Ê±
+ * ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½local key, remote key, offsetï¿½ï¿½ï¿½Ò¶Ô²ï¿½Í¬ï¿½ï¿½RDMAï¿½è±¸ï¿½ï¿½×¢ï¿½ï¿½ï¿½ï¿½ï¿½Ğ¸ï¿½ï¿½Ô¶ï¿½Ó¦
+ * ï¿½ï¿½local key, remote keyï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬Ò»ï¿½ï¿½bufferï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½è±¸Ê¹ï¿½Ã¾ï¿½Òªï¿½á¹©ï¿½ï¿½Í¬ï¿½Ä·ï¿½ï¿½ï¿½Òªï¿½Ø¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ * buffer_descriptor ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½å¡£buffer_descriptorï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½bufferï¿½ï¿½ï¿½Ö³ï¿½ï¿½ï¿½ï¿½ÂµÄ·ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½
  *
- * buffer »á°´ÕÕ×î´ó³¤¶È·ÖÅä£¬±ÈÈçÎÒÃÇÔÊĞíµÄ×î´óIOÊÇ64K byte£¬ ÄÇÃ´bufer½«»á·ÖÅä64K byte£¬Ò²¾ÍÊÇbuf_size
- * ÊÇ65536¡£È»¶øµ±´¦ÀíÒ»¸ö4K byte IOÇëÇóÊ±£¬ÓĞĞ§Êı¾İµÄ³¤¶È,¼´data_lenÊÇ4096
+ * buffer ï¿½á°´ï¿½ï¿½ï¿½ï¿½ó³¤¶È·ï¿½ï¿½ä£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½IOï¿½ï¿½64K byteï¿½ï¿½ ï¿½ï¿½Ã´buferï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½64K byteï¿½ï¿½Ò²ï¿½ï¿½ï¿½ï¿½buf_size
+ * ï¿½ï¿½65536ï¿½ï¿½È»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½4K byte IOï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Ğ§ï¿½ï¿½ï¿½İµÄ³ï¿½ï¿½ï¿½,ï¿½ï¿½data_lenï¿½ï¿½4096
  */
 
 #include "s5_fixed_size_queue.h"
@@ -30,27 +30,34 @@ enum WrOpcode {
 	TCP_WR_RECV = 128,
 };
 
+
 struct BufferDescriptor
 {
 	WrOpcode wr_op;// work request op code
-	void* buf;
+	union {
+		void* buf;
+		struct s5_message_head* cmd_bd; //valid if thie BD used for command
+		struct s5_message_reply* reply_bd; //valid if this BD used for message reply
+	};
 	int data_len; /// this is the validate data len in the buffer.
 	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_size; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
-
+	S5Connection* conn;
 };
 
 class BufferPool
 {
 public:
-	int init(size_t buffer_size, size_t count);
-	BufferDescriptor* alloc();
-	int free(BufferDescriptor* bd);
+	int init(size_t buffer_size, int count);
+	inline BufferDescriptor* alloc() { return free_bds.dequeue(); }
+	inline int free(BufferDescriptor* bd){ return free_bds.enqueue(bd); }
+	void destroy();
 private:
 	S5FixedSizeQueue<BufferDescriptor*> free_bds;
 	void* data_buf;
+	BufferDescriptor* data_bds;
 };
 #endif //_S5_BUFFER_H_
 

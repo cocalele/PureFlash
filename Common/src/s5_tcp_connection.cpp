@@ -377,7 +377,7 @@ static int s5_tcp_send_all(int fd, void* buf, int len, int flag)
 	int rc = 0;
 	while (off < len)
 	{
-		rc = send(fd, (char*)buf + off, ssize_t(len - off), flag);
+		rc = (int)send(fd, (char*)buf + off, ssize_t(len - off), flag);
 		if (rc == -1)
 			return -errno;
 		else if (rc == 0)
@@ -393,7 +393,7 @@ static int s5_tcp_recv_all(int fd, void* buf, int len, int flag)
 	int rc = 0;
 	while (off < len)
 	{
-		rc = recv(fd, (char*)buf + off, ssize_t(len - off), flag);
+		rc = (int)recv(fd, (char*)buf + off, ssize_t(len - off), flag);
 		if (rc == -1)
 			return -errno;
 		else if (rc == 0)
@@ -403,7 +403,7 @@ static int s5_tcp_recv_all(int fd, void* buf, int len, int flag)
 	return len;
 }
 
-S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short port, S5Poller *poller, S5ClientVolumeInfo* vol, int timeout_sec)
+S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int port, S5Poller *poller, S5ClientVolumeInfo* vol, int timeout_sec)
 {
 	Cleaner clean;
 	int rc = 0;
@@ -413,7 +413,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short
 		rc = -errno;
 		throw runtime_error(format_string("Failed to create socket, rc:%d", rc));
 	}
-	clean.push_back([socket_fd]() {close(socket_fd); });
+	clean.push_back([socket_fd]() {::close(socket_fd); });
 	int const1 = 1;
 	rc = setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
 	if (rc)
@@ -434,11 +434,11 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short
 		throw runtime_error(format_string("parse_net_address failed on:%s rc:%d", ip.c_str(), rc));
 	}
 	//set the socket in non-blocking
-	int fdopt = fcntl(fd, F_GETFL);
+	int fdopt = fcntl(socket_fd, F_GETFL);
 	int new_option = fdopt | O_NONBLOCK;
-	fcntl(fd, F_SETFL, new_option);
+	fcntl(socket_fd, F_SETFL, new_option);
 
-	rc = connect(socket_fd, (struct sockaddr*)&addr, sizeof(*addr));
+	rc = connect(socket_fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (rc == 0)
 	{
 		S5LOG_INFO("connect to %s:%d OK", ip.c_str(), port);
@@ -468,7 +468,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short
 		{
 			if (FD_ISSET(socket_fd, &wset))
 			{
-				S5LOG_INFO("TCP connect success:%s.", inet_ntoa(addr->sin_addr));
+				S5LOG_INFO("TCP connect success:%s.", inet_ntoa(addr.sin_addr));
 			}
 			else
 			{
@@ -479,16 +479,16 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short
 	int error = 0;
 	socklen_t length = sizeof(error);
 	if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &error, &length) < 0) {
-		throw runtime_error("getsockopt fail. erno:%d", errno);
+		throw runtime_error(format_string("getsockopt fail. erno:%d", errno));
 	}
 	if (error != 0)	{
-		throw runtime_error("socket in error state:%d", error);
+		throw runtime_error(format_string("socket in error state:%d", error));
 	}
 
 	fcntl(socket_fd, F_SETFL, fdopt);
 	s5_handshake_message* hmsg = new s5_handshake_message;
-	memset(&hmsg, 0, sizeof(s5_handshake_message));
-	hmsg->hsqsize = vol->io_depth;
+	memset(hmsg, 0, sizeof(s5_handshake_message));
+	hmsg->hsqsize = (int16_t)vol->io_depth;
 	hmsg->vol_id = vol->volume_id;
 	hmsg->snap_seq = vol->snap_seq;;
 	hmsg->protocol_ver = PROTOCOL_VER;
@@ -497,18 +497,18 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, short
 	if (rc == -1)
 	{
 		rc = -errno;
-		throw runtime_error("Failed to send handshake data, rc:%d", rc);
+		throw runtime_error(format_string("Failed to send handshake data, rc:%d", rc));
 	}
 	rc = s5_tcp_recv_all(socket_fd, hmsg, sizeof(*hmsg), 0);
 	if (rc == -1) {
 		rc = -errno;
-		throw runtime_error("Failed to receive handshake data, rc:%d", rc);
+		throw runtime_error(format_string("Failed to receive handshake data, rc:%d", rc));
 	}
 	if (hmsg->hs_result != 0) {
 		if (hmsg->hs_result == MSG_STATUS_INVALID_IO_TIMEOUT) {
-			throw runtime_error("client's io_timeout setting is little than store's %d", hmsg->io_timeout);
+			throw runtime_error(format_string("client's io_timeout setting is little than store's %d", hmsg->io_timeout));
 		}
-		throw runtime_error("Connection rejected by server with result: %d", hmsg->hs_result);
+		throw runtime_error(format_string("Connection rejected by server with result: %d", hmsg->hs_result));
 	}
 	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", vol->io_depth, hmsg->crqsize);
 	vol->io_depth = hmsg->crqsize;

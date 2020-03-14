@@ -16,8 +16,6 @@
 #include <stdarg.h>
 #include "basetype.h"
 
-enum class Suit :int { Diamonds, Hearts, Clubs, Spades };
-
 #define MAX_NAME_LEN 96	///< max length of name used in s5 modules.
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
 
@@ -31,27 +29,35 @@ enum class Suit :int { Diamonds, Hearts, Clubs, Spades };
 #define S5_OP_HEARTBEAT  0X86
 
 
-enum msg_status {
-	MSG_STATUS_OK 				=0,		///< OK.
-	MSG_STATUS_ERR              =1,	    ///< Generally error.
-	MSG_STATUS_DELAY_RETRY		=3,		///< delay retry, can not to be handle on time, need to retry.
-	MSG_STATUS_REPLY_FLUSH		=5,		///< flush reply, only used in ic logic.
-	MSG_STATUS_REPLY_LOAD		=6,		///< load reply, only used in ic logic.
-	MSG_STATUS_NOSPACE			=8,		///< no space can be used.
-	MSG_STATUS_RETRY_LOAD		=9,		///< load retry, can not to be handle on time, need to retry.
+enum message_status :uint16_t{
+	MSG_STATUS_SUCCESS = 0x0,
+	MSG_STATUS_INVALID_OPCODE = 0x1,
+	MSG_STATUS_INVALID_FIELD = 0x2,
+	MSG_STATUS_CMDID_CONFLICT = 0x3,
+	MSG_STATUS_DATA_XFER_ERROR = 0x4,
+	MSG_STATUS_POWER_LOSS = 0x5,
+	MSG_STATUS_INTERNAL = 0x6,
+	MSG_STATUS_ABORT_REQ = 0x7,
+	MSG_STATUS_INVALID_IO_TIMEOUT = 0x8,
+	MSG_STATUS_LBA_RANGE = 0x80,
+	MSG_STATUS_NS_NOT_READY = 0x82,
+	MSG_STATUS_NOT_PRIMARY = 0xC0,
+	MSG_STATUS_NOSPACE = 0xC1,
+	MSG_STATUS_READONLY = 0xC2,
+	MSG_STATUS_CONN_LOST = 0xC3,
+	MSG_STATUS_AIOERROR = 0xC4,
+	MSG_STATUS_ERROR_HANDLED = 0xC5,
+	MSG_STATUS_ERROR_UNRECOVERABLE = 0xC6,
+	MSG_STATUS_AIO_TIMEOUT = 0xC7,
+	MSG_STATUS_REPLICATING_TIMEOUT = 0xC8,
+	MSG_STATUS_NODE_LOST = 0xC9,
+	MSG_STATUS_LOGFAILED = 0xCA,
+	MSG_STATUS_METRO_REPLICATING_FAILED = 0xCB,
+	MSG_STATUS_RECOVERY_FAILED = 0xCC,
+	MSG_STATUS_SSD_ERROR = 0xCD,
 
-	MSG_STATUS_AUTH_ERR 		=128,	///< authority error.
-	MSG_STATUS_VER_MISMATCH		=129,	///< version not match.
-	MSG_STATUS_CANCEL_FLUSH		=131,	///< cancel the flush read request.
-	MSG_STATUS_CRC_ERR			=132,	///< CRC error.
-	MSG_STATUS_OPENIMAGE_ERR	=133,	///< error in open image.
-	MSG_STATUS_NOTFOUND			=134, 	///< can not find.
-	MSG_STATUS_BIND_ERR			=135,	///< socket can not bind.
-	MSG_STATUS_NET_ERR			=139,	///< error in network.
-	MSG_STATUS_CONF_ERR			=140,	///< error in configure file of s5.
-	MSG_STATUS_INVAL			=141,	///< invalid parameters.
-	MSG_STATUS_INVALID_IO_TIMEOUT = 142,
-	MSG_STATUS_MAX
+	MSG_STATUS_DEGRADE = 0x2000,
+	MSG_STATUS_REOPEN = 0x4000,
 };
 
 /**

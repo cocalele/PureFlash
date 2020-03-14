@@ -20,7 +20,7 @@ ELSEIF("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
 ENDIF()
 
 INCLUDE_DIRECTORIES(include)
-include_directories(../S5bd/include)
+include_directories(../S5bd/include ../s5afs/nlohmann_json/include)
 USE_ZOOKEEPER()
 
 set (S5COMMON_SRC 
@@ -47,6 +47,7 @@ set (S5COMMON_SRC
 	src/s5_connection.cpp
     src/s5_zk_client.cpp
 	src/s5_client_api.cpp
+	src/s5_connection_pool.cpp
 	)
 file(GLOB_RECURSE INCS "*.h")
 
