@@ -139,6 +139,10 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
 	S5Volume* vol = convert_argument_to_volume(arg);
 
+	for(auto d : app_context.disps)
+	{
+		d->prepare_volume(vol);
+	}
 	RestfulReply r(arg.op + "_reply");
 	json jr = r;
 	string jstr = jr.dump();

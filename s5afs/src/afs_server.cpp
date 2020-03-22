@@ -61,12 +61,6 @@ int init_store_server()
 
 
 
-
-static int handle_socket_exception(void* clntSock, void* srv_toe)
-{
-    return 0;
-}
-
 void *afs_listen_thread(void *param)
 {
 	((S5TcpServer*)param)->listen_proc();
@@ -173,7 +167,6 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, S5Connection* c
 
 		for(int i=0;i<conn->io_depth*2;i++)
 		{
-			S5Volume* vol = (S5Volume*)conn->ulp_data;
 			BufferDescriptor* cmd_bd = conn->cmd_pool.alloc();
 			if(cmd_bd == NULL)
 			{
@@ -181,6 +174,11 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, S5Connection* c
 				conn->close();
 				rc = -ENOMEM;
 				goto release0;
+			}
+			rc = conn->post_recv(cmd_bd);
+			if(rc)
+			{
+				S5LOG_ERROR("Failed to post_recv  for rc:%d", rc);
 			}
 		}
 	}

@@ -189,7 +189,7 @@ const std::string format_string(const char * format, ...)
 	va_end(args);
 	if (len < (int)sizeof buffer)
 		// we fit in the buffer
-		return{ buffer, len };
+		return{ buffer, (size_t)len };
 	else
 		return{ buffer };
 }

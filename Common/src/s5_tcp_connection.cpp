@@ -428,7 +428,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int p
 	}
 
 	struct sockaddr_in addr;
-	rc = parse_net_address(ip.c_str(), port, &addr);
+	rc = parse_net_address(ip.c_str(), (uint16_t)port, &addr);
 	if (rc)
 	{
 		throw runtime_error(format_string("parse_net_address failed on:%s rc:%d", ip.c_str(), rc));
