@@ -100,6 +100,7 @@ const char* conf_get(conf_file_t conf, const char* section, const char* key, con
  * @returns		value of configuration item.
  */
 int conf_get_int(conf_file_t conf , const char* section, const char* key, int def_val, BOOL fatal_on_error);
+long conf_get_long(conf_file_t conf , const char* section, const char* key, long def_val, BOOL fatal_on_error);
 
 
 /**

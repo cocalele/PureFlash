@@ -1,9 +1,12 @@
-#include "s5_block_tray.h"
-
+#include <sys/stat.h>
 #include <unistd.h>
+#include <linux/fs.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <linux/fs.h>
+#include <errno.h>
+
+#include "s5_block_tray.h"
+#include "s5_log.h"
 
 BlockTray::BlockTray()
 {
@@ -15,7 +18,7 @@ BlockTray::~BlockTray()
 
 int BlockTray::init(const char *name)
 {
-        fd = open(name, O_RDWR, O_DIRECT);
+        fd = open(name, O_RDWR|O_DIRECT);
         return fd;
 }
 
@@ -26,7 +29,21 @@ void BlockTray::destroy()
 
 int BlockTray::get_num_blocks(long *number)
 {
-        return ioctl(fd, BLKGETSIZE, number);
+  struct stat fst;
+  int rc = fstat(fd, &fst);
+  if(rc != 0)
+  {
+    rc = -errno;
+    S5LOG_ERROR("Failed fstat, rc:%d", rc);
+    return rc;
+  }
+  if(S_ISBLK(fst.st_mode ))
+    return ioctl(fd, BLKGETSIZE, number);
+  else
+  {
+    *number = fst.st_size/512;
+  }
+  return 0;
 }
 
 ssize_t BlockTray::sync_read(void *buffer, size_t size, __off_t offset)

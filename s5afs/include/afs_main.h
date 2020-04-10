@@ -39,6 +39,7 @@ public:
 	std::string mngt_ip;
 	int store_id;
     S5ZkClient zk_client;
+    int64_t meta_size;
 
 	S5TcpServer* tcp_server;
 	std::vector<S5FlashStore*> trays;

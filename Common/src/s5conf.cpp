@@ -102,6 +102,31 @@ int conf_get_int(conf_file_t conf, const char *section, const char *key, int def
 }
 
 extern "C"
+long conf_get_long(conf_file_t conf, const char *section, const char *key, long def_val, BOOL fatal_on_error)
+{
+	S5ASSERT(conf != NULL);
+	S5ASSERT(section != NULL);
+	S5ASSERT(key != NULL);
+
+	const char *buf =  conf_get(conf, section, key, NULL, fatal_on_error);
+	if(!buf)
+	{
+		return def_val;
+	}
+
+	std::string err;
+	long value = strict_strtoll(buf, 10, &err);
+	if(!err.empty())
+	{
+		errno = EINVAL;
+		S5LOG_FATAL("Failed to strtol buf[%s], err[%s]", buf, err.c_str()) ;
+		return def_val;
+	}
+	return value;
+}
+
+
+extern "C"
 double conf_get_double(conf_file_t conf, const char *section, const char *key, double def_val, BOOL fatal_on_error)
 {
 	S5ASSERT(conf != NULL);

@@ -12,7 +12,7 @@
 #include "s5_tray.h"
 
 
-#define META_RESERVE_SIZE (40LL<<30) //40GBsetype.h"
+#define META_RESERVE_SIZE (40LL<<30) //40GB
 
 #define OBJ_SIZE_ORDER 24
 #define OBJ_SIZE (1<<OBJ_SIZE_ORDER)

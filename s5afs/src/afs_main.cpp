@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to register store");
 		return rc;
 	}
-
+    app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
 	int i=0;
 	for(i=0;i<MAX_TRAY_COUNT;i++)
 	{

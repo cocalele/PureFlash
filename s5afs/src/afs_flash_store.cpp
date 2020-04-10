@@ -222,7 +222,7 @@ int S5FlashStore::initialize_store_head()
 	head.objsize=OBJ_SIZE;
 	head.objsize_order=OBJ_SIZE_ORDER; //objsize = 2 ^ objsize_order
 	head.tray_capacity = numblocks << 9;//512 byte per block
-	head.meta_size = META_RESERVE_SIZE;
+	head.meta_size = app_context.meta_size;
 	head.free_list_position = OFFSET_FREE_LIST;
 	head.free_list_size = (64 << 20) - 4096;
 	head.trim_list_position = OFFSET_TRIM_LIST;
@@ -246,7 +246,7 @@ int S5FlashStore::initialize_store_head()
 	memset(buf, 0, LBA_LENGTH);
 	memcpy(buf, &head, sizeof(head));
 	int rc = 0;
-	if (-1 == tray->sync_write(buf, sizeof(LBA_LENGTH), 0))
+	if (-1 == tray->sync_write(buf, LBA_LENGTH, 0))
 	{
 		rc = -errno;
 		goto release1;
