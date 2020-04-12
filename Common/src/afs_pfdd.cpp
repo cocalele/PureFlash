@@ -183,14 +183,16 @@ static int64_t parseNumber(string str)
 
 int main(int argc, char* argv[])
 {
-	cxxopts::Options options(argv[0], " - example command line options");
+	cxxopts::Options options(argv[0], " - PureFlash dd tool");
 	string rw, bs_str, ifname, ofname, vol_name, cfg_file;
 	int count;
 	off_t offset;
 
+	options.positional_help("[optional args]")
+			.show_positional_help();
 	options
 			.add_options()
-			("rw", "Read/Write", cxxopts::value<std::string>(rw)->default_value("true"))
+			("rw", "Read/Write", cxxopts::value<std::string>(rw)->default_value("read"), "read/write")
 					("count", "Block count", cxxopts::value<int>(count)->default_value("1"))
 					("bs", "Block size", cxxopts::value<string>(bs_str)->default_value("4k"))
 					("if", "Input file name", cxxopts::value<string>(ifname)->default_value(""))
@@ -198,8 +200,26 @@ int main(int argc, char* argv[])
 					("c", "Config file name", cxxopts::value<string>(cfg_file)->default_value("/etc/pureflash/s5.conf"))
 					("offset", "Offset in volume", cxxopts::value<off_t>(offset)->default_value("0"))
 					("v", "Volume name", cxxopts::value<string>(vol_name))
+					("h,help", "Print usage")
 					;
-
+	if(argc == 1) {
+		std::cout << options.help() << std::endl;
+		exit(1);
+	}
+	try {
+		auto result = options.parse(argc, argv);
+		if (result.count("help"))
+		{
+			std::cout << options.help() << std::endl;
+			exit(0);
+		}
+	}
+	catch (const cxxopts::OptionException& e)
+	{
+		std::cout << "error parsing options: " << e.what() << std::endl;
+		options.help();
+		exit(1);
+	}
 	int64_t bs = parseNumber(bs_str);
 	//TODO: need argments checking
 
