@@ -71,6 +71,13 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
 ## 3.5 S5bd and S5kd
   S5bd is user space client. Qemu   
 
+# networks ports
+49162  store node TCP port
+49160  store node RDMA port
+
+49180  conductor HTTP port
+49181  store node HTTP port
 
 Thanks for:
 1. we use the C++ http server from https://github.com/tashaxing/CppHttpDemo
+2. IntelliJ has provide all develop IDE for Java/C++/golang

@@ -101,8 +101,8 @@ struct s5_message_head
 	uint64_t                  buf_addr;
 	uint32_t                  rkey;
 	uint32_t                  buf_len;
-	uint64_t                  slba;
-	uint16_t                  nlba;
+	uint64_t                  offset;
+	uint16_t                  length;
 	uint16_t                  meta_ver;
 	uint32_t                  task_seq;  //use this field to hold io task sequence number
 	uint64_t                  rsv2;

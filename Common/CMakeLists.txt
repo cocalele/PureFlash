@@ -49,6 +49,9 @@ set (S5COMMON_SRC
 	src/s5_client_api.cpp
 	src/s5_connection_pool.cpp
 	)
+set (PFDD_SRC
+		src/afs_pfdd.cpp
+	)
 file(GLOB_RECURSE INCS "*.h")
 
 #set_source_files_properties(src/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "-w")
@@ -71,4 +74,5 @@ set_target_properties(s5common PROPERTIES SKIP_BUILD_RPATH true)
 set_target_properties(s5common PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 TARGET_LINK_LIBRARIES(s5common dl pthread  ${GCOV}) 
 
-
+add_executable(pfdd ${PFDD_SRC})
+TARGET_LINK_LIBRARIES(pfdd s5common pthread uuid zookeeper curl ${GCOV})

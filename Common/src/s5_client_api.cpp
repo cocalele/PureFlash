@@ -25,11 +25,12 @@
 #include "s5message.h"
 #include "s5_poller.h"
 #include "s5_buffer.h"
+#include "s5_client_api.h"
 
 using namespace std;
 using nlohmann::json;
 
-#define S5_LIB_VER 0x00010000
+
 static const char* s5_lib_ver = "S5 client version:0x00010000";
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
@@ -113,7 +114,7 @@ struct S5ClientVolumeInfo* s5_open_volume(const char* volume_name, const char* c
 
 		volume->vol_proc = new S5VolumeEventProc(volume);
 		volume->vol_proc->start();
-
+		volume->event_queue = &volume->vol_proc->event_queue; //keep for quick reference
 		volume->state = VOLUME_OPENED;
 		S5LOG_INFO("Succeeded open volume %s@%s(0x%lx), meta_ver=%d, io_depth=%d", volume->volume_name.c_str(),
 			volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->volume_id, volume->meta_ver, volume->io_depth);
@@ -130,7 +131,7 @@ struct S5ClientVolumeInfo* s5_open_volume(const char* volume_name, const char* c
 
 static int client_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data)
 {
-	return conn->volume->vol_proc->event_queue.post_event(EVT_IO_COMPLETE, complete_status, bd);
+	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd);
 }
 
 
@@ -388,7 +389,7 @@ void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			if (vol->meta_ver < reply->meta_ver)
 			{
 				S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
-				vol->vol_proc->event_queue.post_event(EVT_REOPEN_VOLUME, 0, (void *)(now_time_usec()));
+				vol->event_queue->post_event(EVT_REOPEN_VOLUME, 0, (void *)(now_time_usec()));
 			}
 			return;
 		}
@@ -412,7 +413,7 @@ void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			if (io_elapse_time > 2000)
 			{
 				S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, vol:%s, since submit:%dms since send:%dms",
-						   io_cmd->slba >> SHARD_LBA_CNT_ORDER,
+						   io_cmd->offset >> SHARD_SIZE_ORDER,
 						   io_cmd->command_id,
 						   vol->volume_name.c_str(),
 						   io_elapse_time,
@@ -433,26 +434,7 @@ void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 
 void s5_close_volume(S5ClientVolumeInfo* volume)
 {
-	S5LOG_INFO("close volume:%s", volume->volume_name.c_str());
-	volume->state = VOLUME_CLOSED;
-
-	pthread_cancel(volume->timeout_thread.native_handle());
-	volume->timeout_thread.join();
-
-	volume->vol_proc->event_queue.post_event(EVT_THREAD_EXIT, 0, NULL);
-	pthread_join(volume->vol_proc->tid, NULL);
-
-	volume->conn_pool->close_all();
-	volume->vol_proc->stop();
-	volume->iocb_pool.destroy();
-	volume->cmd_pool.destroy();
-	volume->data_pool.destroy();
-	volume->reply_pool.destroy();
-
-//	for(int i=0;i<volume->shards.size();i++)
-//	{
-//		delete volume->shards[i];
-//	}
+	volume->close();
 	delete volume;
 }
 
@@ -482,11 +464,11 @@ static int reopen_volume(S5ClientVolumeInfo* volume)
 	return rc;
 }
 
-int resend_io(S5ClientVolumeInfo* volume, S5ClientIocb* io)
+int S5ClientVolumeInfo::resend_io(S5ClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->task_seq, 1);
-	int rc = volume->vol_proc->event_queue.post_event(EVT_IO_REQ, 0, io);
+	int rc = event_queue->post_event(EVT_IO_REQ, 0, io);
 	if (rc)
 	S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
 	return rc;
@@ -513,7 +495,7 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		BufferDescriptor* cmd_bd = io->cmd_bd;
 		s5_message_head *io_cmd = io->cmd_bd->cmd_bd;
 
-		int shard_index = io_cmd->slba >> SHARD_LBA_CNT_ORDER;
+		int shard_index = (int)(io_cmd->offset >> SHARD_SIZE_ORDER);
 		struct S5Connection* conn = get_shard_conn(shard_index);
 		BufferDescriptor* io_reply = reply_pool.alloc();
 		if (conn == NULL || io_reply == NULL)
@@ -576,7 +558,7 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 				break;
 			}
 			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
-				io_cmd->command_id, volume_name.c_str(), io_cmd->slba >> SHARD_LBA_CNT_ORDER, conn_str.c_str());
+				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, conn_str.c_str());
 			int rc = resend_io(io);
 			if(rc) {
 				iocb_pool.free(io);
@@ -610,7 +592,7 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		{
 			break;
 		}
-		next_heartbeat_idx %= conn_pool->ip_id_map.size();
+		next_heartbeat_idx %= (int)conn_pool->ip_id_map.size();
 		int hb_sent = 0;
 		int ht_idx = 0;
 		for (auto it = conn_pool->ip_id_map.begin(); it != conn_pool->ip_id_map.end();)
@@ -667,7 +649,7 @@ S5Connection* S5ClientVolumeInfo::get_shard_conn(int shard_index)
 		if (conn != NULL) {
 			return conn;
 		}
-		shard->current_ip = (shard->current_ip + 1) % shard->store_ips.size();
+		shard->current_ip = (shard->current_ip + 1) % (int)shard->store_ips.size();
 	}
 	S5LOG_ERROR("Failed to get an usable IP for vol:%s shard:%d", volume_name.c_str(), shard_index);
 	state = VOLUME_DISCONNECTED;
@@ -696,4 +678,58 @@ void S5ClientVolumeInfo::timeout_check_proc()
 		}
 	}
 
+}
+
+void S5ClientVolumeInfo::close() {
+	S5LOG_INFO("close volume:%s", volume_name.c_str());
+	state = VOLUME_CLOSED;
+
+	pthread_cancel(timeout_thread.native_handle());
+	timeout_thread.join();
+
+	vol_proc->stop();
+
+	conn_pool->close_all();
+	vol_proc->stop();
+	iocb_pool.destroy();
+	cmd_pool.destroy();
+	data_pool.destroy();
+	reply_pool.destroy();
+
+//	for(int i=0;i<volume->shards.size();i++)
+//	{
+//		delete volume->shards[i];
+//	}
+}
+
+int s5_io_submit(struct S5ClientVolumeInfo* volume, void* buf, size_t length, off_t offset,
+					ulp_io_handler callback, void* cbk_arg, int is_write) {
+	// Check request params
+	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
+		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
+		return -EIO;
+	}
+
+	auto io = volume->iocb_pool.alloc();
+	if (io == NULL)
+		return -EAGAIN;
+
+	io->ulp_handler = callback;
+	io->ulp_arg = cbk_arg;
+
+	struct s5_message_head *cmd = io->cmd_bd->cmd_bd;
+
+	io->user_buf = buf;
+	cmd->opcode = is_write ? S5_OP_WRITE : S5_OP_READ;
+	cmd->vol_id = volume->volume_id;
+	cmd->buf_addr = (__le64) buf;
+	cmd->rkey = 0;
+	cmd->buf_len = (uint32_t)length;
+	cmd->offset = offset;
+	cmd->length = (uint32_t)length;
+	cmd->snap_seq = volume->snap_seq;
+	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io);
+	if (rc)
+		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
+	return rc;
 }

@@ -15,10 +15,17 @@ int S5EventThread::start()
 	}
 	return 0;
 }
+void S5EventThread::stop()
+{
+	event_queue.post_event(EVT_THREAD_EXIT, 0, NULL);
+	pthread_join(tid, NULL);
+
+}
+
 void *S5EventThread::thread_proc(void* arg)
 {
-	//prctl(PR_SET_NAME, buf);
 	S5EventThread* pThis = (S5EventThread*)arg;
+	prctl(PR_SET_NAME, pThis->name);
 	S5FixedSizeQueue<S5Event>* q;
 	int rc = 0;
 	while ((rc = pThis->event_queue.get_events(&q)) == 0)

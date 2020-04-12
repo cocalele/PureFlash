@@ -5,6 +5,7 @@
 #include "s5_mempool.h"
 #include "s5_event_thread.h"
 #include "s5_buffer.h"
+#include "s5_client_api.h"
 
 /*
  * for open volume, jconductor will return a json like:
@@ -24,7 +25,7 @@
  * 			]
  *   }
  */
-typedef void(*ulp_io_handler)(int complete_status, void* cbk_arg);
+
 
 class S5ConnectionPool;
 class S5ClientVolumeInfo;
@@ -98,6 +99,7 @@ public:
 	int io_depth;
 	int io_timeout; //timeout in second
 	int state;
+	S5EventQueue* event_queue;
 	ObjectMemoryPool<S5ClientIocb> iocb_pool;
 	BufferPool cmd_pool;
 	BufferPool data_pool;
@@ -117,14 +119,17 @@ public:
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(S5ClientIocb* io);
 	void timeout_check_proc();
-	S5ClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq);
+	inline S5ClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq){
+		//TODO: check cmd_seq
+		return &iocb_pool.data[cid];
+	}
 	void free_iocb(S5ClientIocb* io);
 	S5Connection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 };
 
 
-
+#define SECT_SIZE_MASK (512-1) //sector size in linux is always 512 byte
 
 #endif // s5_client_priv_h__
 
