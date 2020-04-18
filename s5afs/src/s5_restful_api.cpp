@@ -56,7 +56,9 @@ void to_json(json& j, const RestfulReply& r)
 
 static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 {
+	Cleaner _c;
 	S5Volume *vol = new S5Volume();
+	_c.push_back([vol](){delete vol;});
 	vol->id = arg.volume_id;
 	strncpy(vol->name, arg.volume_name.c_str(), sizeof(vol->name));
 	vol->size = arg.volume_size;
@@ -69,6 +71,7 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 	for (int i = 0; i < arg.shard_count; i++)
 	{
 		S5Shard* shard = new S5Shard();
+		_c.push_back([shard](){delete shard;});
 		shard->id = arg.volume_id | (arg.shards[i].index << 4);
 		shard->shard_index = arg.shards[i].index;
 		S5ASSERT(shard->shard_index == i);
@@ -83,6 +86,7 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
 			S5ASSERT(rarg.index == j);
 			S5Replica * r = new S5LocalReplica();
+			_c.push_back([r](){delete r;});
 			r->rep_index = rarg.index;
 			r->id = shard->id | r->rep_index;
 			r->store_id = rarg.store_id;
@@ -93,6 +97,10 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 			if (r->is_local)
 			{
 				r->ssd_index = app_context.get_ssd_index(rarg.tray_uuid);
+				if(r->ssd_index == -1)
+				{
+					throw std::runtime_error(format_string("SSD:%s not found", rarg.tray_uuid.c_str()));
+				}
 				r->tray_inst = app_context.trays[r->ssd_index];
 				shard->duty_rep_index = j;
 				if (r->is_primary)
@@ -101,6 +109,7 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 			shard->replicas[j] = r;
 		}
 	}
+	_c.cancel_all();
 	return vol;
 }
 //void to_json(json& j, const PrepareVolumeArg& p) {
@@ -135,9 +144,22 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 {
 	string vol_name = get_http_param_as_string(&hm->query_string, "name", NULL, true);
-	auto j = json::parse(hm->body.p);
+	S5LOG_DEBUG("Receive prepare volume req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
+	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
 	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
-	S5Volume* vol = convert_argument_to_volume(arg);
+	S5Volume* vol = NULL;
+	try {
+		vol = convert_argument_to_volume(arg);
+	}
+	catch(std::exception& e) {
+		RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_ARG, e.what());
+		json jr = r;
+		string jstr = jr.dump();
+		const char* cstr = jstr.c_str();
+		mg_send_head(nc, 500, strlen(cstr), "Content-Type: text/plain");
+		mg_printf(nc, "%s", cstr);
+		return;
+	}
 
 	for(auto d : app_context.disps)
 	{

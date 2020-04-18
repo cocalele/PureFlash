@@ -77,7 +77,7 @@ int S5FlashStore::init(const char* tray_name)
 {
 	int ret = 0;
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
-	S5LOG_INFO("Loading tray (%s) ...", tray_name);
+	S5LOG_INFO("Loading tray %s ...", tray_name);
 	tray = new BlockTray();
 	ret = tray->init(tray_name);
 	if (ret == -1)  {
@@ -89,7 +89,6 @@ int S5FlashStore::init(const char* tray_name)
 		ret = load_meta_data();
 		if (ret)
 			goto error1;
-		S5LOG_INFO("Load tray (%s) complete.", tray_name);
 	}
 	else if (ret == -EUCLEAN)
 	{
@@ -208,6 +207,7 @@ int S5FlashStore::initialize_store_head()
 {
 	memset(&head, 0, sizeof(head));
 	long numblocks;
+	char uuid_str[64];
 	if(tray->get_num_blocks(&numblocks))
 	{
 		S5LOG_ERROR("Failed to get tray:%s size, rc:%d", tray_name, -errno);
@@ -216,7 +216,8 @@ int S5FlashStore::initialize_store_head()
 	head.magic = 0x3553424e; //magic number, NBS5
 	head.version= S5_VERSION; //S5 version
 	uuid_generate(head.uuid);
-
+	uuid_unparse(head.uuid, uuid_str);
+	S5LOG_INFO("generate disk uuid:%s", uuid_str);
 	head.key_size=sizeof(lmt_key);
 	head.entry_size=sizeof(lmt_entry);
 	head.objsize=OBJ_SIZE;
@@ -617,6 +618,7 @@ int S5FlashStore::delete_obj(uint64_t vol_id, int64_t slba,
 
 int S5FlashStore::read_store_head()
 {
+	char uuid_str[64];
 	void* buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	if (!buf)
 	{
@@ -633,6 +635,8 @@ int S5FlashStore::read_store_head()
 		return -EUCLEAN;
 	if(head.version != S5_VERSION) //S5 version
 		return -EUCLEAN;
+	uuid_unparse(head.uuid, uuid_str);
+	S5LOG_INFO("Load disk:%s, uuid:%s",tray_name, uuid_str );
 	return 0;
 }
 

@@ -8,6 +8,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <string>
+#include <cstdlib>
+#include <iostream>
+#include <stdexcept>
+
+#include <execinfo.h>
 
 #include "cmdopt.h"
 #include "s5_utils.h"
@@ -18,7 +23,7 @@
 
 using namespace std;
 int init_restful_server();
-
+void unexpected_exit_handler();
 S5AfsAppContext app_context;
 
 void sigroutine(int dunno)
@@ -58,7 +63,7 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed: param is not enough to start argc(%d).", argc);
 		return rc;
 	}
-
+	//std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
 	while(opt_error_code() == 0 && opt_has_next())
@@ -164,8 +169,21 @@ int main(int argc, char *argv[])
 		const char* ip = conf_get(fp, name.c_str(), "ip", NULL, false);
 		if (ip == NULL)
 			break;
-		int purpose = conf_get_int(fp, name.c_str(), "purpose", DATA_PORT, false);
-		rc = register_port(store_id, ip, purpose);
+		rc = register_port(store_id, ip, DATA_PORT);
+		if(rc) {
+			S5LOG_ERROR("Failed register port:%s, rc:%d", ip, rc);
+			continue;
+		}
+
+	}
+
+	for (i = 0; i < MAX_PORT_COUNT; i++)
+	{
+		string name = format_string("rep_port.%d", i);
+		const char* ip = conf_get(fp, name.c_str(), "ip", NULL, false);
+		if (ip == NULL)
+			break;
+		rc = register_port(store_id, ip, REP_PORT);
 		if(rc) {
 			S5LOG_ERROR("Failed register port:%s, rc:%d", ip, rc);
 			continue;
@@ -193,9 +211,13 @@ int S5AfsAppContext::get_ssd_index(std::string ssd_uuid)
 {
 	for(int i=0;i<trays.size();i++)
 	{
-		if (ssd_uuid == (char*)trays[i]->head.uuid)
+		char uuid_str[64];
+		uuid_unparse(trays[i]->head.uuid, uuid_str);
+
+		if (ssd_uuid == uuid_str)
 			return i;
 	}
+	S5LOG_ERROR("Not found disk:%s", ssd_uuid.c_str());
 	return -1;
 }
 
@@ -212,3 +234,17 @@ S5Volume* S5AfsAppContext::get_opened_volume(uint64_t vol_id)
 		return NULL;
 	return pos->second;
 }
+
+void unexpected_exit_handler()
+{
+    void *trace_elems[20];
+    int trace_elem_count(backtrace( trace_elems, 20 ));
+    char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
+    for ( int i = 0 ; i < trace_elem_count ; ++i )
+    {
+		std::cout << stack_syms[i] << "\n";
+	}
+    free( stack_syms );
+
+    exit(1);
+}   

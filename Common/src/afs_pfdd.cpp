@@ -192,11 +192,11 @@ int main(int argc, char* argv[])
 			.show_positional_help();
 	options
 			.add_options()
-			("rw", "Read/Write", cxxopts::value<std::string>(rw)->default_value("read"), "read/write")
+			("rw", "Read/Write", cxxopts::value<std::string>(rw), "read/write")
 					("count", "Block count", cxxopts::value<int>(count)->default_value("1"))
 					("bs", "Block size", cxxopts::value<string>(bs_str)->default_value("4k"))
-					("if", "Input file name", cxxopts::value<string>(ifname)->default_value(""))
-					("of", "Output file name", cxxopts::value<string>(ofname)->default_value(""))
+					("if", "Input file name", cxxopts::value<string>(ifname))
+					("of", "Output file name", cxxopts::value<string>(ofname))
 					("c", "Config file name", cxxopts::value<string>(cfg_file)->default_value("/etc/pureflash/s5.conf"))
 					("offset", "Offset in volume", cxxopts::value<off_t>(offset)->default_value("0"))
 					("v", "Volume name", cxxopts::value<string>(vol_name))
@@ -227,18 +227,18 @@ int main(int argc, char* argv[])
 	DeferCall _c([buf](){free (buf);});
 	int fd;
 	int is_write = 0;
-	if(rw == "read") {
+	if(rw == "write") {
 		fd = open(ifname.c_str(), O_RDONLY);
-		is_write = 0;
-	} else if(rw == "write") {
-		fd = open(ofname.c_str(), O_WRONLY|O_CREAT|O_TRUNC);
 		is_write = 1;
+	} else if(rw == "read") {
+		fd = open(ofname.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666);
+		is_write = 0;
 	} else {
 		S5LOG_FATAL("Invalid argument rw:%s", rw.c_str());
 	}
 	if(fd == -1) {
-		S5LOG_FATAL("Failed open file:%s, errno:%d", ifname.c_str(), errno);
-	}
+	    S5LOG_FATAL("Failed open file:%s, errno:%d", is_write ? ifname.c_str() : ofname.c_str(), errno);
+    }
 	DeferCall _c3([fd](){close(fd);});
 	io_waiter arg;
 	sem_init(&arg.sem, 0, 0);
@@ -248,10 +248,10 @@ int main(int argc, char* argv[])
 	}
 	DeferCall _c2([vol](){s5_close_volume(vol);});
 
-	S5LOG_INFO("%s with block size:%s", is_write ? "Write":"Read", bs);
+	S5LOG_INFO("%s with block size:%d", is_write ? "Write":"Read", bs);
 	int64_t offset_in_file = 0;
 	for(int i=0;i<count;i++) {
-		if(is_write) {
+		if(is_write == 0) {
 			s5_io_submit(vol, buf, bs, offset + i * bs, io_cbk, &arg, is_write);
 			sem_wait(&arg.sem);
 			if(arg.rc != 0) {

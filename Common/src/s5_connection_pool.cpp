@@ -21,7 +21,7 @@ S5Connection* S5ConnectionPool::get_conn(const std::string& ip)
 	auto pos = ip_id_map.find(ip);
 	if (pos != ip_id_map.end())
 		return pos->second;
-	S5TcpConnection *c = S5TcpConnection::connect_to_server(ip, 49181, poller, volume, io_depth);
+	S5TcpConnection *c = S5TcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth);
 	c->on_work_complete = on_work_complete;
 	ip_id_map[ip] = c;
 	c->add_ref();

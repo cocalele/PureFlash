@@ -100,7 +100,8 @@ struct S5ClientVolumeInfo* s5_open_volume(const char* volume_name, const char* c
 		//other calls
 		volume->volume_name = volume_name;
 		volume->cfg_file = cfg_filename;
-		volume->snap_name = snap_name;
+		if(snap_name)
+			volume->snap_name = snap_name;
 
 		rc = volume->do_open();
 		if (rc)	{
@@ -113,6 +114,7 @@ struct S5ClientVolumeInfo* s5_open_volume(const char* volume_name, const char* c
 		});
 
 		volume->vol_proc = new S5VolumeEventProc(volume);
+		volume->vol_proc->init("vol_proc", volume->io_depth);
 		volume->vol_proc->start();
 		volume->event_queue = &volume->vol_proc->event_queue; //keep for quick reference
 		volume->state = VOLUME_OPENED;
@@ -160,7 +162,7 @@ int S5ClientVolumeInfo::do_open()
 	}
 	DeferCall _2([esc_snap_name]() { curl_free(esc_snap_name); });
 
-	std::string query = format_string("/op=open_volume&volume_name=%s&snap_name=%s", esc_vol_name, esc_snap_name);
+	std::string query = format_string("op=open_volume&volume_name=%s&snap_name=%s", esc_vol_name, esc_snap_name);
 	rc = query_conductor(cfg, query, *this);
 	if (rc != 0)
 		return rc;
@@ -214,7 +216,7 @@ static string get_master_conductor_ip(const char *zk_host)
 		state = zoo_state(zkhandle);
         if (state == ZOO_CONNECTED_STATE)
             break;
-		S5LOG_ERROR("Connecting to zk server %s, state:%d ...", zk_host, state);
+		S5LOG_INFO("Connecting to zk server %s, state:%d ...", zk_host, state);
         usleep(300000);
     }
 	if (state != ZOO_CONNECTED_STATE)
@@ -270,10 +272,9 @@ static size_t write_mem_callback(void *contents, size_t size, size_t nmemb, void
 template<typename ReplyT>
 static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply)
 {
-	char zk_servers[1024] = { 0 };
 
 	const char* zk_ip = conf_get(cfg, "zookeeper", "ip", "", TRUE);
-	if(zk_ip == NULL || strlen(zk_servers) == 0)
+	if(zk_ip == NULL)
     {
 		throw std::runtime_error("zookeeper ip not found in conf file");
     }
@@ -318,6 +319,9 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 		{
 			curl_buf.memory[curl_buf.size] = 0;
 			auto j = json::parse(curl_buf.memory);
+			if(j["ret_code"].get<int>() != 0) {
+				throw std::runtime_error(format_string("Failed %s, reason:%s", url, j["reason"].get<std::string>().c_str()));
+			}
 			j.get_to<ReplyT>(reply);
 			return 0;
 		}
@@ -487,6 +491,7 @@ int S5VolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
 
 int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 {
+	S5LOG_INFO("get event:%d", event_type);
 	switch (event_type)
 	{
 	case EVT_IO_REQ:
@@ -690,7 +695,6 @@ void S5ClientVolumeInfo::close() {
 	vol_proc->stop();
 
 	conn_pool->close_all();
-	vol_proc->stop();
 	iocb_pool.destroy();
 	cmd_pool.destroy();
 	data_pool.destroy();

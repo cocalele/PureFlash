@@ -103,6 +103,10 @@ int register_store_node(int store_id, const char* mngt_ip)
 	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports", store_id);
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/rep_ports", store_id);
+	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+		return rc;
+	return 0;
 	return 0;
 }
 
@@ -162,13 +166,14 @@ int register_port(int store_id, const char* ip, int purpose)
 	char zk_node_name[128];
 	char value_buf[128];
 	int rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports/%s", store_id, ip);
+	int n = snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/%s/%s", store_id, 
+			purpose == DATA_PORT ? "ports" : "rep_ports", ip);
+	if(n >= sizeof(zk_node_name))
+	{	
+		return -ENAMETOOLONG;
+	}
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports/%s/purpose", store_id, ip);
-	sprintf(value_buf, "%d", purpose);
-	if ((rc = zk_update(zk_node_name, value_buf, (int)strlen(value_buf))) != ZOK)
-		return rc;
 	return 0;
 }

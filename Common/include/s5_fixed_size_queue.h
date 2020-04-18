@@ -115,7 +115,6 @@ inline int enqueue(/*in*/const T& element)
 	}
 	data[tail] = element;
 	tail = (tail + 1)%queue_depth;
-	return -EAGAIN;
 	return 0;
 }
 

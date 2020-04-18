@@ -1,10 +1,33 @@
 #include <sys/prctl.h>
-#include "s5_event_thread.h"
+#include <string.h>
 
+#include "s5_event_thread.h"
+S5EventThread::S5EventThread() {
+	inited = false;
+}
+int S5EventThread::init(const char* name, int qd)
+{
+	int rc = event_queue.init(name, qd, 0);
+	if(rc)
+		return rc;
+	strncpy(this->name, name, sizeof(this->name));
+	inited = true;
+	return 0;
+}
+void S5EventThread::destroy()
+{
+	if(inited) {
+		if(tid)
+			stop();
+		event_queue.destroy();
+		inited = false;
+	}
+}
 S5EventThread::~S5EventThread()
 {
-
+	destroy();
 }
+
 int S5EventThread::start()
 {
 	int rc = pthread_create(&tid, NULL, thread_proc, this);
@@ -19,6 +42,7 @@ void S5EventThread::stop()
 {
 	event_queue.post_event(EVT_THREAD_EXIT, 0, NULL);
 	pthread_join(tid, NULL);
+	tid=0;
 
 }
 

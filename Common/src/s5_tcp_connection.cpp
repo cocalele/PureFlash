@@ -438,6 +438,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int p
 	int new_option = fdopt | O_NONBLOCK;
 	fcntl(socket_fd, F_SETFL, new_option);
 
+	S5LOG_INFO("Connecting to %s:%d", ip.c_str(), port);
 	rc = connect(socket_fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (rc == 0)
 	{
@@ -468,7 +469,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int p
 		{
 			if (FD_ISSET(socket_fd, &wset))
 			{
-				S5LOG_INFO("TCP connect success:%s.", inet_ntoa(addr.sin_addr));
+				S5LOG_INFO("TCP connect success:%s:%d.", inet_ntoa(addr.sin_addr), port);
 			}
 			else
 			{

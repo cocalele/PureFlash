@@ -5,6 +5,7 @@
 #include "s5_event_queue.h"
 #include "s5_lock.h"
 
+static int64_t event_delta = 1;
 S5EventQueue::S5EventQueue():event_fd(0)
 {
 	current_queue = NULL;
@@ -57,7 +58,11 @@ void S5EventQueue::destroy()
 int S5EventQueue::post_event(int type, int arg_i, void* arg_p)
 {
 	AutoSpinLock _l(&lock);
-	return current_queue->enqueue(S5Event{ type, arg_i, arg_p });
+	int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p });
+	if(rc)
+		return rc;
+	write(event_fd, &event_delta, sizeof(event_delta)); 
+	return 0;
 	//if (current_queue->is_full())
 	//	return -EAGAIN;
 	//current_queue->data[current_queue->tail] = S5Event{ type, arg_i, arg_p };

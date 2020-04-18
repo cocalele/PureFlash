@@ -10,6 +10,10 @@ public:
 	pthread_t tid;
 	char name[32];
 
+	bool inited;
+	int init(const char* name, int queue_depth);
+	S5EventThread();
+	void destroy();
 	virtual ~S5EventThread();
 	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
 	int start();

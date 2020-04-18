@@ -231,6 +231,8 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection*
 		rc = -EINVAL;
 		goto release0;
 	}
+	conn->send_q.init(conn->io_depth);
+	conn->recv_q.init(conn->io_depth*2);
 	hs_msg->hs_result = 0;
 release0:
 	S5LOG_INFO("Reply handshake for conn:%s", conn->connection_info.c_str());

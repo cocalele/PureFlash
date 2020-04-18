@@ -12,6 +12,7 @@
  *  {
  *      "op":"open_volume_reply",
  *	    "status": "OK",
+ *	    "meta_ver":0,
  *      "volume_name":"myvolname",
  *      "volume_size":10000000,
  *      "volume_id":12345678,
