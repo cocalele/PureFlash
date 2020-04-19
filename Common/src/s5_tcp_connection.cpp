@@ -262,7 +262,9 @@ int S5TcpConnection::do_receive()
 		}
 		if (wanted_recv_len == recved_len)
 		{
-			rc = on_work_complete(recv_bd, TCP_WC_SUCCESS, this, NULL);
+			BufferDescriptor* temp_bd = recv_bd;
+			recv_bd = NULL;
+			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, NULL);
 			if (unlikely(rc != 0))
 			{
 				S5LOG_WARN("on_recv_complete rc:%d", rc);
@@ -335,13 +337,26 @@ int S5TcpConnection::do_send()
 
 		if (wanted_send_len == sent_len)
 		{
-			rc = on_work_complete(send_bd, TCP_WC_SUCCESS, this, send_bd->cbk_data);
-			if (unlikely(rc != 0 && rc != -EAGAIN))
+			BufferDescriptor* temp_bd = send_bd;
+			send_bd = NULL;
+			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, temp_bd->cbk_data);
+			if (unlikely(rc != 0))
 			{
-				S5LOG_DEBUG("Failed on_work_complete rc:%d", rc);
+				S5LOG_ERROR("Failed on_work_complete rc:%d", rc);
 				close();
 				return rc;
 			}
+			if(!send_q.is_empty()){
+				S5Event evt;
+				rc = send_q.get_event(&evt);
+				if(unlikely(rc)){
+					S5LOG_ERROR("Get event from send_q failed");
+				}
+				else {
+					start_send((BufferDescriptor*) evt.arg_p);
+				}
+			}
+
 		}
 	} while (writeable);
 

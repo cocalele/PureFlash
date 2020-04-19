@@ -199,17 +199,16 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection*
 	S5TcpConnection* conn = (S5TcpConnection*)conn_;
 	s5_handshake_message* hs_msg = (s5_handshake_message*)bd->buf;
 	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
-
-	if(hs_msg->hsqsize > MAX_IO_DEPTH)
+	conn->state = CONN_OK;
+	hs_msg->hs_result = 0;
+	if(hs_msg->hsqsize > MAX_IO_DEPTH || hs_msg->hsqsize <= 0)
 	{
-		S5LOG_ERROR("Request io_depth:%d too large, max allowed:%d", hs_msg->hsqsize, MAX_IO_DEPTH);
+		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, MAX_IO_DEPTH);
 		hs_msg->hsqsize=MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
-		goto release0;
 	}
-	hs_msg->hs_result=0;
 	conn->io_depth=hs_msg->hsqsize;
 	bd->data_len = sizeof(s5_handshake_message);
 	vol = app_context.get_opened_volume(hs_msg->vol_id);
@@ -219,7 +218,6 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection*
 		hs_msg->hs_result = (int16_t) EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
-		goto release0;
 	}
 	conn->ulp_data = vol;
 	rc = conn->init_mempools();
@@ -229,11 +227,9 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection*
 		hs_msg->hs_result = (int16_t)-rc; //return a positive value
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
-		goto release0;
 	}
-	conn->send_q.init(conn->io_depth);
-	conn->recv_q.init(conn->io_depth*2);
-	hs_msg->hs_result = 0;
+	//conn->send_q.init("send_q", conn->io_depth, TRUE);
+	//conn->recv_q.init(conn->io_depth*2);
 release0:
 	S5LOG_INFO("Reply handshake for conn:%s", conn->connection_info.c_str());
 	conn->on_work_complete = on_tcp_handshake_sent;
@@ -242,11 +238,14 @@ release0:
 }
 void server_on_conn_close(S5Connection* conn)
 {
-
+	S5LOG_INFO("conn:%s closed!", conn->connection_info.c_str());
+	conn->dec_ref();
 }
 void server_on_conn_destroy(S5Connection* conn)
 {
-
+	S5LOG_INFO("conn:%s destroyed!", conn->connection_info.c_str());
+	S5LOG_ERROR("TODO: remove conn from heartbeat checker list");
+	//app_context.ingoing_connections.remove(conn);
 }
 
 static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data)
@@ -276,7 +275,7 @@ int S5TcpServer::accept_connection()
 		S5LOG_ERROR("Failed to alloc S5TcpConnection");
 		goto release1;
 	}
-	rc = conn->init(connfd, get_best_poller(), 128, 128);
+	rc = conn->init(connfd, get_best_poller(), MAX_IO_DEPTH, MAX_IO_DEPTH*2); //recv_q is double of send_q, to avoid RNR error
 	if(rc)
 	{
 		S5LOG_ERROR("Failed to int S5TcpConnection, rc:%d", rc);
@@ -308,14 +307,15 @@ int S5TcpServer::accept_connection()
 	conn->on_close = server_on_conn_close;
 	conn->on_destroy = server_on_conn_destroy;
 	rc = conn->post_recv(bd);
-	if(!rc)
+	if(rc)
 	{
 		S5LOG_ERROR("Failed to post_recv for handshake");
 		goto release5;
 	}
 
 	conn->last_heartbeat_time = now_time_usec();
-	app_context.ingoing_connections.insert(conn);
+	//app_context.ingoing_connections.insert(conn);
+	S5LOG_ERROR("TODO: add to heartbead checker list");
 	return 0;
 release5:
 	delete (s5_handshake_message*)bd->buf;

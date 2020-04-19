@@ -30,7 +30,7 @@ class S5EventQueue
 {
 public:
 	char name[32];
-	//ping-bong queue, to accelerate retrive speed
+	//ping-bong queue, to accelerate retrieve speed
 	S5FixedSizeQueue<S5Event> queue1;
 	S5FixedSizeQueue<S5Event> queue2;
 	S5FixedSizeQueue<S5Event>* current_queue;
@@ -45,7 +45,7 @@ public:
 	int post_event(int type, int arg_i, void* arg_p);
 	int get_events(S5FixedSizeQueue<S5Event>** /*out*/ q);
 	int get_event(S5Event* /*out*/ evt);
-
+	inline bool is_empty() { return current_queue->is_empty();}
 	int sync_invoke(std::function<int()> f);
 };
 
