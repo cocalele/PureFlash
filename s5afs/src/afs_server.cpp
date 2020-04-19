@@ -238,7 +238,7 @@ release0:
 	S5LOG_INFO("Reply handshake for conn:%s", conn->connection_info.c_str());
 	conn->on_work_complete = on_tcp_handshake_sent;
 	conn->post_send(bd);
-	return 0;
+	return rc;
 }
 void server_on_conn_close(S5Connection* conn)
 {
@@ -327,15 +327,14 @@ release2:
 	delete conn;
 release1:
 	close(connfd);
-	return rc;
 
 	if (rc)
 	{
 		char* addrstr = inet_ntoa(client_addr.sin_addr);
-		S5LOG_ERROR("Failed to create_tcp_server_connection for client:%s, rc:%d", addrstr, -errno);
-		return -errno;
+		S5LOG_ERROR("Failed to create_tcp_server_connection for client:%s, rc:%d", addrstr, rc);
 	}
-	return 0;
+	return rc;
+
 }
 
 S5Poller* S5TcpServer::get_best_poller()

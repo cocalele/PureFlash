@@ -210,6 +210,6 @@ const std::string get_socket_addr(int sock_fd)
 		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);
 		return "[Unknow socket addr]";
 	}
-	return format_string("TCP://%s:%d<=%s:%d", inet_ntoa(local_addr.sin_addr), local_addr.sin_port,
-		inet_ntoa(remote_addr.sin_addr), remote_addr.sin_port);
+	return format_string("TCP://%s:%d<=%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
+		inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
 }
