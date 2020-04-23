@@ -175,7 +175,7 @@ int S5ClientVolumeInfo::do_open()
 	conn_pool = new S5ConnectionPool();
 	if (conn_pool == NULL)
 		throw runtime_error("No memory to alloc connection pool");
-	conn_pool->init((int)shards.size()*2, tcp_poller, io_depth, client_on_work_complete);
+	conn_pool->init((int)shards.size()*2, tcp_poller, this, io_depth, client_on_work_complete);
 	data_pool.init(S5_MAX_IO_SIZE, io_depth);
 	cmd_pool.init(sizeof(s5_message_head), io_depth);
 	reply_pool.init(sizeof(s5_message_reply), io_depth);

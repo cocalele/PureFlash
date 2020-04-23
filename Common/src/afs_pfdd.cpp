@@ -13,6 +13,7 @@
 #include "s5_utils.h"
 
 using namespace  std;
+void unexpected_exit_handler();
 
 void
 parse(int argc, char* argv[])
@@ -188,6 +189,7 @@ int main(int argc, char* argv[])
 	int count;
 	off_t offset;
 
+	std::set_terminate(unexpected_exit_handler);
 	options.positional_help("[optional args]")
 			.show_positional_help();
 	options
@@ -276,4 +278,15 @@ int main(int argc, char* argv[])
 	}
 	S5LOG_INFO("Succeeded %s %d blocks", is_write ? "Write" : "Read", count);
 	return 0;
+}
+void unexpected_exit_handler()
+{
+	try { throw; }
+	catch(const std::exception& e) {
+		S5LOG_ERROR("Unhandled exception:%s", e.what());
+	}
+	catch(...) {
+		S5LOG_ERROR("Unexpected exception");
+	}
+	exit(1);
 }

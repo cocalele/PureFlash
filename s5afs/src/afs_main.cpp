@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed: param is not enough to start argc(%d).", argc);
 		return rc;
 	}
-	//std::set_terminate(unexpected_exit_handler);
+	std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
 	while(opt_error_code() == 0 && opt_has_next())
@@ -229,6 +229,7 @@ S5AfsAppContext::S5AfsAppContext()
 S5Volume* S5AfsAppContext::get_opened_volume(uint64_t vol_id)
 {
 	pthread_mutex_lock(&app_context.lock);
+	DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
 	auto pos = opened_volumes.find(vol_id);
 	if (pos == opened_volumes.end())
 		return NULL;
@@ -237,6 +238,14 @@ S5Volume* S5AfsAppContext::get_opened_volume(uint64_t vol_id)
 
 void unexpected_exit_handler()
 {
+		try { throw; }
+		catch(const std::exception& e) {
+			S5LOG_ERROR("Unhandled exception:%s", e.what());
+		}
+		catch(...) {
+			S5LOG_ERROR("Unexpected exception");
+		}
+/*
     void *trace_elems[20];
     int trace_elem_count(backtrace( trace_elems, 20 ));
     char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
@@ -247,4 +256,5 @@ void unexpected_exit_handler()
     free( stack_syms );
 
     exit(1);
+*/
 }   

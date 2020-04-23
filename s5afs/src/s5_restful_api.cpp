@@ -165,6 +165,11 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	{
 		d->prepare_volume(vol);
 	}
+	{
+	pthread_mutex_lock(&app_context.lock);
+	DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
+	app_context.opened_volumes[vol->id] = vol;
+	}//these code in separate code block, so lock can be released quickly
 	RestfulReply r(arg.op + "_reply");
 	json jr = r;
 	string jstr = jr.dump();

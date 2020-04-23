@@ -24,7 +24,7 @@ int S5Connection::close()
 		return 0;//connection already closed
 	}
 
-	S5LOG_DEBUG("close connection conn:%p, %s", this, connection_info.c_str());
+	S5LOG_INFO("close connection conn:%p, %s", this, connection_info.c_str());
 	do_close();
 	if(on_close)
 		on_close(this);

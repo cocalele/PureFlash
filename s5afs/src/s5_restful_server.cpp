@@ -62,7 +62,7 @@ int init_restful_server()
 	c = mg_bind(&mgr, port, ev_handler);
 	if(c == NULL)
 	{
-		S5LOG_FATAL("Failed to bind on port:%d", port);
+		S5LOG_FATAL("Failed to bind on port:%s", port);
 	}
 
 	mg_register_http_endpoint(c, "/api", handle_api);

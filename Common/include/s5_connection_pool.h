@@ -11,7 +11,7 @@ class S5ConnectionPool
 {
 public:
 	S5ConnectionPool() : pool_size(0){ }
-	int init(int size, S5Poller* poller, int io_depth, work_complete_handler _handler);
+	int init(int size, S5Poller* poller, S5ClientVolumeInfo* vol, int io_depth, work_complete_handler _handler);
 	S5Connection* get_conn(const std::string& ip);
 	void close_all();
 public:

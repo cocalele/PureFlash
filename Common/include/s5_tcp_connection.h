@@ -28,7 +28,7 @@ public:
 	static void on_recv_q_event(int fd, uint32_t event, void* c);
 	static void on_socket_event(int fd, uint32_t event, void* c);
 	static S5TcpConnection* connect_to_server(const std::string& ip, int port, S5Poller *poller,
-		S5ClientVolumeInfo* vol, int timeout_sec);
+		S5ClientVolumeInfo* vol, int io_depth, int timeout_sec);
 
 	int init(int sock_fd, S5Poller *poller, int send_q_depth, int recv_q_depth);
 

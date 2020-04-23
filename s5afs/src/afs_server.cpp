@@ -24,6 +24,7 @@
 #include "afs_volume.h"
 
 static void *afs_listen_thread(void *param);
+static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
 
 static int init_trays()
 {
@@ -162,7 +163,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, S5Connection* c
 		}
 		S5LOG_INFO("Handshake sent OK, conn:%s", conn->connection_info.c_str());
 
-
+		conn->on_work_complete = server_on_work_complete;
 		conn->state = CONN_OK;
 
 		for(int i=0;i<conn->io_depth*2;i++)
@@ -292,6 +293,7 @@ int S5TcpServer::accept_connection()
 		goto release3;
 	}
 	bd->buf = new s5_handshake_message;
+	bd->wr_op = TCP_WR_RECV;
 	if(!bd->buf)
 	{
 		rc = -ENOMEM;
@@ -299,7 +301,7 @@ int S5TcpServer::accept_connection()
 		goto release4;
 	}
 	bd->buf_size = sizeof(s5_handshake_message);
-	bd->data_len = 0;
+	bd->data_len = bd->buf_size;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
 	conn->role = CONN_ROLE_SERVER;

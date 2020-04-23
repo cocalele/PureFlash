@@ -418,7 +418,7 @@ static int s5_tcp_recv_all(int fd, void* buf, int len, int flag)
 	return len;
 }
 
-S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int port, S5Poller *poller, S5ClientVolumeInfo* vol, int timeout_sec)
+S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int port, S5Poller *poller, S5ClientVolumeInfo* vol, int io_depth, int timeout_sec)
 {
 	Cleaner clean;
 	int rc = 0;
@@ -524,6 +524,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int p
 		if (hmsg->hs_result == MSG_STATUS_INVALID_IO_TIMEOUT) {
 			throw runtime_error(format_string("client's io_timeout setting is little than store's %d", hmsg->io_timeout));
 		}
+		S5LOG_ERROR("Connection rejected by server with result: %d", hmsg->hs_result);
 		throw runtime_error(format_string("Connection rejected by server with result: %d", hmsg->hs_result));
 	}
 	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", vol->io_depth, hmsg->crqsize);
