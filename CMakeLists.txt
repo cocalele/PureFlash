@@ -40,7 +40,7 @@ add_compile_options (-fdiagnostics-color=always)
 add_subdirectory(${ZOOKEEPER_SOURCE})
 
 add_subdirectory(s5afs)
-add_subdirectory(Common)
+add_subdirectory(common)
 add_custom_target(scripts ALL
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/scripts ${CMAKE_BINARY_DIR}
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..

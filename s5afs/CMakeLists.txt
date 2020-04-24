@@ -26,7 +26,7 @@ ENDIF()
 USE_ZOOKEEPER()
 
 set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-extensions -Wno-variadic-macros -I/usr/include ${C_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare --std=c++11 -fms-extensions -Wno-variadic-macros -I/usr/include ${C_FLAG_GCOV}")
+set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare --std=c++11 -fms-extensions -Wno-variadic-macros -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
 add_definitions(-D_XOPEN_SOURCE)
@@ -47,22 +47,22 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 # include(...) for pulling in other CMake projects anyways.
 add_subdirectory(nlohmann_json)
 
-INCLUDE_DIRECTORIES(include ../sld/include ../Common/include ../thirdParty/mongoose nlohmann_json/include)
+INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include)
 
 set (S5AFS_SRC 
-	src/afs_cluster.cpp
-	src/afs_flash_store.cpp
-	src/afs_main.cpp
-	src/afs_s5message.cpp
-	src/afs_server.cpp
-	src/s5_dispatcher.cpp
-	src/s5_md5.cpp
-	src/s5_redolog.cpp
-    src/s5_block_tray.cpp
-	src/s5_replica.cpp
-	src/s5_restful_server.cpp
-	src/s5_restful_api.cpp
-	src/afs_volume.cpp
+	src/pf_cluster.cpp
+	src/pf_flash_store.cpp
+	src/pf_main.cpp
+	src/pf_s5message.cpp
+	src/pf_server.cpp
+	src/pf_dispatcher.cpp
+	src/pf_md5.cpp
+	src/pf_redolog.cpp
+    src/pf_block_tray.cpp
+	src/pf_replica.cpp
+	src/pf_restful_server.cpp
+	src/pf_restful_api.cpp
+	src/pf_volume.cpp
 )
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c

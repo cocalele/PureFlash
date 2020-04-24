@@ -10,10 +10,13 @@
 */
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include <string.h>
-#include "s5list.h"
-#include "s5message.h"
+#include "pf_list.h"
+#include "pf_message.h"
 #include "pf_utils.h"
 
 /**
@@ -343,6 +346,9 @@ void s5socket_wait_cond(PS5CLTSOCKET socket);
  */
 void s5socket_signal_cond(PS5CLTSOCKET socket);
 
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif	/*__s5socket__*/
