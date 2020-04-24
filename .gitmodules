@@ -5,6 +5,6 @@
 	path = thirdParty/mongoose
 	url = https://github.com/cesanta/mongoose.git
 	branch = 6.7.1
-[submodule "s5afs/nlohmann_json"]
-	path = s5afs/nlohmann_json
+[submodule "pfs/nlohmann_json"]
+	path = pfs/nlohmann_json
 	url = https://github.com/nlohmann/json.git
