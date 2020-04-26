@@ -3,7 +3,7 @@ if(COMMAND cmake_policy)
   cmake_policy(SET CMP0015 NEW)
 endif()
 
-project(s5afs)
+project(pfs)
 
 if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
     add_definitions(-DDEBUG)
@@ -70,13 +70,13 @@ set (HTTP_SRC
 	
 file(GLOB_RECURSE INCS "*.h")
 
-add_executable(s5afs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
-set_target_properties(s5afs PROPERTIES SKIP_BUILD_RPATH true)
+add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
+set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 
-TARGET_LINK_LIBRARIES(s5afs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json ${GCOV})
-add_custom_command(TARGET s5afs POST_BUILD 
+TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json ${GCOV})
+add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
-	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/s5afs_template.conf ${CMAKE_BINARY_DIR}
+	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/pfs_template.conf ${CMAKE_BINARY_DIR}
         #COMMAND cp ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0
         #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2
         #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so

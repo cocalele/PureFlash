@@ -20,7 +20,7 @@ ELSEIF("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
 ENDIF()
 
 INCLUDE_DIRECTORIES(include)
-include_directories(../S5bd/include ../s5afs/nlohmann_json/include)
+include_directories(../S5bd/include ../pfs/nlohmann_json/include)
 USE_ZOOKEEPER()
 
 set (S5COMMON_SRC 
