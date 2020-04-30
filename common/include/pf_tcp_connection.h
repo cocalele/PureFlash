@@ -7,15 +7,15 @@
 #include "pf_poller.h"
 #include "pf_utils.h"
 
-class S5Poller;
-class S5ClientVolumeInfo;
+class PfPoller;
+class PfClientVolumeInfo;
 class BufferDescriptor;
 
-class S5TcpConnection : public S5Connection
+class PfTcpConnection : public PfConnection
 {
 public:
-	S5TcpConnection();
-	virtual ~S5TcpConnection();
+	PfTcpConnection();
+	virtual ~PfTcpConnection();
 	virtual int post_recv(BufferDescriptor* buf);
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf);
@@ -27,13 +27,13 @@ public:
 	static void on_send_q_event(int fd, uint32_t event, void* c);
 	static void on_recv_q_event(int fd, uint32_t event, void* c);
 	static void on_socket_event(int fd, uint32_t event, void* c);
-	static S5TcpConnection* connect_to_server(const std::string& ip, int port, S5Poller *poller,
-		S5ClientVolumeInfo* vol, int io_depth, int timeout_sec);
+	static PfTcpConnection* connect_to_server(const std::string& ip, int port, PfPoller *poller,
+		PfClientVolumeInfo* vol, int io_depth, int timeout_sec);
 
-	int init(int sock_fd, S5Poller *poller, int send_q_depth, int recv_q_depth);
+	int init(int sock_fd, PfPoller *poller, int send_q_depth, int recv_q_depth);
 
 	int socket_fd;
-	S5Poller *poller;
+	PfPoller *poller;
 
 	void* recv_buf;
 	int recved_len;              ///< how many has received.
@@ -50,8 +50,8 @@ public:
 
 	BOOL need_reconnect;
 
-	S5EventQueue recv_q;
-	S5EventQueue send_q;
+	PfEventQueue recv_q;
+	PfEventQueue send_q;
 
 private:
 	void start_send(BufferDescriptor* bd);

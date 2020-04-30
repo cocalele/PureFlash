@@ -2,10 +2,10 @@
 #include <string.h>
 
 #include "pf_event_thread.h"
-S5EventThread::S5EventThread() {
+PfEventThread::PfEventThread() {
 	inited = false;
 }
-int S5EventThread::init(const char* name, int qd)
+int PfEventThread::init(const char* name, int qd)
 {
 	int rc = event_queue.init(name, qd, 0);
 	if(rc)
@@ -14,7 +14,7 @@ int S5EventThread::init(const char* name, int qd)
 	inited = true;
 	return 0;
 }
-void S5EventThread::destroy()
+void PfEventThread::destroy()
 {
 	if(inited) {
 		if(tid)
@@ -23,12 +23,12 @@ void S5EventThread::destroy()
 		inited = false;
 	}
 }
-S5EventThread::~S5EventThread()
+PfEventThread::~PfEventThread()
 {
 	destroy();
 }
 
-int S5EventThread::start()
+int PfEventThread::start()
 {
 	int rc = pthread_create(&tid, NULL, thread_proc, this);
 	if(rc)
@@ -38,7 +38,7 @@ int S5EventThread::start()
 	}
 	return 0;
 }
-void S5EventThread::stop()
+void PfEventThread::stop()
 {
 	event_queue.post_event(EVT_THREAD_EXIT, 0, NULL);
 	pthread_join(tid, NULL);
@@ -46,11 +46,11 @@ void S5EventThread::stop()
 
 }
 
-void *S5EventThread::thread_proc(void* arg)
+void *PfEventThread::thread_proc(void* arg)
 {
-	S5EventThread* pThis = (S5EventThread*)arg;
+	PfEventThread* pThis = (PfEventThread*)arg;
 	prctl(PR_SET_NAME, pThis->name);
-	S5FixedSizeQueue<S5Event>* q;
+	PfFixedSizeQueue<S5Event>* q;
 	int rc = 0;
 	while ((rc = pThis->event_queue.get_events(&q)) == 0)
 	{
@@ -64,7 +64,7 @@ void *S5EventThread::thread_proc(void* arg)
 	return NULL;
 }
 
-int S5EventThread::sync_invoke(std::function<int(void)> _f)
+int PfEventThread::sync_invoke(std::function<int(void)> _f)
 {
 	S5LOG_FATAL("sync_invoke not implemented");
 	return 0;

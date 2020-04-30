@@ -41,7 +41,7 @@
 #define OFFSET_META_COPY (1LL<<30)
 #define OFFSET_REDO_LOG (2LL<<30)
 
-static BOOL is_disk_clean(S5Tray *tray)
+static BOOL is_disk_clean(PfTray *tray)
 {
 	void *buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	BOOL rc = TRUE;
@@ -73,7 +73,7 @@ release1:
  * @retval -ENOENT  tray not exist or failed to open
  */
 
-int S5FlashStore::init(const char* tray_name)
+int PfFlashStore::init(const char* tray_name)
 {
 	int ret = 0;
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
@@ -123,7 +123,7 @@ int S5FlashStore::init(const char* tray_name)
 		}
 
 		obj_lmt.reserve(obj_count * 2);
-		redolog = new S5RedoLog();
+		redolog = new PfRedoLog();
 		ret = redolog->init(this);
 		if (ret)
 		{
@@ -151,7 +151,7 @@ error1:
  * actual data length may less than nlba in request to read. in this case, caller
  * should treat the remaining part of buffer as 0.
  */
-int S5FlashStore::read(uint64_t vol_id, int64_t slba,
+int PfFlashStore::read(uint64_t vol_id, int64_t slba,
 	int32_t snap_seq, int32_t nlba, /*out*/char* buf)
 {
 	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
@@ -175,7 +175,7 @@ int S5FlashStore::read(uint64_t vol_id, int64_t slba,
  *         negative value for error
  */
 
-int S5FlashStore::write(uint64_t vol_id, int64_t slba,
+int PfFlashStore::write(uint64_t vol_id, int64_t slba,
 	int32_t snap_seq, int32_t nlba, char* buf)
 {
 	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
@@ -203,7 +203,7 @@ int S5FlashStore::write(uint64_t vol_id, int64_t slba,
 	return 0;
 }
 
-int S5FlashStore::initialize_store_head()
+int PfFlashStore::initialize_store_head()
 {
 	memset(&head, 0, sizeof(head));
 	long numblocks;
@@ -369,7 +369,7 @@ int LmtEntrySerializer::flush_buffer()
 
 
 template <typename T>
-static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
+static int save_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
 {
 	memset(buf, 0, buf_size);
 	int* buf_as_int = (int*)buf;
@@ -396,7 +396,7 @@ static int save_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 }
 
 template<typename T>
-static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
+static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t offset, char* buf, int buf_size)
 {
 	int rc = stream->read(buf, LBA_LENGTH, offset);
 	if (rc != 0)
@@ -440,7 +440,7 @@ static int load_fixed_queue(S5FixedSizeQueue<T>* q, MD5Stream* stream, off_t off
   offset 1G: length 1GB, duplicate of first 1G area
   offset 2G: length 512MB, redo log
 */
-int S5FlashStore::save_meta_data()
+int PfFlashStore::save_meta_data()
 {
 	int buf_size = 1 << 20;
 	void* buf = aligned_alloc(LBA_LENGTH, buf_size);
@@ -502,7 +502,7 @@ int S5FlashStore::save_meta_data()
 	return 0;
 }
 
-int S5FlashStore::load_meta_data()
+int PfFlashStore::load_meta_data()
 {
 	int buf_size = 1 << 20;
 	void* buf = aligned_alloc(LBA_LENGTH, buf_size);
@@ -601,7 +601,7 @@ int S5FlashStore::load_meta_data()
 /**
 * delete an object, i.e. an allocation block
 */
-int S5FlashStore::delete_obj(uint64_t vol_id, int64_t slba,
+int PfFlashStore::delete_obj(uint64_t vol_id, int64_t slba,
 	int32_t snap_seq, int32_t nlba)
 {
 	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
@@ -616,7 +616,7 @@ int S5FlashStore::delete_obj(uint64_t vol_id, int64_t slba,
 	return 0;
 }
 
-int S5FlashStore::read_store_head()
+int PfFlashStore::read_store_head()
 {
 	char uuid_str[64];
 	void* buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
@@ -640,8 +640,8 @@ int S5FlashStore::read_store_head()
 	return 0;
 }
 
-int S5FlashStore::process_event(int event_type, int arg_i, void* arg_p)
+int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
 {
-    S5LOG_FATAL("S5FlashStore::process_event not implemented");
+    S5LOG_FATAL("PfFlashStore::process_event not implemented");
     return 0;
 }

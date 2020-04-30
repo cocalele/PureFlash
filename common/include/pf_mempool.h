@@ -10,7 +10,7 @@ class ObjectMemoryPool
 {
 public:
 	pthread_spinlock_t lock;
-	S5FixedSizeQueue<U*> free_obj_queue;
+	PfFixedSizeQueue<U*> free_obj_queue;
 	U* data;
 	int obj_count;
 

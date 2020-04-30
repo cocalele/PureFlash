@@ -12,7 +12,7 @@ HealthStatus health_status_from_str(const std::string&  status_str)
 	return (HealthStatus)-1;
 }
 
-S5Volume::~S5Volume()
+PfVolume::~PfVolume()
 {
 	for(int i=0;i<shards.size();i++)
 	{

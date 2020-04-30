@@ -14,7 +14,7 @@
 #define REPLICA_INDEX(x)   ((x) & 0x00000000000000ffLL)
 
 class IoSubTask;
-class S5FlashStore;
+class PfFlashStore;
 class BufferDescriptor;
 
 enum HealthStatus : int32_t {
@@ -26,7 +26,7 @@ enum HealthStatus : int32_t {
 HealthStatus health_status_from_str(const std::string&  status_str);
 
 //Replica represent a replica of shard
-class S5Replica
+class PfReplica
 {
 public:
 	enum HealthStatus status;
@@ -37,9 +37,9 @@ public:
 	int	rep_index;
 	int	ssd_index;
 
-	S5FlashStore * tray_inst;
+	PfFlashStore * tray_inst;
 public:
-	virtual ~S5Replica() {} //to avoid compile warning
+	virtual ~PfReplica() {} //to avoid compile warning
 	virtual int submit_io(IoSubTask* subtask) = 0;
 };
 
@@ -48,7 +48,7 @@ struct S5Shard
 {
 	uint64_t id;
 	int	shard_index;
-	struct S5Replica*	replicas[MAX_REP_COUNT];
+	struct PfReplica*	replicas[MAX_REP_COUNT];
 	int primary_replica_index;
 	int duty_rep_index; //which replica the current store node is responsible for
 	BOOL is_primary_node; //is current node the primary node of this shard
@@ -60,7 +60,7 @@ struct S5Shard
 	~S5Shard();
 };
 //Volume represent a Volume,
-struct S5Volume
+struct PfVolume
 {
 	char name[128];
 	uint64_t id;
@@ -72,8 +72,8 @@ struct S5Volume
 	enum HealthStatus status;
 	uint64_t meta_ver;
 
-	S5FixedSizeQueue<BufferDescriptor*> io_buffers;
-	~S5Volume();
+	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
+	~PfVolume();
 };
 
 #endif // afs_volume_h__

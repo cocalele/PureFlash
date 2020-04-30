@@ -3,12 +3,12 @@
 
 #include "pf_volume.h"
 #include <map>
-class S5Dispatcher
+class PfDispatcher
 {
 public:
-	std::map<uint64_t, S5Volume*> opened_volumes;
+	std::map<uint64_t, PfVolume*> opened_volumes;
 
-	int prepare_volume(S5Volume* vol);
+	int prepare_volume(PfVolume* vol);
 	int dispatch_io();
 };
 #endif // pf_dispatcher_h__

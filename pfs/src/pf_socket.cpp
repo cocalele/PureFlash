@@ -7,8 +7,8 @@ void* s5socket_create(pf_socket_type_t type, unsigned short local_port, const ch
 	void*	ret = NULL;
 	if(type == SOCKET_TYPE_CLT)
 	{
-		S5TCPCltSocket *sock = NULL;
-		sock = new S5TCPCltSocket();
+		PfTCPCltSocket *sock = NULL;
+		sock = new PfTCPCltSocket();
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_create:: can not new clt_sock!");
@@ -18,9 +18,9 @@ void* s5socket_create(pf_socket_type_t type, unsigned short local_port, const ch
 	}
 	else if(type == SOCKET_TYPE_SRV)
 	{
-		S5TCPServerSocket *sock = NULL;
+		PfTCPServerSocket *sock = NULL;
 		int rc = -1;
-		sock = new S5TCPServerSocket();
+		sock = new PfTCPServerSocket();
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_create:: can not new srv_sock!");
@@ -60,12 +60,12 @@ int s5socket_release(void** socket, pf_socket_type_t type)
 	{
 	if(type == SOCKET_TYPE_CLT)
 	{
-		delete *((S5TCPCltSocket **)socket);
+		delete *((PfTCPCltSocket **)socket);
 		*socket = NULL;
 	}
 	else if(type == SOCKET_TYPE_SRV)
 	{
-		delete *((S5TCPServerSocket **)socket);
+		delete *((PfTCPServerSocket **)socket);
 		*socket = NULL;
 	}
 	else
@@ -84,7 +84,7 @@ int s5socket_connect(PS5CLTSOCKET socket, const char* foreignAddress0, const cha
 					 pf_rcv_type_t autorcv, pf_connect_type_t type)
 {	
 	int rc = 0;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_connect:: param is invalid clt:%p.", sock);
@@ -128,8 +128,8 @@ int s5socket_connect(PS5CLTSOCKET socket, const char* foreignAddress0, const cha
 
 PS5CLTSOCKET s5socket_accept(PS5SRVSOCKET socket, int autorcv)
 {
-	S5TCPServerSocket *sock = (S5TCPServerSocket *)socket;
-	S5TCPCltSocket *connect = NULL;
+	PfTCPServerSocket *sock = (PfTCPServerSocket *)socket;
+	PfTCPCltSocket *connect = NULL;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_accept:: param is invalid srv:%p.", sock);
@@ -148,7 +148,7 @@ int s5socket_register_handle(void* socket, pf_socket_type_t type,
 	int rc = -EINVAL;
 	if(type == SOCKET_TYPE_CLT)
 	{
-		S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+		PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_register_handle:: param is invalid clt:%p.", sock);
@@ -158,7 +158,7 @@ int s5socket_register_handle(void* socket, pf_socket_type_t type,
 	}
 	else if(type == SOCKET_TYPE_SRV)
 	{
-		S5TCPServerSocket *sock = (S5TCPServerSocket *)socket;
+		PfTCPServerSocket *sock = (PfTCPServerSocket *)socket;
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_register_handle:: param is invalid srv:%p.", sock);
@@ -180,7 +180,7 @@ int s5socket_unreigster_handle(void* socket, pf_socket_type_t type,
 	int rc = -EINVAL;
 	if(type == SOCKET_TYPE_CLT)
 	{
-		S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+		PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_unreigster_handle:: param is invalid clt:%p.", sock);
@@ -190,7 +190,7 @@ int s5socket_unreigster_handle(void* socket, pf_socket_type_t type,
 	}
 	else if(type == SOCKET_TYPE_SRV)
 	{
-		S5TCPServerSocket *sock = (S5TCPServerSocket *)socket;
+		PfTCPServerSocket *sock = (PfTCPServerSocket *)socket;
 		if(!sock)
 		{
 			S5LOG_ERROR("Failed to s5socket_unreigster_handle:: param is invalid srv:%p.", sock);
@@ -210,7 +210,7 @@ FINALLY:
 int s5socket_send_msg(PS5CLTSOCKET socket, pf_message_t *msg)
 {	
 	int rc = -EINVAL;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_send_msg:: param is invalid clt:%p.", sock);
@@ -226,7 +226,7 @@ FINALLY:
 pf_message_t* s5socket_send_msg_wait_reply(PS5CLTSOCKET socket, pf_message_t *msg)
 {	
 	pf_message_t *reply_msg = NULL;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_send_msg_wait_reply:: param is invalid clt:%p.", sock);
@@ -242,7 +242,7 @@ FINALLY:
 char* s5socket_get_foreign_ip(PS5CLTSOCKET socket)
 {
 	char* ip = NULL;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_get_foreign_ip:: param is invalid clt:%p.", sock);
@@ -256,7 +256,7 @@ char* s5socket_get_foreign_ip(PS5CLTSOCKET socket)
 int s5socket_get_foreign_port(PS5CLTSOCKET socket)
 {
 	int port = -1;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_get_foreign_ip:: socket is NULL.");
@@ -271,7 +271,7 @@ int s5socket_get_foreign_port(PS5CLTSOCKET socket)
 int s5socket_set_user_data(PS5CLTSOCKET socket, void* user_data)
 {
 	int rc = -1;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_set_user_data socket is NULL.");
@@ -284,7 +284,7 @@ int s5socket_set_user_data(PS5CLTSOCKET socket, void* user_data)
 }
 void* s5socket_get_user_data(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_get_user_data param is invalid. sock[%p]", sock);
@@ -296,7 +296,7 @@ void* s5socket_get_user_data(PS5CLTSOCKET socket)
 int s5socket_register_conn_exception_handle(PS5CLTSOCKET socket, s5connection_exception_handle exc_handle, void* handle_param)
 {
 	int rc = 0;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock || !exc_handle)
 	{
 		S5LOG_ERROR("Failed to s5socket_register_conn_exception_handle param is invalid. sock[%p] exc_handle[%p] conncet_type is tempory?"
@@ -312,7 +312,7 @@ int s5socket_register_conn_exception_handle(PS5CLTSOCKET socket, s5connection_ex
 int s5socket_unregister_conn_exception_handle(PS5CLTSOCKET socket)
 {
 	int rc = 0;
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	if(!sock)
 	{
 		S5LOG_ERROR("Failed to s5socket_unregister_conn_exception_handle param is invalid. sock[%p]", sock);
@@ -332,37 +332,37 @@ int s5socket_create_reaper_thread(pthread_t* reap_socket_thread)
 
 BOOL s5socket_get_handler_init_flag(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	return sock->handler_init;
 }
 
 void s5socket_set_handler_init_flag(PS5CLTSOCKET socket, BOOL init)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	sock->handler_init = init;
 }
 
 void s5socket_lock_handler_mutex(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	pthread_mutex_lock(&(sock->handler_mutex));
 }
 
 void s5socket_unlock_handler_mutex(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	pthread_mutex_unlock(&(sock->handler_mutex));
 }
 
 void s5socket_wait_cond(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	pthread_cond_wait(&(sock->handler_cond), &(sock->handler_mutex));
 }
 
 void s5socket_signal_cond(PS5CLTSOCKET socket)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)socket;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)socket;
 	pthread_cond_signal(&(sock->handler_cond));
 }
 

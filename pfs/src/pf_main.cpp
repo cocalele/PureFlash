@@ -24,7 +24,7 @@
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
-S5AfsAppContext app_context;
+PfAfsAppContext app_context;
 
 void sigroutine(int dunno)
 {
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
 		const char* devname = conf_get(fp, name.c_str(), "dev", NULL, false);
 		if(devname == NULL)
 			break;
-		auto s = new S5FlashStore();
+		auto s = new PfFlashStore();
 		rc = s->init(devname);
 		if(rc)
 		{
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
-	app_context.tcp_server=new S5TcpServer();
+	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)
 	{
@@ -207,7 +207,7 @@ int main(int argc, char *argv[])
 	return rc;
 }
 
-int S5AfsAppContext::get_ssd_index(std::string ssd_uuid)
+int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 {
 	for(int i=0;i<trays.size();i++)
 	{
@@ -221,12 +221,12 @@ int S5AfsAppContext::get_ssd_index(std::string ssd_uuid)
 	return -1;
 }
 
-S5AfsAppContext::S5AfsAppContext()
+PfAfsAppContext::PfAfsAppContext()
 {
 	pthread_mutex_init(&lock, NULL);
 }
 
-S5Volume* S5AfsAppContext::get_opened_volume(uint64_t vol_id)
+PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 {
 	pthread_mutex_lock(&app_context.lock);
 	DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});

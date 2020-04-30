@@ -6,7 +6,7 @@
 #include "pf_flash_store.h"
 #include "pf_tray.h"
 
-class S5RedoLog
+class PfRedoLog
 {
 	enum class ItemType : uint32_t {
 		ALLOCATE_OBJ = 1,
@@ -39,14 +39,14 @@ class S5RedoLog
 public:
 	int64_t phase;
 	size_t size;
-	struct S5FlashStore* store;
-	S5Tray *tray;
+	struct PfFlashStore* store;
+	PfTray *tray;
 	off_t start_offset;
 	off_t current_offset;
 	void* entry_buff;
 	std::thread auto_save_thread;
 
-	int init(struct S5FlashStore* ssd);
+	int init(struct PfFlashStore* ssd);
 	int load();
 	int replay();
 	int discard();

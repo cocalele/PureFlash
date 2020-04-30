@@ -383,7 +383,7 @@ protected:
 /**
  * TCP socket for communication with other TCP sockets
  */
-class S5TCPCltSocket : public CommunicatingSocket {
+class PfTCPCltSocket : public CommunicatingSocket {
 public:
 	
 	/**
@@ -391,12 +391,12 @@ public:
 	 * 
 	 * @return No return.
 	 */
-	S5TCPCltSocket();
+	PfTCPCltSocket();
 
 	/**
 	 * Destructor
 	 */
-	~S5TCPCltSocket();
+	~PfTCPCltSocket();
 
 	/**
 	 * Construct a TCP socket with a connection to the given descriptor
@@ -404,7 +404,7 @@ public:
 	 * @param[in] newConnSD	givn descriptor
 	 * @return No return.
 	 */
-	S5TCPCltSocket(int newConnSD);
+	PfTCPCltSocket(int newConnSD);
   
 	/**
 	 * Client have two types.
@@ -475,7 +475,7 @@ private:
 /**
  *   TCP socket class for the server
  */
-class S5TCPServerSocket : public Socket {
+class PfTCPServerSocket : public Socket {
 public:
 	/**
 	 * Construct a TCP socket for use with a server, accepting connections
@@ -483,7 +483,7 @@ public:
 	 * 
 	 * @return No return.
 	 */
-	S5TCPServerSocket();
+	PfTCPServerSocket();
 
 	/**
 	 * Bind a TCP socket with a address, port and max connection number	
@@ -540,7 +540,7 @@ public:
 	 * @return new connection socket
 	 * @return NILL when accept failed
 	 */
-	S5TCPCltSocket *accept(pf_rcv_type_t autorcv = RCV_TYPE_MANUAL);
+	PfTCPCltSocket *accept(pf_rcv_type_t autorcv = RCV_TYPE_MANUAL);
 
 private:
 	/**

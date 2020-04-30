@@ -45,7 +45,7 @@
  * Data structure of fixed-size queue.
  */
 template <class T>
-class S5FixedSizeQueue
+class PfFixedSizeQueue
 {
 public:
 	int tail;			///< tail pointer
@@ -55,9 +55,9 @@ public:
 	pthread_spinlock_t lock;
 	//	char name[32];
 
-	S5FixedSizeQueue():tail(0),head(0),queue_depth(0),data(NULL)
+	PfFixedSizeQueue():tail(0),head(0),queue_depth(0),data(NULL)
 	{}
-	~S5FixedSizeQueue()
+	~PfFixedSizeQueue()
 	{
 		destroy();
 	}

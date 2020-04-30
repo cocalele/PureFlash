@@ -38,13 +38,13 @@ using namespace std;
  *   }
  */
 
-class S5ClientShardInfo
+class PfClientShardInfo
 {
 public:
 	int index;
 	std::vector<std::string> store_ips;
 };
-class S5ClientVolumeInfo
+class PfClientVolumeInfo
 {
 public:
 	std::string status;
@@ -53,7 +53,7 @@ public:
 	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
-	std::vector<S5ClientShardInfo> shards;
+	std::vector<PfClientShardInfo> shards;
 
 };
 

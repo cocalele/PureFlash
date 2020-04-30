@@ -3,18 +3,18 @@
 #include <functional>
 #include "pf_event_queue.h"
 
-class S5EventThread
+class PfEventThread
 {
 public:
-	S5EventQueue event_queue;
+	PfEventQueue event_queue;
 	pthread_t tid;
 	char name[32];
 
 	bool inited;
 	int init(const char* name, int queue_depth);
-	S5EventThread();
+	PfEventThread();
 	void destroy();
-	virtual ~S5EventThread();
+	virtual ~PfEventThread();
 	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
 	int start();
 	void stop();

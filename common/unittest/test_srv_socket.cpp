@@ -27,7 +27,7 @@ int recv_msg_keepalive(void* sockParam, s5_message_t* msg, void* param);
 int recv_msg_snapchange(void* sockParam, s5_message_t* msg, void* param);
 int recv_msg_comm_reply(void* sockParam, s5_message_t* msg, void* param);
 
-void register_handle(S5TCPServerSocket	*sock);
+void register_handle(PfTCPServerSocket	*sock);
 
 
 
@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	unsigned short servPort = atoi(argv[1]);
-	S5TCPServerSocket	sock;
+	PfTCPServerSocket	sock;
 	S5TCPSocket*	cltSock;
 	rc = sock.initServer(servPort);
 	if(rc)
@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
 
 
 //////////////////////////////////////////////////////////////
-void register_handle(S5TCPServerSocket	*sock)
+void register_handle(PfTCPServerSocket	*sock)
 {
 	if(!sock)
 		return;

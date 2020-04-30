@@ -7,18 +7,18 @@
 
 #include "pf_poller.h"
 #include "pf_log.h"
-S5Poller::S5Poller() :epfd(0),tid(0),max_fd(0)
+PfPoller::PfPoller() :epfd(0),tid(0),max_fd(0)
 {
 
 }
-S5Poller::~S5Poller()
+PfPoller::~PfPoller()
 {
 	destroy();
 }
 static void on_ctl_event(int fd, uint32_t event, void* user_arg)
 {
-	S5Poller* poller = (S5Poller*)user_arg;
-	S5FixedSizeQueue<S5Event>* q;
+	PfPoller* poller = (PfPoller*)user_arg;
+	PfFixedSizeQueue<S5Event>* q;
 	if (poller->ctrl_queue.get_events(&q) == 0 && q != NULL)
 	{
 		while(!q->is_empty())
@@ -42,7 +42,7 @@ static void on_ctl_event(int fd, uint32_t event, void* user_arg)
 	}
 }
 
-int S5Poller::init(const char* name, int max_fd_count)
+int PfPoller::init(const char* name, int max_fd_count)
 {
 	int rc = 0;
 	safe_strcpy(this->name, name, sizeof(this->name));
@@ -88,14 +88,14 @@ int S5Poller::init(const char* name, int max_fd_count)
 
 }
 
-void* S5Poller::thread_entry(void* arg)
+void* PfPoller::thread_entry(void* arg)
 {
-	S5Poller* p = (S5Poller*)arg;
+	PfPoller* p = (PfPoller*)arg;
 	p->run();
 	return NULL;
 }
 
-int S5Poller::add_fd(int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
+int PfPoller::add_fd(int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
 {
 	if (pthread_self() == tid)
 	{
@@ -107,7 +107,7 @@ int S5Poller::add_fd(int fd, uint32_t events, epoll_evt_handler event_handler, v
 	});
 }
 
-int S5Poller::del_fd(int fd)
+int PfPoller::del_fd(int fd)
 {
 	if (pthread_self() == tid)
 	{
@@ -119,7 +119,7 @@ int S5Poller::del_fd(int fd)
 	});
 }
 
-void S5Poller::destroy()
+void PfPoller::destroy()
 {
 	if(tid == 0)
 		return;
@@ -133,7 +133,7 @@ void S5Poller::destroy()
 	desc_pool.destroy();
 }
 
-int S5Poller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
+int PfPoller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_handler, void* handler_arg)
 {
 	struct PollerFd* desc = desc_pool.alloc();
 	if (desc == NULL)
@@ -156,7 +156,7 @@ int S5Poller::async_add_fd( int fd, uint32_t events, epoll_evt_handler event_han
 	return 0;
 }
 
-int S5Poller::async_del_fd(int fd)
+int PfPoller::async_del_fd(int fd)
 {
 	int rc = epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
 	if (rc)
@@ -178,7 +178,7 @@ int S5Poller::async_del_fd(int fd)
 	return -ENOENT;
 }
 
-void S5Poller::run()
+void PfPoller::run()
 {
 	prctl(PR_SET_NAME, name);
 	struct epoll_event rev[max_fd];

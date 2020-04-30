@@ -54,10 +54,10 @@ void to_json(json& j, const RestfulReply& r)
 }
 
 
-static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
+static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 {
 	Cleaner _c;
-	S5Volume *vol = new S5Volume();
+	PfVolume *vol = new PfVolume();
 	_c.push_back([vol](){delete vol;});
 	vol->id = arg.volume_id;
 	strncpy(vol->name, arg.volume_name.c_str(), sizeof(vol->name));
@@ -85,7 +85,7 @@ static S5Volume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		{
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
 			S5ASSERT(rarg.index == j);
-			S5Replica * r = new S5LocalReplica();
+			PfReplica * r = new PfLocalReplica();
 			_c.push_back([r](){delete r;});
 			r->rep_index = rarg.index;
 			r->id = shard->id | r->rep_index;
@@ -147,7 +147,7 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	S5LOG_DEBUG("Receive prepare volume req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
 	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
 	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
-	S5Volume* vol = NULL;
+	PfVolume* vol = NULL;
 	try {
 		vol = convert_argument_to_volume(arg);
 	}

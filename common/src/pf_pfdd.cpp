@@ -244,7 +244,7 @@ int main(int argc, char* argv[])
 	DeferCall _c3([fd](){close(fd);});
 	io_waiter arg;
 	sem_init(&arg.sem, 0, 0);
-	struct S5ClientVolumeInfo* vol = pf_open_volume(vol_name.c_str(),cfg_file.c_str(), NULL, S5_LIB_VER);
+	struct PfClientVolumeInfo* vol = pf_open_volume(vol_name.c_str(),cfg_file.c_str(), NULL, S5_LIB_VER);
 	if(vol == NULL) {
 		S5LOG_FATAL("Failed open volume:%s", vol_name.c_str());
 	}

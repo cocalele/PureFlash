@@ -15,12 +15,12 @@
 
 
 
-class S5Poller;
+class PfPoller;
 
-class S5TcpServer
+class PfTcpServer
 {
 public:
-	S5Poller* pollers;
+	PfPoller* pollers;
 	int poller_cnt;
 	pthread_t			listen_s5toe_thread; 		///< The thread to receive toe msg request
 	int server_socket_fd;
@@ -32,7 +32,7 @@ private:
 	 * choose the best poller to poll incoming connection.
 	 * a round-robin way is used to choose poller in `pollers`
 	 */
-	S5Poller* get_best_poller();
+	PfPoller* get_best_poller();
 };
 #endif	//__S5D_SRV_TOE__
 

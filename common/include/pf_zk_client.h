@@ -9,10 +9,10 @@
 
 #include "zookeeper.h"
 
-class S5ZkClient {
+class PfZkClient {
 public:
-	S5ZkClient(){ zkhandle = NULL; }
-	~S5ZkClient();
+	PfZkClient(){ zkhandle = NULL; }
+	~PfZkClient();
 	int init(const char* zk_ip, int zk_timeout, const char* cluster_name);
 	int create_node(const std::string& node_path, bool is_ephemeral, const char* node_data);
 

@@ -18,7 +18,7 @@
 #define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
 #define S5_VERSION 0x00020000
 
-class S5RedoLog;
+class PfRedoLog;
 
 /**
  * key of 4M block
@@ -69,7 +69,7 @@ struct lmt_hash
 	}
 };
 
-class S5FlashStore : public S5EventThread
+class PfFlashStore : public PfEventThread
 {
 public:
 	struct HeadPage {
@@ -98,12 +98,12 @@ public:
 	char tray_name[256];
 	HeadPage head;
 
-	S5Tray *tray;
+	PfTray *tray;
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
-	S5FixedSizeQueue<int32_t> free_obj_queue;
-	S5FixedSizeQueue<int32_t> trim_obj_queue;
+	PfFixedSizeQueue<int32_t> free_obj_queue;
+	PfFixedSizeQueue<int32_t> trim_obj_queue;
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
-	S5RedoLog* redolog;
+	PfRedoLog* redolog;
 
 /**
  * init flash store from device. this function will create meta data

@@ -4,14 +4,14 @@
 #include "pf_volume.h"
 
 class IoSubTask;
-class S5FlashStore;
+class PfFlashStore;
 
 
-class S5LocalReplica : public S5Replica
+class PfLocalReplica : public PfReplica
 {
 public:
 	virtual int submit_io(IoSubTask* subtask);
 public:
-	S5FlashStore* store;
+	PfFlashStore* store;
 };
 #endif // pf_replica_h__

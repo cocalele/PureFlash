@@ -3,7 +3,7 @@
 
 #include "pf_tray.h"
 
-class BlockTray : public S5Tray {
+class BlockTray : public PfTray {
     public:
         BlockTray();
         ~BlockTray();
