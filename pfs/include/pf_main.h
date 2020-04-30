@@ -24,35 +24,35 @@
 #include "pf_dispatcher.h"
 
 
-class S5TcpServer;
+class PfTcpServer;
 
 #define MAX_TRAY_COUNT 32
 #define MAX_PORT_COUNT 4
 
 #define DATA_PORT 0
 #define REP_PORT 1
-class S5Volume;
-class S5AfsAppContext : public S5AppCtx
+class PfVolume;
+class PfAfsAppContext : public PfAppCtx
 {
 public:
-	std::set<S5Connection*> ingoing_connections;
+	std::set<PfConnection*> ingoing_connections;
 	std::string mngt_ip;
 	int store_id;
-    S5ZkClient zk_client;
+    PfZkClient zk_client;
     int64_t meta_size;
 
-	S5TcpServer* tcp_server;
-	std::vector<S5FlashStore*> trays;
-	std::vector<S5Dispatcher*> disps;
-	std::vector<S5Replicator*> replicators;
+	PfTcpServer* tcp_server;
+	std::vector<PfFlashStore*> trays;
+	std::vector<PfDispatcher*> disps;
+	std::vector<PfReplicator*> replicators;
 
 	pthread_mutex_t lock;
-	std::map<uint64_t, S5Volume*> opened_volumes;
+	std::map<uint64_t, PfVolume*> opened_volumes;
 
-	S5Volume* get_opened_volume(uint64_t vol_id);
+	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);
-	S5AfsAppContext();
+	PfAfsAppContext();
 };
-extern S5AfsAppContext app_context;
+extern PfAfsAppContext app_context;
 #endif
 

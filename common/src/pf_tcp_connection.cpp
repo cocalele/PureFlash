@@ -11,12 +11,12 @@
 #include "pf_utils.h"
 #include "pf_client_priv.h"
 using namespace  std;
-S5TcpConnection::S5TcpConnection() :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
+PfTcpConnection::PfTcpConnection() :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
                                     recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
                                     readable(FALSE), writeable(FALSE),need_reconnect(FALSE)
                                     {}
-S5TcpConnection::~S5TcpConnection()    { }
-int S5TcpConnection::init(int sock_fd, S5Poller* poller, int send_q_depth, int recv_q_depth)
+PfTcpConnection::~PfTcpConnection()    { }
+int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int recv_q_depth)
 {
 	int rc = 0;
 	this->socket_fd = sock_fd;
@@ -60,7 +60,7 @@ release1:
 	return rc;
 }
 
-int S5TcpConnection::do_close()
+int PfTcpConnection::do_close()
 {
 	poller->del_fd(send_q.event_fd);
 	poller->del_fd(recv_q.event_fd);
@@ -77,7 +77,7 @@ int S5TcpConnection::do_close()
 	return 0;
 }
 
-void S5TcpConnection::flush_wr()
+void PfTcpConnection::flush_wr()
 {
 	if (recv_bd)
 	{
@@ -89,7 +89,7 @@ void S5TcpConnection::flush_wr()
 		on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
 		send_bd = NULL;
 	}
-	S5FixedSizeQueue<S5Event>* q;
+	PfFixedSizeQueue<S5Event>* q;
 	int rc = recv_q.get_events(&q);
 	if(rc == 0)
 	{
@@ -116,9 +116,9 @@ void S5TcpConnection::flush_wr()
 
 	}
 }
-void S5TcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
+void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 {
-	S5TcpConnection* conn = (S5TcpConnection*)c;
+	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->send_bd != NULL)
 		return; //send in progress
 	if(conn->send_bd == NULL)
@@ -133,9 +133,9 @@ void S5TcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 		conn->start_send((BufferDescriptor*)evt.arg_p);
 	}
 }
-void S5TcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
+void PfTcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 {
-	S5TcpConnection* conn = (S5TcpConnection*)c;
+	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->recv_bd != NULL)
 		return;//receive in progress
 	if (conn->recv_bd == NULL)
@@ -150,7 +150,7 @@ void S5TcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 		conn->start_recv((BufferDescriptor*)evt.arg_p);
 	}
 }
-void S5TcpConnection::start_recv(BufferDescriptor* bd)
+void PfTcpConnection::start_recv(BufferDescriptor* bd)
 {
 	recv_bd = bd;
 	recv_buf = bd->buf;
@@ -158,7 +158,7 @@ void S5TcpConnection::start_recv(BufferDescriptor* bd)
 	recved_len = 0;
 	do_receive();
 }
-void S5TcpConnection::start_send(BufferDescriptor* bd)
+void PfTcpConnection::start_send(BufferDescriptor* bd)
 {
 	send_bd = bd;
 	send_buf = bd->buf;
@@ -167,9 +167,9 @@ void S5TcpConnection::start_send(BufferDescriptor* bd)
 	do_send();
 }
 
-void S5TcpConnection::on_socket_event(int fd, uint32_t events, void* c)
+void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 {
-	S5TcpConnection* conn = (S5TcpConnection*)c;
+	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
 	{
 		if (events & EPOLLERR)
@@ -202,7 +202,7 @@ void S5TcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 	}
 }
 
-int S5TcpConnection::rcv_with_error_handle()
+int PfTcpConnection::rcv_with_error_handle()
 {
 	while (recved_len < wanted_recv_len)
 	{
@@ -247,7 +247,7 @@ int S5TcpConnection::rcv_with_error_handle()
 	return 0;
 }
 
-int S5TcpConnection::do_receive()
+int PfTcpConnection::do_receive()
 {
 	int rc = 0;
 
@@ -280,7 +280,7 @@ int S5TcpConnection::do_receive()
 
 }
 
-int S5TcpConnection::send_with_error_handle()
+int PfTcpConnection::send_with_error_handle()
 {
 	if (wanted_send_len > sent_len)
 	{
@@ -322,7 +322,7 @@ int S5TcpConnection::send_with_error_handle()
 	return 0;
 }
 
-int S5TcpConnection::do_send()
+int PfTcpConnection::do_send()
 {
 	int rc;
 	do {
@@ -364,23 +364,23 @@ int S5TcpConnection::do_send()
 
 }
 
-int S5TcpConnection::post_recv(BufferDescriptor *buf)
+int PfTcpConnection::post_recv(BufferDescriptor *buf)
 {
 	return recv_q.post_event(EVT_IO_REQ, 0, buf);
 }
 
-int S5TcpConnection::post_send(BufferDescriptor *buf)
+int PfTcpConnection::post_send(BufferDescriptor *buf)
 {
 	return send_q.post_event(EVT_IO_REQ, 0, buf);
 }
 
-int S5TcpConnection::post_read(BufferDescriptor *buf)
+int PfTcpConnection::post_read(BufferDescriptor *buf)
 {
 	S5LOG_FATAL("post_read should not used");
 	return 0;
 }
 
-int S5TcpConnection::post_write(BufferDescriptor *buf)
+int PfTcpConnection::post_write(BufferDescriptor *buf)
 {
 	S5LOG_FATAL("post_write should not used");
 	return 0;
@@ -418,7 +418,7 @@ static int pf_tcp_recv_all(int fd, void* buf, int len, int flag)
 	return len;
 }
 
-S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int port, S5Poller *poller, S5ClientVolumeInfo* vol, int io_depth, int timeout_sec)
+PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int port, PfPoller *poller, PfClientVolumeInfo* vol, int io_depth, int timeout_sec)
 {
 	Cleaner clean;
 	int rc = 0;
@@ -529,7 +529,7 @@ S5TcpConnection* S5TcpConnection::connect_to_server(const std::string& ip, int p
 	}
 	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", vol->io_depth, hmsg->crqsize);
 	vol->io_depth = hmsg->crqsize;
-	S5TcpConnection* conn = new S5TcpConnection;
+	PfTcpConnection* conn = new PfTcpConnection;
 	clean.push_back([conn]() {delete conn; });
 	rc = conn->init(socket_fd, poller, vol->io_depth, vol->io_depth);
 	if (rc != 0)

@@ -202,7 +202,7 @@ FINALLY:
 void *S5KeepAliveThreadMain(void *paramSock)
 {
 	pthread_t threadID;
-	S5TCPCltSocket *clntSock = (S5TCPCltSocket *)paramSock;
+	PfTCPCltSocket *clntSock = (PfTCPCltSocket *)paramSock;
 	int retry = 0;
 	threadID = pthread_self();
 	clntSock->thread_keepalive = threadID;
@@ -627,7 +627,7 @@ static int safe_rcv(int fd, void *buf, size_t count)
 // TCP client handling function
 static int HandleTCPClient(void *paramSock)
 {
-	S5TCPCltSocket *sock = (S5TCPCltSocket *)paramSock;
+	PfTCPCltSocket *sock = (PfTCPCltSocket *)paramSock;
 	int retry = 0;
 	while(!sock->exitFlag && (sock->sockDesc != -1))
 	{
@@ -696,7 +696,7 @@ static int HandleTCPClient(void *paramSock)
 void *S5RcvThreadMain(void *paramSock)
 {
 	pthread_t threadID;
-	S5TCPCltSocket *clntSock = (S5TCPCltSocket *)paramSock;
+	PfTCPCltSocket *clntSock = (PfTCPCltSocket *)paramSock;
 	threadID = pthread_self();
 	S5LOG_INFO("S5RcvThreadMain thread(%llu) start.", (unsigned long long)threadID);
 
@@ -711,16 +711,16 @@ void *S5RcvThreadMain(void *paramSock)
 
 	thread_entry->thread_list_entry.head = NULL;
 	thread_entry->thread_id = threadID;
-	s5list_lock(&S5TCPCltSocket::reap_thread_list_head);
-	s5list_push_ulc(&thread_entry->thread_list_entry, &S5TCPCltSocket::reap_thread_list_head);
-	s5list_signal_entry(&S5TCPCltSocket::reap_thread_list_head);
-	s5list_unlock(&S5TCPCltSocket::reap_thread_list_head);
+	s5list_lock(&PfTCPCltSocket::reap_thread_list_head);
+	s5list_push_ulc(&thread_entry->thread_list_entry, &PfTCPCltSocket::reap_thread_list_head);
+	s5list_signal_entry(&PfTCPCltSocket::reap_thread_list_head);
+	s5list_unlock(&PfTCPCltSocket::reap_thread_list_head);
 
 	/** to make sure the send thread unlock send_mutex*/
 	pthread_mutex_lock(&(clntSock->lock_send));
 	pthread_mutex_unlock(&(clntSock->lock_send));
 
-	delete (S5TCPCltSocket *) clntSock;
+	delete (PfTCPCltSocket *) clntSock;
 	S5LOG_INFO("S5RcvThreadMain thread(%llu) exit.", (unsigned long long)threadID);
 	
 	return NULL;
@@ -728,7 +728,7 @@ void *S5RcvThreadMain(void *paramSock)
 
 void *S5CltRcvThreadMain(void *paramSock)
 {
-	S5TCPCltSocket *clntSock = (S5TCPCltSocket *)paramSock;
+	PfTCPCltSocket *clntSock = (PfTCPCltSocket *)paramSock;
 	pthread_t threadID = pthread_self();
 	S5LOG_INFO("S5CltRcvThreadMain thread(%llu) start.", (unsigned long long)threadID);
 
@@ -739,10 +739,10 @@ void *S5CltRcvThreadMain(void *paramSock)
 	return NULL;
 }
 
-pf_dlist_head_t  S5TCPCltSocket::reap_thread_list_head;
+pf_dlist_head_t  PfTCPCltSocket::reap_thread_list_head;
 
-// S5TCPCltSocket Code
-S5TCPCltSocket::S5TCPCltSocket()
+// PfTCPCltSocket Code
+PfTCPCltSocket::PfTCPCltSocket()
 	: CommunicatingSocket(SOCK_STREAM,
 						  IPPROTO_TCP)
 {
@@ -761,20 +761,20 @@ S5TCPCltSocket::S5TCPCltSocket()
 	initMutexCond();
 }
 
-void S5TCPCltSocket::initMutexCond()
+void PfTCPCltSocket::initMutexCond()
 {
     handler_init = FALSE;
     pthread_mutex_init(&handler_mutex, NULL);
     pthread_cond_init(&handler_cond, NULL);
 }
 
-void S5TCPCltSocket::destroyMutexCond()
+void PfTCPCltSocket::destroyMutexCond()
 {
     pthread_mutex_destroy(&handler_mutex);
     pthread_cond_destroy(&handler_cond);
 }
 
-S5TCPCltSocket::~S5TCPCltSocket()
+PfTCPCltSocket::~PfTCPCltSocket()
 {
 	exitFlag = 1;
 	con_invalid = 1;
@@ -797,24 +797,24 @@ void *reaper_handle_thread(void *param)
 		pf_reap_thread_entry_t* socketThread = NULL;
 		
 		//get msg from reap_thread_list_head.
-		s5list_lock(&S5TCPCltSocket::reap_thread_list_head);
-		need_handle = S5TCPCltSocket::reap_thread_list_head.count;
+		s5list_lock(&PfTCPCltSocket::reap_thread_list_head);
+		need_handle = PfTCPCltSocket::reap_thread_list_head.count;
 		if(need_handle == 0)
 		{
-			s5list_wait_entry(&S5TCPCltSocket::reap_thread_list_head);
+			s5list_wait_entry(&PfTCPCltSocket::reap_thread_list_head);
 		}
 		
-        entry = s5list_poptail_ulc(&S5TCPCltSocket::reap_thread_list_head);
+        entry = s5list_poptail_ulc(&PfTCPCltSocket::reap_thread_list_head);
 
 		if(!entry)
 		{
-			s5list_unlock(&S5TCPCltSocket::reap_thread_list_head);
+			s5list_unlock(&PfTCPCltSocket::reap_thread_list_head);
 			S5LOG_TRACE("Failed to get valid pthread_t threade_list_head.");
 			continue;
 		}	
 
 		socketThread = S5LIST_ENTRY(entry, pf_reap_thread_entry_t, thread_list_entry);
-	    s5list_unlock(&S5TCPCltSocket::reap_thread_list_head);	
+	    s5list_unlock(&PfTCPCltSocket::reap_thread_list_head);	
 	
 		pf_wait_thread_end(socketThread->thread_id);
 		free(entry);	
@@ -823,7 +823,7 @@ void *reaper_handle_thread(void *param)
 	return NULL;
 }
 
-S5TCPCltSocket::S5TCPCltSocket(int newConnSD) : CommunicatingSocket(newConnSD)
+PfTCPCltSocket::PfTCPCltSocket(int newConnSD) : CommunicatingSocket(newConnSD)
 {
 	autorcv = RCV_TYPE_MANUAL;
 	conntype = CONNECT_TYPE_TEMPORARY;
@@ -839,7 +839,7 @@ S5TCPCltSocket::S5TCPCltSocket(int newConnSD) : CommunicatingSocket(newConnSD)
 	initMutexCond();
 }
 
-int S5TCPCltSocket::connect(const char *foreignAddress,
+int PfTCPCltSocket::connect(const char *foreignAddress,
 						 unsigned short foreignPort, pf_rcv_type_t autorcv, pf_connect_type_t type)
 {
 	int rc = 0;
@@ -909,8 +909,8 @@ int S5TCPCltSocket::connect(const char *foreignAddress,
 	return rc;
 }
 
-// S5TCPServerSocket Code
-S5TCPServerSocket::S5TCPServerSocket()
+// PfTCPServerSocket Code
+PfTCPServerSocket::PfTCPServerSocket()
 	: Socket(SOCK_STREAM, IPPROTO_TCP)
 {
 	for(int i = 0; i < MSG_TYPE_MAX; i++)
@@ -922,7 +922,7 @@ S5TCPServerSocket::S5TCPServerSocket()
 	int rc = setsockopt(sockDesc, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	if(rc < 0)
     {   
-	    S5LOG_ERROR("Failed to setsockopt S5TCPServerSocket: reuse failed.");
+	    S5LOG_ERROR("Failed to setsockopt PfTCPServerSocket: reuse failed.");
         exit(EXIT_FAILURE);
     }
 
@@ -930,7 +930,7 @@ S5TCPServerSocket::S5TCPServerSocket()
 	setsockopt(sockDesc, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag));
 }
 
-int S5TCPServerSocket::initServer(const char *localAddress, unsigned short localPort, int queueLen)
+int PfTCPServerSocket::initServer(const char *localAddress, unsigned short localPort, int queueLen)
 {
 	int rc = 0;
 	if(!localAddress)
@@ -948,10 +948,10 @@ FINALLY:
 	return rc;
 }
 
-S5TCPCltSocket *S5TCPServerSocket::accept(pf_rcv_type_t autorcv)
+PfTCPCltSocket *PfTCPServerSocket::accept(pf_rcv_type_t autorcv)
 {
 	int newConnSD;
-	S5TCPCltSocket *newsock = NULL;
+	PfTCPCltSocket *newsock = NULL;
 	if ((newConnSD = ::accept(sockDesc, NULL, 0)) < 0)
 	{
 		S5LOG_ERROR("Failed to accept (accept()) rc = %d %s.", newConnSD, strerror(errno));
@@ -962,7 +962,7 @@ S5TCPCltSocket *S5TCPServerSocket::accept(pf_rcv_type_t autorcv)
 		//check the client is valid yes or no?
 	}
 
-	newsock = new S5TCPCltSocket(newConnSD);
+	newsock = new PfTCPCltSocket(newConnSD);
 	if(!newsock)
 		goto FINALLY;
 
@@ -996,7 +996,7 @@ FINALLY:
 	return newsock;
 }
 
-int S5TCPServerSocket::setListen(int queueLen)
+int PfTCPServerSocket::setListen(int queueLen)
 {
 	int rc = 0;
 	rc = listen(sockDesc, queueLen);
@@ -1011,7 +1011,7 @@ int S5TCPServerSocket::setListen(int queueLen)
 int s5recv_keepalive_reply(void *sockParam, pf_message_t *msg, void *param)
 {
 	int rc = 0;
-	S5TCPCltSocket *socket = (S5TCPCltSocket *)sockParam;
+	PfTCPCltSocket *socket = (PfTCPCltSocket *)sockParam;
 	if(msg)
 	{
 		socket->con_invalid = 0;
@@ -1029,7 +1029,7 @@ int s5recv_keepalive_reply(void *sockParam, pf_message_t *msg, void *param)
 int s5recv_keepalive(void *sockParam, pf_message_t *msg, void *param)
 {
 	int rc = 0;
-	S5TCPCltSocket *socket = (S5TCPCltSocket *)sockParam;
+	PfTCPCltSocket *socket = (PfTCPCltSocket *)sockParam;
 	if(msg)
 	{
 		//handle stastic-info

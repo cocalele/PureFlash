@@ -9,18 +9,18 @@
 #define MAX_IO_SIZE (64<<10) //max IO
 
 class BufferDescriptor;
-class S5IoDesc
+class PfIoDesc
 {
 public:
 	BufferDescriptor* io_cmd;
 	BufferDescriptor* io_data;
 	BufferDescriptor* io_reply;
 };
-class S5AppCtx
+class PfAppCtx
 {
 public:
 	int io_desc_count;
-	ObjectMemoryPool<S5IoDesc> iod_pool;
+	ObjectMemoryPool<PfIoDesc> iod_pool;
 
 	//BufferPool cmd_pool;
 	//BufferPool data_pool;
@@ -36,5 +36,5 @@ public:
 	conf_file_t conf;
 };
 
-extern S5AppCtx* g_app_ctx;
+extern PfAppCtx* g_app_ctx;
 #endif // pf_app_ctx_h__

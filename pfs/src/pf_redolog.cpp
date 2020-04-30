@@ -5,7 +5,7 @@
 
 #define STORE_META_AUTO_SAVE_INTERVAL 60
 
-int S5RedoLog::init(struct S5FlashStore* s)
+int PfRedoLog::init(struct PfFlashStore* s)
 {
 	int rc = 0;
 	int64_t *p;
@@ -56,59 +56,59 @@ release1:
 	S5LOG_ERROR("Failed to init redo log, rc:%d", rc);
 	return rc;
 }
-int S5RedoLog::load()
+int PfRedoLog::load()
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::replay()
+int PfRedoLog::replay()
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::discard()
+int PfRedoLog::discard()
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head)
+int PfRedoLog::log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::log_free(int block_id, int trim_list_head, int free_list_tail)
+int PfRedoLog::log_free(int block_id, int trim_list_head, int free_list_tail)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail)
+int PfRedoLog::log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::redo_allocation(Item* e)
+int PfRedoLog::redo_allocation(Item* e)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::redo_trim(Item* e)
+int PfRedoLog::redo_trim(Item* e)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int S5RedoLog::redo_free(Item* e)
-{
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
-	return 0;
-}
-
-int S5RedoLog::write_entry()
+int PfRedoLog::redo_free(Item* e)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
 
-int S5RedoLog::stop()
+int PfRedoLog::write_entry()
+{
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
+}
+
+int PfRedoLog::stop()
 {
 	pthread_cancel(auto_save_thread.native_handle());
 	auto_save_thread.join();

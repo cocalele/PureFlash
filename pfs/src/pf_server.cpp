@@ -24,7 +24,7 @@
 #include "pf_volume.h"
 
 static void *afs_listen_thread(void *param);
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
+static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 
 static int init_trays()
 {
@@ -64,18 +64,18 @@ int init_store_server()
 
 void *afs_listen_thread(void *param)
 {
-	((S5TcpServer*)param)->listen_proc();
+	((PfTcpServer*)param)->listen_proc();
 
 	return NULL;
 }
 
 
-int S5TcpServer::init()
+int PfTcpServer::init()
 {
 	int rc = 0;
 	conf_file_t conf=app_context.conf;
 	poller_cnt = conf_get_int(conf, "tcp_server", "poller_count", 4, FALSE);
-	pollers = new S5Poller[poller_cnt];
+	pollers = new PfPoller[poller_cnt];
 	for(int i=0;i<poller_cnt;i++)
 	{
 		rc = pollers[i].init(format_string("TCP_srv_poll_%d", i).c_str(), 512);
@@ -91,7 +91,7 @@ int S5TcpServer::init()
 	return rc;
 }
 
-void S5TcpServer::listen_proc()
+void PfTcpServer::listen_proc()
 {
 	int rc = 0;
 	int yes = 1;
@@ -145,7 +145,7 @@ release1:
 	return;
 }
 
-int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, S5Connection* conn, void* cbk_data)
+int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* conn, void* cbk_data)
 {
 	int rc = 0;
 	delete (pf_handshake_message*)bd->buf;
@@ -193,11 +193,11 @@ release0:
 	return rc;
 }
 
-int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, S5Connection* conn_, void* cbk_data)
+int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection* conn_, void* cbk_data)
 {
 	int rc = 0;
-	S5Volume * vol;
-	S5TcpConnection* conn = (S5TcpConnection*)conn_;
+	PfVolume * vol;
+	PfTcpConnection* conn = (PfTcpConnection*)conn_;
 	pf_handshake_message* hs_msg = (pf_handshake_message*)bd->buf;
 	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
 	conn->state = CONN_OK;
@@ -237,26 +237,29 @@ release0:
 	conn->post_send(bd);
 	return rc;
 }
-void server_on_conn_close(S5Connection* conn)
+void server_on_conn_close(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%s closed!", conn->connection_info.c_str());
 	conn->dec_ref();
 }
-void server_on_conn_destroy(S5Connection* conn)
+void server_on_conn_destroy(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%s destroyed!", conn->connection_info.c_str());
 	S5LOG_ERROR("TODO: remove conn from heartbeat checker list");
 	//app_context.ingoing_connections.remove(conn);
 }
 
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data)
+static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
 {
-	throw std::logic_error("Not implemented");
+	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+	}
+	app_context.disps[conn->dispatch].event_queue.post_event(EVT_IO_REQ, bd);
+	throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
 	return 0;
 }
 
 
-int S5TcpServer::accept_connection()
+int PfTcpServer::accept_connection()
 {
 	sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
@@ -269,17 +272,17 @@ int S5TcpServer::accept_connection()
 		return -errno;
 	}
 
-	S5TcpConnection* conn = new S5TcpConnection();
+	PfTcpConnection* conn = new PfTcpConnection();
 	if (conn == NULL)
 	{
 		rc = -ENOMEM;
-		S5LOG_ERROR("Failed to alloc S5TcpConnection");
+		S5LOG_ERROR("Failed to alloc PfTcpConnection");
 		goto release1;
 	}
 	rc = conn->init(connfd, get_best_poller(), MAX_IO_DEPTH, MAX_IO_DEPTH*2); //recv_q is double of send_q, to avoid RNR error
 	if(rc)
 	{
-		S5LOG_ERROR("Failed to int S5TcpConnection, rc:%d", rc);
+		S5LOG_ERROR("Failed to int PfTcpConnection, rc:%d", rc);
 		goto release2;
 	}
 
@@ -339,7 +342,7 @@ release1:
 
 }
 
-S5Poller* S5TcpServer::get_best_poller()
+PfPoller* PfTcpServer::get_best_poller()
 {
 	static unsigned int poller_idx = 0;
 	poller_idx = (poller_idx + 1)%poller_cnt;

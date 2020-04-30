@@ -6,18 +6,18 @@
 #include "pf_app_ctx.h"
 #include "pf_message.h"
 
-S5Connection::S5Connection():ref_count(0),state(0),on_destroy(NULL)
+PfConnection::PfConnection():ref_count(0),state(0),on_destroy(NULL)
 {
 }
 
-S5Connection::~S5Connection()
+PfConnection::~PfConnection()
 {
 	cmd_pool.destroy();
 	data_pool.destroy();
 	reply_pool.destroy();
 }
 
-int S5Connection::close()
+int PfConnection::close()
 {
 	if (__sync_val_compare_and_swap(&state, CONN_OK, CONN_CLOSED) != CONN_OK)
 	{
@@ -31,7 +31,7 @@ int S5Connection::close()
 	return 0;
 }
 
-int S5Connection::init_mempools()
+int PfConnection::init_mempools()
 {
 	int rc = 0;
 	if (io_depth <= 0 || io_depth > MAX_IO_DEPTH)
@@ -69,7 +69,7 @@ int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct socka
 	return rc;
 }
 
-int S5Connection::send_heartbeat()
+int PfConnection::send_heartbeat()
 {
 	S5LOG_FATAL("send_heartbeat not implemented");
 	return 0;

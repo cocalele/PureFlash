@@ -16,7 +16,7 @@
 #include "pf_fixed_size_queue.h"
 
 class BufferPool;
-class S5Connection;
+class PfConnection;
 
 //Work complete status
 enum WcStatus {
@@ -40,11 +40,11 @@ struct BufferDescriptor
 		struct pf_message_reply* reply_bd; //valid if this BD used for message reply
 	};
 	int data_len; /// this is the validate data len in the buffer.
-	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
+	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_size; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
-	S5Connection* conn;
+	PfConnection* conn;
 };
 
 class BufferPool
@@ -55,7 +55,7 @@ public:
 	inline int free(BufferDescriptor* bd){ return free_bds.enqueue(bd); }
 	void destroy();
 private:
-	S5FixedSizeQueue<BufferDescriptor*> free_bds;
+	PfFixedSizeQueue<BufferDescriptor*> free_bds;
 	void* data_buf;
 	BufferDescriptor* data_bds;
 };

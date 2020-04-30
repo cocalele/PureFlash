@@ -6,7 +6,7 @@
 #include "pf_md5.h"
 #include "basetype.h"
 
-MD5Stream::MD5Stream(S5Tray *tray)
+MD5Stream::MD5Stream(PfTray *tray)
 {
 	this->tray = tray;
 	buffer = NULL;

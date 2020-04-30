@@ -6,7 +6,7 @@
 using namespace  std;
 
 
-int S5ConnectionPool::init(int size, S5Poller* poller, S5ClientVolumeInfo* vol, int io_depth, work_complete_handler _handler)
+int PfConnectionPool::init(int size, PfPoller* poller, PfClientVolumeInfo* vol, int io_depth, work_complete_handler _handler)
 {
 	pool_size = size;
 	this->poller = poller;
@@ -16,13 +16,13 @@ int S5ConnectionPool::init(int size, S5Poller* poller, S5ClientVolumeInfo* vol, 
 	return 0;
 }
 
-S5Connection* S5ConnectionPool::get_conn(const std::string& ip)
+PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 {
 	std::lock_guard<std::mutex> _l(mtx);
 	auto pos = ip_id_map.find(ip);
 	if (pos != ip_id_map.end())
 		return pos->second;
-	S5TcpConnection *c = S5TcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth, 4/*connection timeout*/);
+	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth, 4/*connection timeout*/);
 	c->on_work_complete = on_work_complete;
 	ip_id_map[ip] = c;
 	c->add_ref();
@@ -31,7 +31,7 @@ S5Connection* S5ConnectionPool::get_conn(const std::string& ip)
 
 
 
-void S5ConnectionPool::close_all()
+void PfConnectionPool::close_all()
 {
 	S5LOG_INFO("Close all connection in pool, %d connections to release", ip_id_map.size());
 

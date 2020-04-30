@@ -7,9 +7,9 @@
  * The purpose of this class is to separate OS calls from main store class.
  */
 
-class S5Tray {
+class PfTray {
     public:
-        virtual ~S5Tray() {}
+        virtual ~PfTray() {}
         virtual int init(const char *name) = 0;
         virtual void destroy() = 0;
         virtual int get_num_blocks(long *number) = 0;

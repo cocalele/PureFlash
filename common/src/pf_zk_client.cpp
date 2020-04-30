@@ -11,7 +11,7 @@
 
 using namespace std;
 
-int S5ZkClient::init(const char *zk_ip, int zk_timeout, const char* cluster_name) {
+int PfZkClient::init(const char *zk_ip, int zk_timeout, const char* cluster_name) {
 	int rc = 0;
 	this->cluster_name = cluster_name;
 	zoo_set_debug_level(ZOO_LOG_LEVEL_WARN);
@@ -36,7 +36,7 @@ int S5ZkClient::init(const char *zk_ip, int zk_timeout, const char* cluster_name
 	return 0;
 }
 
-S5ZkClient::~S5ZkClient() {
+PfZkClient::~PfZkClient() {
 	if(zkhandle)
 		zookeeper_close(zkhandle);
 }
@@ -68,7 +68,7 @@ void zk_completion(int rc, const struct Stat *stat, const void *data)
 	sem_post(&s->sem);
 }
 
-int S5ZkClient::create_node(const std::string& node_path, bool is_ephemeral, const char* node_data)
+int PfZkClient::create_node(const std::string& node_path, bool is_ephemeral, const char* node_data)
 {
 
 

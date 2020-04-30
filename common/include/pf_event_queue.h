@@ -26,24 +26,24 @@ enum S5EventType : int
 	EVT_THREAD_EXIT,
 };
 
-class S5EventQueue
+class PfEventQueue
 {
 public:
 	char name[32];
 	//ping-bong queue, to accelerate retrieve speed
-	S5FixedSizeQueue<S5Event> queue1;
-	S5FixedSizeQueue<S5Event> queue2;
-	S5FixedSizeQueue<S5Event>* current_queue;
+	PfFixedSizeQueue<S5Event> queue1;
+	PfFixedSizeQueue<S5Event> queue2;
+	PfFixedSizeQueue<S5Event>* current_queue;
 	pthread_spinlock_t lock;
 	int event_fd;
 
-	S5EventQueue();
-	~S5EventQueue();
+	PfEventQueue();
+	~PfEventQueue();
 
 	int init(const char* name, int size, BOOL semaphore_mode);
 	void destroy();
 	int post_event(int type, int arg_i, void* arg_p);
-	int get_events(S5FixedSizeQueue<S5Event>** /*out*/ q);
+	int get_events(PfFixedSizeQueue<S5Event>** /*out*/ q);
 	int get_event(S5Event* /*out*/ evt);
 	inline bool is_empty() { return current_queue->is_empty();}
 	int sync_invoke(std::function<int()> f);

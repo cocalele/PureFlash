@@ -35,12 +35,12 @@ static const char* pf_lib_ver = "S5 client version:0x00010000";
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
 
-void from_json(const json& j, S5ClientShardInfo& p) {
+void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("index").get_to(p.index);
 	j.at("store_ips").get_to(p.store_ips);
 
 }
-void from_json(const json& j, S5ClientVolumeInfo& p) {
+void from_json(const json& j, PfClientVolumeInfo& p) {
 	j.at("status").get_to(p.status);
 	j.at("volume_name").get_to(p.volume_name);
 	j.at("volume_size").get_to(p.volume_size);
@@ -76,7 +76,7 @@ typedef struct curl_memory {
 	size_t size;
 }curl_memory_t;
 
-struct S5ClientVolumeInfo* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver)
 {
 	int rc = 0;
@@ -90,7 +90,7 @@ struct S5ClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 	try
 	{
 		Cleaner _clean;
-		S5ClientVolumeInfo* volume = new S5ClientVolumeInfo;
+		PfClientVolumeInfo* volume = new PfClientVolumeInfo;
 		if (volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -113,7 +113,7 @@ struct S5ClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 			volume->timeout_check_proc();
 		});
 
-		volume->vol_proc = new S5VolumeEventProc(volume);
+		volume->vol_proc = new PfVolumeEventProc(volume);
 		volume->vol_proc->init("vol_proc", volume->io_depth);
 		volume->vol_proc->start();
 		volume->event_queue = &volume->vol_proc->event_queue; //keep for quick reference
@@ -131,13 +131,13 @@ struct S5ClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 	return NULL;
 }
 
-static int client_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data)
+static int client_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
 {
 	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd);
 }
 
 
-int S5ClientVolumeInfo::do_open()
+int PfClientVolumeInfo::do_open()
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_file.c_str());
@@ -168,11 +168,11 @@ int S5ClientVolumeInfo::do_open()
 		return rc;
 
 	Cleaner clean;
-	tcp_poller = new S5Poller();
+	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL)
 		throw runtime_error("No memory to alloc poller");
 
-	conn_pool = new S5ConnectionPool();
+	conn_pool = new PfConnectionPool();
 	if (conn_pool == NULL)
 		throw runtime_error("No memory to alloc connection pool");
 	conn_pool->init((int)shards.size()*2, tcp_poller, this, io_depth, client_on_work_complete);
@@ -182,7 +182,7 @@ int S5ClientVolumeInfo::do_open()
 	iocb_pool.init(io_depth);
 	for(int i=0;i<io_depth;i++)
 	{
-		S5ClientIocb* io = iocb_pool.alloc();
+		PfClientIocb* io = iocb_pool.alloc();
 		io->cmd_bd = cmd_pool.alloc();
 		io->data_bd = data_pool.alloc();
 		iocb_pool.free(io);
@@ -335,7 +335,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 	return -1;
 }
 
-void S5ClientVolumeInfo::free_iocb(S5ClientIocb* iocb)
+void PfClientVolumeInfo::free_iocb(PfClientIocb* iocb)
 {
 	if(iocb->cmd_bd != NULL) {
 		iocb->cmd_bd->conn->dec_ref();
@@ -354,14 +354,14 @@ void S5ClientVolumeInfo::free_iocb(S5ClientIocb* iocb)
 	}
 }
 
-void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
+void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	if (unlikely(wc_status != TCP_WC_SUCCESS))
 	{
 		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%d", wr_bd->wr_op, wc_status);
 
 		wr_bd->conn->dec_ref();
-		S5Connection* conn = wr_bd->conn;
+		PfConnection* conn = wr_bd->conn;
 		reply_pool.free(wr_bd); //this connection should be closed
 		conn->close();
 		return;
@@ -369,10 +369,10 @@ void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 
     if (wr_bd->wr_op == TCP_WR_RECV)
     {
-		S5Connection* conn = wr_bd->conn;
-		S5ClientVolumeInfo* vol = conn->volume;
+		PfConnection* conn = wr_bd->conn;
+		PfClientVolumeInfo* vol = conn->volume;
 		struct pf_message_reply *reply = wr_bd->reply_bd;
-		S5ClientIocb* io = vol->pick_iocb(reply->command_id, reply->command_seq);
+		PfClientIocb* io = vol->pick_iocb(reply->command_id, reply->command_seq);
 		uint64_t ms1 = 1000;
 		/*
 		 * In io timeout case, we just ignore this completion
@@ -436,13 +436,13 @@ void S5ClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 }
 
 
-void pf_close_volume(S5ClientVolumeInfo* volume)
+void pf_close_volume(PfClientVolumeInfo* volume)
 {
 	volume->close();
 	delete volume;
 }
 
-static int reopen_volume(S5ClientVolumeInfo* volume)
+static int reopen_volume(PfClientVolumeInfo* volume)
 {
 	int rc = 0;
 	S5LOG_INFO( "Reopening volume %s@%s, meta_ver:%d", volume->volume_name.c_str(),
@@ -468,7 +468,7 @@ static int reopen_volume(S5ClientVolumeInfo* volume)
 	return rc;
 }
 
-int S5ClientVolumeInfo::resend_io(S5ClientIocb* io)
+int PfClientVolumeInfo::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->task_seq, 1);
@@ -484,24 +484,24 @@ const char* show_ver()
 	return (const char*)pf_lib_ver;
 }
 
-int S5VolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
+int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
 {
 	return volume->process_event(event_type, arg_i, arg_p);
 }
 
-int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
+int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 {
 	S5LOG_INFO("get event:%d", event_type);
 	switch (event_type)
 	{
 	case EVT_IO_REQ:
 	{
-		S5ClientIocb* io = (S5ClientIocb*)arg_p;
+		PfClientIocb* io = (PfClientIocb*)arg_p;
 		BufferDescriptor* cmd_bd = io->cmd_bd;
 		pf_message_head *io_cmd = io->cmd_bd->cmd_bd;
 
 		int shard_index = (int)(io_cmd->offset >> SHARD_SIZE_ORDER);
-		struct S5Connection* conn = get_shard_conn(shard_index);
+		struct PfConnection* conn = get_shard_conn(shard_index);
 		BufferDescriptor* io_reply = reply_pool.alloc();
 		if (conn == NULL || io_reply == NULL)
 		{
@@ -542,7 +542,7 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 			S5LOG_WARN("volume state is:%d", state);
 			break;
 		}
-		S5ClientIocb* io = (S5ClientIocb*)arg_p;
+		PfClientIocb* io = (PfClientIocb*)arg_p;
 		S5LOG_WARN("volume_proc timeout, cid:%d, store:%s", io->cmd_bd->cmd_bd->command_id, io->conn->peer_ip.c_str());
 		/*
 		 * If time_recv is 0, io task:1)does not begin, 2)has finished.
@@ -603,7 +603,7 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		for (auto it = conn_pool->ip_id_map.begin(); it != conn_pool->ip_id_map.end();)
 		{
 
-			S5Connection* conn = it->second;
+			PfConnection* conn = it->second;
 			if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
 			{
 				conn_pool->ip_id_map.erase(it++);
@@ -640,14 +640,14 @@ int S5ClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 /**
 * get a shard connection from pool. connection is shared by shards on same node.
 */
-S5Connection* S5ClientVolumeInfo::get_shard_conn(int shard_index)
+PfConnection* PfClientVolumeInfo::get_shard_conn(int shard_index)
 {
-	S5Connection* conn = NULL;
+	PfConnection* conn = NULL;
 	if (state != VOLUME_OPENED)
 	{
 		return NULL;
 	}
-	S5ClientShardInfo * shard = &shards[shard_index];
+	PfClientShardInfo * shard = &shards[shard_index];
 	for (int i=0; i < shard->store_ips.size(); i++)
 	{
 		conn = conn_pool->get_conn(shard->store_ips[shard->current_ip]);
@@ -661,7 +661,7 @@ S5Connection* S5ClientVolumeInfo::get_shard_conn(int shard_index)
 	return NULL;
 }
 
-void S5ClientVolumeInfo::timeout_check_proc()
+void PfClientVolumeInfo::timeout_check_proc()
 {
 	prctl(PR_SET_NAME, "clnt_time_chk");
 	while (1)
@@ -669,7 +669,7 @@ void S5ClientVolumeInfo::timeout_check_proc()
 		if (sleep(CLIENT_TIMEOUT_CHECK_INTERVAL) != 0)
 			return ;
 		uint64_t now = now_time_usec();
-		struct S5ClientIocb *ios = iocb_pool.data;
+		struct PfClientIocb *ios = iocb_pool.data;
 		int64_t io_timeout_us = io_timeout * 1000000LL;
 		for (int i = 0; i < iocb_pool.obj_count; i++)
 		{
@@ -685,7 +685,7 @@ void S5ClientVolumeInfo::timeout_check_proc()
 
 }
 
-void S5ClientVolumeInfo::close() {
+void PfClientVolumeInfo::close() {
 	S5LOG_INFO("close volume:%s", volume_name.c_str());
 	state = VOLUME_CLOSED;
 
@@ -706,7 +706,7 @@ void S5ClientVolumeInfo::close() {
 //	}
 }
 
-int pf_io_submit(struct S5ClientVolumeInfo* volume, void* buf, size_t length, off_t offset,
+int pf_io_submit(struct PfClientVolumeInfo* volume, void* buf, size_t length, off_t offset,
 					ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {

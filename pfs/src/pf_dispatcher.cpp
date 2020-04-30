@@ -1,5 +1,5 @@
 #include "pf_dispatcher.h"
-int S5Dispatcher::prepare_volume(S5Volume* vol)
+int PfDispatcher::prepare_volume(PfVolume* vol)
 {
 	if (opened_volumes.find(vol->id) != opened_volumes.end())
 	{

@@ -14,10 +14,10 @@
 #define CONN_ROLE_CLIENT 2
 
 #define PROTOCOL_VER 1
-class S5ClientVolumeInfo;
+class PfClientVolumeInfo;
 
-typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, S5Connection* conn, void* cbk_data);
-class S5Connection
+typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
+class PfConnection
 {
 public:
 	int ref_count = 0;
@@ -37,10 +37,10 @@ public:
 	BufferPool data_pool;
 	BufferPool reply_pool;
 
-	S5ClientVolumeInfo* volume;
+	PfClientVolumeInfo* volume;
 
-	S5Connection();
-	virtual ~S5Connection();
+	PfConnection();
+	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
 	virtual int post_send(BufferDescriptor* buf)=0;
 	virtual int post_read(BufferDescriptor* buf)=0;
@@ -49,8 +49,8 @@ public:
 	int close();
 	int send_heartbeat();
 
-	void (*on_close)(S5Connection*);
-	void (*on_destroy)(S5Connection*);
+	void (*on_close)(PfConnection*);
+	void (*on_destroy)(PfConnection*);
 
 	inline void add_ref() {__sync_fetch_and_add(&ref_count, 1);}
 	inline void dec_ref() {

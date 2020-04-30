@@ -28,17 +28,17 @@
  */
 
 
-class S5ConnectionPool;
-class S5ClientVolumeInfo;
-class S5VolumeEventProc : public S5EventThread
+class PfConnectionPool;
+class PfClientVolumeInfo;
+class PfVolumeEventProc : public PfEventThread
 {
 public:
-	S5VolumeEventProc(S5ClientVolumeInfo* _volume) :volume(_volume) {};
-	S5ClientVolumeInfo* volume;
+	PfVolumeEventProc(PfClientVolumeInfo* _volume) :volume(_volume) {};
+	PfClientVolumeInfo* volume;
 	virtual int process_event(int event_type, int arg_i, void* arg_p);
 };
 
-class S5ClientIocb
+class PfClientIocb
 {
 public:
 	BufferDescriptor* cmd_bd;
@@ -48,7 +48,7 @@ public:
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
 
-	S5Connection *conn;
+	PfConnection *conn;
 	BOOL is_timeout;
 
 	uint64_t sent_time; //time the io sent to server
@@ -56,7 +56,7 @@ public:
 	uint64_t reply_time; // the time get reply from server
 };
 
-class S5ClientShardInfo
+class PfClientShardInfo
 {
 public:
 
@@ -67,9 +67,9 @@ public:
 	//following are internal data constructed by client
 	std::vector<int> conn_id; // connection ID in connection pool. this vector correspond to store_ips
 	int current_ip;
-	S5ClientShardInfo() :current_ip(0) {};
+	PfClientShardInfo() :current_ip(0) {};
 };
-enum S5VolumeState
+enum PfVolumeState
 {
 	VOLUME_CLOSED = 0,
 	VOLUME_OPENED = 1,
@@ -78,7 +78,7 @@ enum S5VolumeState
 	VOLUME_DISCONNECTED = 4
 };
 
-class S5ClientVolumeInfo
+class PfClientVolumeInfo
 {
 public:
 	//following data are from server open_volume reply
@@ -92,40 +92,40 @@ public:
 	int rep_count;
 	int meta_ver;
 	int snap_seq;
-	std::vector<S5ClientShardInfo> shards;
+	std::vector<PfClientShardInfo> shards;
 
 	//following are internal data constructed by client
-	S5ConnectionPool* conn_pool;
+	PfConnectionPool* conn_pool;
 	std::string cfg_file;
 	int io_depth;
 	int io_timeout; //timeout in second
 	int state;
-	S5EventQueue* event_queue;
-	ObjectMemoryPool<S5ClientIocb> iocb_pool;
+	PfEventQueue* event_queue;
+	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	BufferPool cmd_pool;
 	BufferPool data_pool;
 	BufferPool reply_pool;
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
-	S5VolumeEventProc *vol_proc;
+	PfVolumeEventProc *vol_proc;
 	std::thread timeout_thread;
 
 	int next_heartbeat_idx;
 
-	S5Poller* tcp_poller;
+	PfPoller* tcp_poller;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
 	int do_open();
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p);
-	int resend_io(S5ClientIocb* io);
+	int resend_io(PfClientIocb* io);
 	void timeout_check_proc();
-	inline S5ClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq){
+	inline PfClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq){
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}
-	void free_iocb(S5ClientIocb* io);
-	S5Connection* get_shard_conn(int shard_index);
+	void free_iocb(PfClientIocb* io);
+	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 };
 

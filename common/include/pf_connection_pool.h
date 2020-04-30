@@ -5,22 +5,22 @@
 #include <map>
 #include "pf_connection.h"
 
-class S5Connection;
-class S5Poller;
-class S5ConnectionPool
+class PfConnection;
+class PfPoller;
+class PfConnectionPool
 {
 public:
-	S5ConnectionPool() : pool_size(0){ }
-	int init(int size, S5Poller* poller, S5ClientVolumeInfo* vol, int io_depth, work_complete_handler _handler);
-	S5Connection* get_conn(const std::string& ip);
+	PfConnectionPool() : pool_size(0){ }
+	int init(int size, PfPoller* poller, PfClientVolumeInfo* vol, int io_depth, work_complete_handler _handler);
+	PfConnection* get_conn(const std::string& ip);
 	void close_all();
 public:
-	std::map<std::string, S5Connection*> ip_id_map;
+	std::map<std::string, PfConnection*> ip_id_map;
 	std::mutex mtx;
 	int pool_size;
-	S5Poller* poller;
+	PfPoller* poller;
 	int io_depth;
-	S5ClientVolumeInfo* volume;
+	PfClientVolumeInfo* volume;
 	work_complete_handler on_work_complete;
 };
 
