@@ -252,8 +252,8 @@ void server_on_conn_destroy(PfConnection* conn)
 static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
 {
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+		conn->dispatcher->event_queue.post_event(EVT_IO_REQ, bd);
 	}
-	app_context.disps[conn->dispatch].event_queue.post_event(EVT_IO_REQ, bd);
 	throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
 	return 0;
 }

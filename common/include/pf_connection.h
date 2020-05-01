@@ -15,6 +15,7 @@
 
 #define PROTOCOL_VER 1
 class PfClientVolumeInfo;
+class PfDispatcher;
 
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
@@ -22,6 +23,7 @@ class PfConnection
 public:
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
+    PfDispatcher* disp;
 	int state;
 	int transport;
 	int role;
