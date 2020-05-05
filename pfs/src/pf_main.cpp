@@ -13,6 +13,7 @@
 #include <stdexcept>
 
 #include <execinfo.h>
+#include <pf_message.h>
 
 #include "cmdopt.h"
 #include "pf_utils.h"
@@ -20,7 +21,7 @@
 #include "pf_errno.h"
 #include "pf_cluster.h"
 #include "pf_app_ctx.h"
-
+#include "pf_message.h"
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
@@ -190,6 +191,15 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	for(int i=0;i<app_context.disps.size(); i++)
+	{
+		app_context.disps[i] = new PfDispatcher();
+		rc = app_context.disps[i]->init(i);
+		if(rc) {
+			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
+			return rc;
+		}
+	}
 	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)
@@ -234,6 +244,10 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 	if (pos == opened_volumes.end())
 		return NULL;
 	return pos->second;
+}
+
+PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) {
+	return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
 }
 
 void unexpected_exit_handler()

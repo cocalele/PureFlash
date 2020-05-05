@@ -23,7 +23,7 @@ class PfConnection
 public:
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
-    PfDispatcher* disp;
+    PfDispatcher* dispatcher;
 	int state;
 	int transport;
 	int role;
@@ -38,6 +38,7 @@ public:
 	BufferPool cmd_pool;
 	BufferPool data_pool;
 	BufferPool reply_pool;
+
 
 	PfClientVolumeInfo* volume;
 

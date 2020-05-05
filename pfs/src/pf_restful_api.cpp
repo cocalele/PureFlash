@@ -70,7 +70,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 
 	for (int i = 0; i < arg.shard_count; i++)
 	{
-		S5Shard* shard = new S5Shard();
+		PfShard* shard = new PfShard();
 		_c.push_back([shard](){delete shard;});
 		shard->id = arg.volume_id | (arg.shards[i].index << 4);
 		shard->shard_index = arg.shards[i].index;
@@ -101,7 +101,6 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				{
 					throw std::runtime_error(format_string("SSD:%s not found", rarg.tray_uuid.c_str()));
 				}
-				r->tray_inst = app_context.trays[r->ssd_index];
 				shard->duty_rep_index = j;
 				if (r->is_primary)
 					shard->is_primary_node = TRUE;

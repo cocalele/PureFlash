@@ -22,6 +22,7 @@
 #include "pf_buffer.h"
 #include "pf_flash_store.h"
 #include "pf_volume.h"
+#include "pf_dispatcher.h"
 
 static void *afs_listen_thread(void *param);
 static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
@@ -168,15 +169,15 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 
 		for(int i=0;i<conn->io_depth*2;i++)
 		{
-			BufferDescriptor* cmd_bd = conn->cmd_pool.alloc();
-			if(cmd_bd == NULL)
+			auto io = conn->dispatcher->iocb_pool.alloc();
+			if(io == NULL)
 			{
 				S5LOG_ERROR("No enough memory for connection:%s", conn->connection_info.c_str());
 				conn->close();
 				rc = -ENOMEM;
 				goto release0;
 			}
-			rc = conn->post_recv(cmd_bd);
+			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{
 				S5LOG_ERROR("Failed to post_recv  for rc:%d", rc);
@@ -221,14 +222,15 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		rc = -EINVAL;
 	}
 	conn->ulp_data = vol;
-	rc = conn->init_mempools();
-	if(rc != 0)
-	{
-		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
-		hs_msg->hs_result = (int16_t)-rc; //return a positive value
-		conn->state = CONN_CLOSING;
-		rc = -EINVAL;
-	}
+	conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+//	rc = conn->init_mempools();
+//	if(rc != 0)
+//	{
+//		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
+//		hs_msg->hs_result = (int16_t)-rc; //return a positive value
+//		conn->state = CONN_CLOSING;
+//		rc = -EINVAL;
+//	}
 	//conn->send_q.init("send_q", conn->io_depth, TRUE);
 	//conn->recv_q.init(conn->io_depth*2);
 release0:
@@ -251,10 +253,39 @@ void server_on_conn_destroy(PfConnection* conn)
 
 static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
 {
+	int rc = 0;
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
-		conn->dispatcher->event_queue.post_event(EVT_IO_REQ, bd);
+
+		if(bd->wr_op == TCP_WR_RECV ) {
+			if(bd->data_len == PF_MSG_HEAD_SIZE) {
+				//message head received
+				struct PfServerIocb *iocb = container_of(bd, struct PfServerIocb, cmd_bd);
+				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
+					conn->post_recv(iocb->data_bd); //for write, let's continue to recevie data
+				} else
+					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+			}
+			else {
+				//data received
+				PfServerIocb *iocb = container_of(bd,  PfServerIocb, data_bd);
+				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
+			}
+		}
+		else if(bd->wr_op == TCP_WR_SEND){
+			//IO complete, start next
+			PfServerIocb *iocb = container_of(bd,  PfServerIocb, reply_bd);
+			conn->post_recv(iocb->cmd_bd);
+		}
+		else {
+			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
+		}
+
 	}
-	throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
+	else {
+		S5LOG_ERROR("Socket error, error handling not implemented");
+		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
+
+	}
 	return 0;
 }
 
