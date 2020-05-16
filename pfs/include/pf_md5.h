@@ -9,11 +9,11 @@ typedef int dev_handle_t;
 
 class MD5Stream
 {
-	PfTray *tray;
+	int fd;
 	off_t base_offset;
 	char* buffer;
 public:
-	MD5Stream(PfTray *tray);
+	MD5Stream(int fd);
 	~MD5Stream();
 	int init();
 	void destroy();

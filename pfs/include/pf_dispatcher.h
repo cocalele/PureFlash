@@ -10,6 +10,7 @@
 #define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
 struct SubTask
 {
+	PfServerIocb* parent_iocb;
 	PfReplica* rep;
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
@@ -18,6 +19,7 @@ struct SubTask
 
 struct IoSubTask : public SubTask
 {
+	aio_cb aio_cb; //aio cb to perform io
 };
 
 struct PfServerIocb

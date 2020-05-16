@@ -95,15 +95,17 @@ public:
 		uint64_t redolog_size;
 		char create_time[32];
 	};
-	char tray_name[256];
-	HeadPage head;
 
-	PfTray *tray;
+	int fd;
+	io_context_t aio_ctx;
+
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 	PfFixedSizeQueue<int32_t> free_obj_queue;
 	PfFixedSizeQueue<int32_t> trim_obj_queue;
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
 	PfRedoLog* redolog;
+	char tray_name[256];
+	HeadPage head;
 
 /**
  * init flash store from device. this function will create meta data
