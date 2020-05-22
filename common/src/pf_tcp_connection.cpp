@@ -502,8 +502,8 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	}
 
 	fcntl(socket_fd, F_SETFL, fdopt);
-	pf_handshake_message* hmsg = new pf_handshake_message;
-	memset(hmsg, 0, sizeof(pf_handshake_message));
+	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
+	memset(hmsg, 0, sizeof(PfHandshakeMessage));
 	hmsg->hsqsize = (int16_t)vol->io_depth;
 	hmsg->vol_id = vol->volume_id;
 	hmsg->snap_seq = vol->snap_seq;;

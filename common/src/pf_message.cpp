@@ -20,7 +20,7 @@ const char* get_msg_type_name(int msg_tp)
 }
 
 
-const char* get_msg_status_name(message_status msg_st)
+const char* get_msg_status_name(PfMessageStatus msg_st)
 {
 	static __thread char buf[64];
 	sprintf(buf, "%d", msg_st);

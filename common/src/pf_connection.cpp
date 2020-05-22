@@ -36,13 +36,13 @@ int PfConnection::init_mempools()
 	int rc = 0;
 	if (io_depth <= 0 || io_depth > MAX_IO_DEPTH)
 		return -EINVAL;
-	rc = cmd_pool.init(sizeof(pf_message_head), io_depth * 2);
+	rc = cmd_pool.init(sizeof(PfMessageHead), io_depth * 2);
 	if (rc)
 		goto release1;
 	rc = data_pool.init(MAX_IO_SIZE, io_depth * 2);
 	if (rc)
 		goto release2;
-	rc = reply_pool.init(sizeof(pf_message_reply), io_depth * 2);
+	rc = reply_pool.init(sizeof(PfMessageReply), io_depth * 2);
 	if (rc)
 		goto release3;
 	return rc;

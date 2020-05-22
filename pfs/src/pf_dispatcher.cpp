@@ -43,7 +43,7 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 }
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 {
-	pf_message_head* cmd = iocb->cmd_bd->cmd_bd;
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	uint32_t shard_index = VOL_ID_TO_SHARD_INDEX(cmd->vol_id);
 	PfShard * s = iocb->vol->shards[shard_index];
 	iocb->task_mask = 0;
@@ -59,13 +59,13 @@ int PfDispatcher::init_mempools()
 {
 	int pool_size = IO_POOL_SIZE;
 	int rc = 0;
-	rc = cmd_pool.init(sizeof(pf_message_head), pool_size * 2);
+	rc = cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
 	if (rc)
 		goto release1;
 	rc = data_pool.init(MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;
-	rc = reply_pool.init(sizeof(pf_message_reply), pool_size * 2);
+	rc = reply_pool.init(sizeof(PfMessageReply), pool_size * 2);
 	if (rc)
 		goto release3;
 	rc = iocb_pool.init(pool_size * 2);
@@ -94,9 +94,4 @@ release2:
 	cmd_pool.destroy();
 release1:
 	return rc;
-}
-
-void PfServerIocb::setup_subtask()
-{
-
 }

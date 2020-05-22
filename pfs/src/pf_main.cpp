@@ -234,6 +234,7 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 PfAfsAppContext::PfAfsAppContext()
 {
 	pthread_mutex_init(&lock, NULL);
+	error_handler = new PfErrorHandler();
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)

@@ -36,8 +36,8 @@ struct BufferDescriptor
 	WrOpcode wr_op;// work request op code
 	union {
 		void* buf;
-		struct pf_message_head* cmd_bd; //valid if thie BD used for command
-		struct pf_message_reply* reply_bd; //valid if this BD used for message reply
+		struct PfMessageHead* cmd_bd; //valid if thie BD used for command
+		struct PfMessageReply* reply_bd; //valid if this BD used for message reply
 	};
 	int data_len; /// this is the validate data len in the buffer.
 	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);

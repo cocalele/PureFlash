@@ -22,6 +22,7 @@
 #include "pf_flash_store.h"
 #include "pf_replicator.h"
 #include "pf_dispatcher.h"
+#include "pf_error_handler.h"
 
 
 class PfTcpServer;
@@ -49,6 +50,7 @@ public:
 
 	pthread_mutex_t lock;
 	std::map<uint64_t, PfVolume*> opened_volumes;
+    PfErrorHandler* error_handler;
 
 	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);

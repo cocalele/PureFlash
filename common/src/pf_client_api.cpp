@@ -177,8 +177,8 @@ int PfClientVolumeInfo::do_open()
 		throw runtime_error("No memory to alloc connection pool");
 	conn_pool->init((int)shards.size()*2, tcp_poller, this, io_depth, client_on_work_complete);
 	data_pool.init(S5_MAX_IO_SIZE, io_depth);
-	cmd_pool.init(sizeof(pf_message_head), io_depth);
-	reply_pool.init(sizeof(pf_message_reply), io_depth);
+	cmd_pool.init(sizeof(PfMessageHead), io_depth);
+	reply_pool.init(sizeof(PfMessageReply), io_depth);
 	iocb_pool.init(io_depth);
 	for(int i=0;i<io_depth;i++)
 	{
@@ -371,7 +371,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
     {
 		PfConnection* conn = wr_bd->conn;
 		PfClientVolumeInfo* vol = conn->volume;
-		struct pf_message_reply *reply = wr_bd->reply_bd;
+		struct PfMessageReply *reply = wr_bd->reply_bd;
 		PfClientIocb* io = vol->pick_iocb(reply->command_id, reply->command_seq);
 		uint64_t ms1 = 1000;
 		/*
@@ -385,7 +385,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			return;
 		}
 		io->reply_time = now_time_usec();
-		message_status s = (message_status)reply->status;
+		PfMessageStatus s = (PfMessageStatus)reply->status;
 		if (unlikely(s & (MSG_STATUS_REOPEN)))
 		{
 			S5LOG_WARN( "Get reopen from store %s status code:%x, req meta_ver:%d store meta_ver:%d",
@@ -399,7 +399,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 		}
 
 		{
-			pf_message_head* io_cmd = io->cmd_bd->cmd_bd;
+			PfMessageHead* io_cmd = io->cmd_bd->cmd_bd;
 			//On client side, we rely on the io timeout mechnism to release time connection
 			//Here we just release the io task
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
@@ -498,7 +498,7 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 	{
 		PfClientIocb* io = (PfClientIocb*)arg_p;
 		BufferDescriptor* cmd_bd = io->cmd_bd;
-		pf_message_head *io_cmd = io->cmd_bd->cmd_bd;
+		PfMessageHead *io_cmd = io->cmd_bd->cmd_bd;
 
 		int shard_index = (int)(io_cmd->offset >> SHARD_SIZE_ORDER);
 		struct PfConnection* conn = get_shard_conn(shard_index);
@@ -555,7 +555,7 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 			io->conn->dec_ref();
 			io->sent_time = 0;
 			io->conn = NULL;
-			pf_message_head *io_cmd = (pf_message_head *)io->cmd_bd->buf;
+			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
 				S5LOG_ERROR("heartbeat timeout for conn:%p", conn_str.c_str());
@@ -676,7 +676,7 @@ void PfClientVolumeInfo::timeout_check_proc()
 			if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
 			{
 				S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
-							((pf_message_head*)ios[i].cmd_bd->buf)->command_id,volume_name.c_str(), io_timeout_us);
+                            ((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, volume_name.c_str(), io_timeout_us);
 				vol_proc->event_queue.post_event(EVT_IO_TIMEOUT, 0, &ios[i]);
 				ios[i].is_timeout = 1;
 			}
@@ -721,7 +721,7 @@ int pf_io_submit(struct PfClientVolumeInfo* volume, void* buf, size_t length, of
 	io->ulp_handler = callback;
 	io->ulp_arg = cbk_arg;
 
-	struct pf_message_head *cmd = io->cmd_bd->cmd_bd;
+	struct PfMessageHead *cmd = io->cmd_bd->cmd_bd;
 
 	io->user_buf = buf;
 	cmd->opcode = is_write ? S5_OP_WRITE : S5_OP_READ;

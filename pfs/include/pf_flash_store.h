@@ -3,6 +3,9 @@
 #include <uuid/uuid.h>
 #include <unordered_map>
 #include <stdint.h>
+#include <libaio.h>
+#include <thread>
+
 #include "pf_fixed_size_queue.h"
 #include "basetype.h"
 #include "pf_conf.h"
@@ -19,7 +22,7 @@
 #define S5_VERSION 0x00020000
 
 class PfRedoLog;
-
+class IoSubTask;
 /**
  * key of 4M block
  */
@@ -45,7 +48,7 @@ struct lmt_entry
 	uint32_t snap_seq;
 	uint32_t status; // type EntryStatus
 	lmt_entry* prev_snap;
-	void* waiting_io;
+	IoSubTask* waiting_io;
 };
 static_assert(sizeof(lmt_entry) == 32, "unexpected lmt_entry size");
 
@@ -79,10 +82,10 @@ public:
 		uint32_t key_size;
 		uint32_t entry_size;
 		uint64_t objsize;
-		uint32_t objsize_order; //objsize = 2 ^ objsize_order
-		uint32_t rsv1; //to make alignment at 8 byte
 		uint64_t tray_capacity;
 		uint64_t meta_size;
+		uint32_t objsize_order; //objsize = 2 ^ objsize_order
+		uint32_t rsv1; //to make alignment at 8 byte
 		uint64_t free_list_position;
 		uint64_t free_list_size;
 		uint64_t trim_list_position;
@@ -96,8 +99,11 @@ public:
 		char create_time[32];
 	};
 
+	//following are hot variables used by every IO. Put compact for cache hit convenience
 	int fd;
+	uint64_t in_obj_offset_mask; // := obj_size -1,
 	io_context_t aio_ctx;
+	pthread_t polling_tid; //polling thread
 
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 	PfFixedSizeQueue<int32_t> free_obj_queue;
@@ -107,41 +113,44 @@ public:
 	char tray_name[256];
 	HeadPage head;
 
-/**
- * init flash store from device. this function will create meta data
- * and initialize the device if a device is not initialized.
- *
- * @return 0 on success, negative for error
- * @retval -ENOENT  device not exist or failed to open
- */
-int init(const char* dev_name);
 
-int process_event(int event_type, int arg_i, void* arg_p);
+	/**
+	 * init flash store from device. this function will create meta data
+	 * and initialize the device if a device is not initialized.
+	 *
+	 * @return 0 on success, negative for error
+	 * @retval -ENOENT  device not exist or failed to open
+	 */
+	int init(const char* dev_name);
 
-/**
- * read data to buffer.
- * a LBA is a block of data 4096 bytes.
- * @return actual data length that readed to buf, in lba.
- *         negative value for error
- * actual data length may less than nlba in request to read. in this case, caller
- * should treat the remaining part of buffer as 0.
- */
-int read(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba, /*out*/char* buf);
+	int process_event(int event_type, int arg_i, void* arg_p);
+	int preocess_io_event(IoSubTask* io);
 
-/**
- * write data to flash store.
- * a LBA is a block of data 4096 bytes.
- * @return number of lbas has written to store
- *         negative value for error
- */
-int write(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba, char* buf);
+	void aio_polling_proc();
+	std::thread aio_poller;
 
-/**
- * delete a 4M object
- */
-int delete_obj(uint64_t vol_id, int64_t slba,
+	/**
+	 * read data to buffer.
+	 * a LBA is a block of data 4096 bytes.
+	 * @return actual data length that readed to buf, in lba.
+	 *         negative value for error
+	 * actual data length may less than nlba in request to read. in this case, caller
+	 * should treat the remaining part of buffer as 0.
+	 */
+	inline int do_read(IoSubTask* io);
+
+	/**
+	 * write data to flash store.
+	 * a LBA is a block of data 4096 bytes.
+	 * @return number of lbas has written to store
+	 *         negative value for error
+	 */
+	int do_write(IoSubTask* io);
+
+	/**
+	 * delete a 4M object
+	 */
+	int delete_obj(uint64_t vol_id, int64_t slba,
 	int32_t snap_seq, int32_t nlba);
 
 	int save_meta_data();
@@ -149,6 +158,7 @@ private:
 	int read_store_head();
 	int initialize_store_head();
 	int load_meta_data();
+	inline int64_t obj_id_to_offset(int64_t obj_id) { return (obj_id << head.objsize_order) + head.meta_size; }
 };
 
 #endif // flash_store_h__

@@ -149,7 +149,7 @@ release1:
 int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* conn, void* cbk_data)
 {
 	int rc = 0;
-	delete (pf_handshake_message*)bd->buf;
+	delete (PfHandshakeMessage*)bd->buf;
 	bd->buf = NULL;//for debug
 	delete bd;
 
@@ -199,7 +199,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	int rc = 0;
 	PfVolume * vol;
 	PfTcpConnection* conn = (PfTcpConnection*)conn_;
-	pf_handshake_message* hs_msg = (pf_handshake_message*)bd->buf;
+	PfHandshakeMessage* hs_msg = (PfHandshakeMessage*)bd->buf;
 	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
@@ -212,7 +212,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		rc = -EINVAL;
 	}
 	conn->io_depth=hs_msg->hsqsize;
-	bd->data_len = sizeof(pf_handshake_message);
+	bd->data_len = sizeof(PfHandshakeMessage);
 	vol = app_context.get_opened_volume(hs_msg->vol_id);
 	if(vol == NULL)
 	{
@@ -326,15 +326,15 @@ int PfTcpServer::accept_connection()
 		S5LOG_ERROR("Failed to alloc BufferDescriptor");
 		goto release3;
 	}
-	bd->buf = new pf_handshake_message;
+	bd->buf = new PfHandshakeMessage;
 	bd->wr_op = TCP_WR_RECV;
 	if(!bd->buf)
 	{
 		rc = -ENOMEM;
-		S5LOG_ERROR("Failed to alloc pf_handshake_message");
+		S5LOG_ERROR("Failed to alloc PfHandshakeMessage");
 		goto release4;
 	}
-	bd->buf_size = sizeof(pf_handshake_message);
+	bd->buf_size = sizeof(PfHandshakeMessage);
 	bd->data_len = bd->buf_size;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
@@ -354,7 +354,7 @@ int PfTcpServer::accept_connection()
 	S5LOG_ERROR("TODO: add to heartbead checker list");
 	return 0;
 release5:
-	delete (pf_handshake_message*)bd->buf;
+	delete (PfHandshakeMessage*)bd->buf;
 release4:
 	delete bd;
 release3:

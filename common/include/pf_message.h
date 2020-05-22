@@ -19,17 +19,18 @@
 #define MAX_NAME_LEN 96	///< max length of name used in s5 modules.
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
 
-#define S5_OP_WRITE  0X01
-#define S5_OP_READ  0X02
-#define S5_OP_REPLICATE_WRITE  0X81
-#define S5_OP_COW_READ  0X82
-#define S5_OP_COW_WRITE  0X83
-#define S5_OP_RECOVERY_READ  0X84
-#define S5_OP_RECOVERY_WRITE  0X85
-#define S5_OP_HEARTBEAT  0X86
+enum PfOpCode : uint8_t {
+    S5_OP_WRITE = 0X01,
+    S5_OP_READ  = 0X02,
+    S5_OP_REPLICATE_WRITE = 0X81,
+    S5_OP_COW_READ = 0X82,
+    S5_OP_COW_WRITE = 0X83,
+    S5_OP_RECOVERY_READ = 0X84,
+    S5_OP_RECOVERY_WRITE = 0X85,
+    S5_OP_HEARTBEAT = 0X86
+};
 
-
-enum message_status :uint16_t{
+enum PfMessageStatus : uint16_t{
 	MSG_STATUS_SUCCESS = 0x0,
 	MSG_STATUS_INVALID_OPCODE = 0x1,
 	MSG_STATUS_INVALID_FIELD = 0x2,
@@ -91,9 +92,9 @@ enum message_status :uint16_t{
 /**
  *   s5message's head data structure definition.
  */
-struct pf_message_head
+struct PfMessageHead
 {
-	uint8_t                   opcode;
+	PfOpCode /*uint8_t*/      opcode;
 	uint8_t                   rsv1;
 	uint16_t                  command_id;
 	uint32_t                  snap_seq;
@@ -109,10 +110,10 @@ struct pf_message_head
 	uint64_t                  rsv3;
 };
 #define PF_MSG_HEAD_SIZE 64
-static_assert(sizeof(pf_message_head) == PF_MSG_HEAD_SIZE, "pf_message_head");
+static_assert(sizeof(PfMessageHead) == PF_MSG_HEAD_SIZE, "PfMessageHead");
 
 
-struct pf_message_reply {
+struct PfMessageReply {
 	uint16_t  status;         /* did the command fail, and if so, why? */
 	uint16_t  meta_ver;
 	uint16_t  command_id;     /* of the command which completed */
@@ -122,9 +123,9 @@ struct pf_message_reply {
 	uint64_t  rsv3;
 };
 #define PF_MSG_REPLY_SIZE 32
-static_assert(sizeof(pf_message_reply) == PF_MSG_REPLY_SIZE, "pf_message_reply");
+static_assert(sizeof(PfMessageReply) == PF_MSG_REPLY_SIZE, "PfMessageReply");
 
-struct pf_handshake_message {
+struct PfHandshakeMessage {
 	int16_t io_timeout;
 	union {
 		int16_t qid;
@@ -141,7 +142,7 @@ struct pf_handshake_message {
 	uint16_t rsv1;
 	uint64_t rsv2;
 };
-static_assert(sizeof(struct pf_handshake_message) == 32, "pf_handshake_message");
+static_assert(sizeof(struct PfHandshakeMessage) == 32, "PfHandshakeMessage");
 #pragma pack()
 
 // a replica id is composed as:
