@@ -71,7 +71,7 @@ int PfRedoLog::discard()
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int PfRedoLog::log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head)
+int PfRedoLog::log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
@@ -81,7 +81,7 @@ int PfRedoLog::log_free(int block_id, int trim_list_head, int free_list_tail)
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;
 }
-int PfRedoLog::log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail)
+int PfRedoLog::log_trim(const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 	return 0;

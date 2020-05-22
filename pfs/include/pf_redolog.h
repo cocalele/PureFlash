@@ -50,9 +50,9 @@ public:
 	int load();
 	int replay();
 	int discard();
-	int log_allocation(const struct block_key* key, const struct block_entry* entry, int free_list_head);
+	int log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head);
 	int log_free(int block_id, int trim_list_head, int free_list_tail);
-	int log_trim(const struct block_key* key, const struct block_entry* entry, int trim_list_tail);
+	int log_trim(const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail);
 	int redo_allocation(Item* e);
 	int redo_trim(Item* e);
 	int redo_free(Item* e);

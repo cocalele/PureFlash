@@ -96,7 +96,3 @@ release1:
 	return rc;
 }
 
-void PfServerIocb::setup_subtask()
-{
-
-}
