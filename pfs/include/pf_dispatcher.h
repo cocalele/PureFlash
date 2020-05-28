@@ -56,7 +56,6 @@ public:
 
 };
 
-
 class PfDispatcher : public PfEventThread
 {
 public:

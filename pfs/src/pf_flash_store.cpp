@@ -253,7 +253,6 @@ int PfFlashStore::do_write(IoSubTask* io)
 		entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
 	struct iocb* ios[1] = {&io->aio_cb};
 	io_submit(aio_ctx, 1, ios);
-
 	return 0;
 }
 
