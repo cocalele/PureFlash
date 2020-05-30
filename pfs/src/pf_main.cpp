@@ -143,6 +143,8 @@ int main(int argc, char *argv[])
 		return rc;
 	}
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
+	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
+		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
 	int i=0;
 	for(i=0;i<MAX_TRAY_COUNT;i++)
 	{

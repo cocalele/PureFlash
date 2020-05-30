@@ -45,6 +45,8 @@
 #define OFFSET_MD5 ((1LL<<30) - 4096)
 #define OFFSET_META_COPY (1LL<<30)
 #define OFFSET_REDO_LOG (2LL<<30)
+#define REDO_LOG_SIZE (512LL<<20) //512M
+static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_REDO_LOG exceed reserve area");
 
 static BOOL is_disk_clean(int fd)
 {
@@ -143,7 +145,7 @@ int PfFlashStore::init(const char* tray_name)
 		return ret;
 
 	in_obj_offset_mask = head.objsize - 1;
-	aio_poller = std::thread(&PfFlashStore::aio_polling_proc, this);
+	init_aio();
 	err_clean.cancel_all();
 	return ret;
 }
@@ -302,7 +304,7 @@ int PfFlashStore::initialize_store_head()
 	head.metadata_md5_position = OFFSET_MD5;
 	head.head_backup_position = OFFSET_META_COPY;
 	head.redolog_position = OFFSET_REDO_LOG;
-	head.redolog_size = 512 << 20;
+	head.redolog_size = REDO_LOG_SIZE;
 	time_t time_now = time(0);
 	strftime(head.create_time, sizeof(head.create_time), "%Y%m%d %H:%M:%S", localtime(&time_now));
 
@@ -765,4 +767,15 @@ void PfFlashStore::aio_polling_proc()
 			}
 		}
 	}
+}
+
+void PfFlashStore::init_aio()
+{
+    int rc = io_setup(MAX_AIO_DEPTH, &aio_ctx);
+    if(rc < 0)
+    {
+        S5LOG_ERROR("io_setup failed, rc:%d", rc);
+        throw std::runtime_error(format_string("io_setup failed, rc:%d", rc));
+    }
+    aio_poller = std::thread(&PfFlashStore::aio_polling_proc, this);
 }

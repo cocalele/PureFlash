@@ -15,11 +15,13 @@
 #include "pf_tray.h"
 
 
-#define META_RESERVE_SIZE (40LL<<30) //40GB
+#define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
+#define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
 
 #define OBJ_SIZE_ORDER 24
 #define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
 #define S5_VERSION 0x00020000
+#define MAX_AIO_DEPTH 4096
 
 class PfRedoLog;
 class IoSubTask;
@@ -128,7 +130,7 @@ public:
 
 	void aio_polling_proc();
 	std::thread aio_poller;
-
+	void init_aio();
 	/**
 	 * read data to buffer.
 	 * a LBA is a block of data 4096 bytes.
