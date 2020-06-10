@@ -100,6 +100,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				{
 					throw std::runtime_error(format_string("SSD:%s not found", rarg.tray_uuid.c_str()));
 				}
+				((PfLocalReplica*)r)->disk = app_context.trays[r->ssd_index];
 				shard->duty_rep_index = j;
 				if (r->is_primary)
 					shard->is_primary_node = TRUE;
@@ -158,15 +159,22 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 		return;
 	}
 
+	int rc = 0;
 	for(auto d : app_context.disps)
 	{
-		d->prepare_volume(vol);
+		rc = d->prepare_volume(vol);
 	}
+	if(rc == 0)
 	{
-	pthread_mutex_lock(&app_context.lock);
-	DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
-	app_context.opened_volumes[vol->id] = vol;
+		pthread_mutex_lock(&app_context.lock);
+		DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
+		app_context.opened_volumes[vol->id] = vol;
 	}//these code in separate code block, so lock can be released quickly
+	if(rc == -EALREADY)
+	{
+		S5LOG_ERROR("Volume already opened:%s, this is a bug", vol->name);
+		delete vol;
+	}
 	RestfulReply r(arg.op + "_reply");
 	json jr = r;
 	string jstr = jr.dump();

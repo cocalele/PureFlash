@@ -101,7 +101,7 @@ struct PfMessageHead
 	uint64_t                  vol_id;
 	uint64_t                  buf_addr;
 	uint32_t                  rkey;
-	uint32_t                  buf_len;
+	uint32_t                  rsv4;
 	uint64_t                  offset;
 	uint16_t                  length;
 	uint16_t                  meta_ver;
@@ -131,7 +131,7 @@ struct PfHandshakeMessage {
 		int16_t qid;
 		int16_t crqsize; //server return this on accept's private data, indicates real IO depth
 	};
-	int16_t hrqsize;//host receive queue size
+	int16_t rsv0;//host receive queue size
 	int16_t hsqsize;//host send queue size, i.e. max IO queue depth for ULP
 	uint64_t vol_id; //srv1 defined by NVMe over Fabric
 	int32_t snap_seq;

@@ -83,6 +83,7 @@ release1:
 int PfFlashStore::init(const char* tray_name)
 {
 	int ret = 0;
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH*2);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading disk %s ...", tray_name);
 	Cleaner err_clean;
@@ -759,7 +760,7 @@ void PfFlashStore::aio_polling_proc()
 				struct iocb* aiocb = (struct iocb*)evts[i].obj;
 				int64_t len = evts[i].res;
 				int64_t res = evts[i].res2;
-				IoSubTask* t = container_of(aiocb, IoSubTask, aio_cb);
+				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
 				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
 				}

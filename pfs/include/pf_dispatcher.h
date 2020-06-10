@@ -12,6 +12,7 @@
 struct PfServerIocb;
 struct SubTask
 {
+	//NOTE: any added member should be initialized either in PfDispatcher::init_mempools, or in PfServerIocb::setup_subtask
 	PfServerIocb* parent_iocb;
 	PfReplica* rep;
 	uint32_t task_mask;
@@ -46,10 +47,14 @@ public:
 	IoSubTask io_subtasks[3];
 
 
-	void inline setup_subtask()
+	void inline setup_subtask(PfShard* s)
 	{
-		//should clean subtask members
-		S5LOG_FATAL("%s not implemented", __FUNCTION__);
+		for (int i = 0; i < s->rep_count; i++) {
+			if(s->replicas[i]->status == HS_OK) {
+				subtasks[i]->complete_status=0;
+				task_mask |= subtasks[i]->task_mask;
+			}
+		}
 	}
 	inline void add_ref() { __sync_fetch_and_add(&ref_count, 1); }
     inline void dec_ref();
@@ -87,7 +92,7 @@ inline void IoSubTask::complete_read_with_zero() {
 //    PfMessageHead* cmd = parent_iocb->cmd_bd->cmd_bd;
     BufferDescriptor* data_bd = parent_iocb->data_bd;
 
-    memset(data_bd->buf, 0, data_bd->buf_size);
+    memset(data_bd->buf, 0, data_bd->data_len);
     complete(0);
 
 }

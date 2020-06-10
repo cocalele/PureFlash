@@ -49,10 +49,9 @@ extern "C" {
 
 #define pf_offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 
-#ifndef container_of //not defined on RHEL
-#define container_of(ptr, type, member) \
+
+#define pf_container_of(ptr, type, member) \
 ((type *) ((uint8_t *)(ptr) - pf_offsetof(type, member)))
-#endif
 
 
 /**

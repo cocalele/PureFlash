@@ -26,7 +26,6 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 {
 	if (opened_volumes.find(vol->id) != opened_volumes.end())
 	{
-		delete vol;
 		return -EALREADY;
 	}
 	opened_volumes[vol->id] = vol;
@@ -47,9 +46,10 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	uint32_t shard_index = VOL_ID_TO_SHARD_INDEX(cmd->vol_id);
 	PfShard * s = iocb->vol->shards[shard_index];
 	iocb->task_mask = 0;
+	iocb->setup_subtask(s);
 	for (int i = 0; i < iocb->vol->rep_count; i++) {
 		if(s->replicas[i]->status == HS_OK) {
-			iocb->task_mask |= iocb->subtasks[i]->task_mask;
+			iocb->subtasks[i]->rep = s->replicas[i];
 			s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
 		}
 	}
@@ -71,16 +71,24 @@ int PfDispatcher::init_mempools()
 	rc = iocb_pool.init(pool_size * 2);
 	if(rc)
 		goto release4;
-	for(int i=0;i<pool_size;i++)
+	for(int i=0;i<pool_size*2;i++)
 	{
 		PfServerIocb *cb = iocb_pool.alloc();
 		cb->cmd_bd = cmd_pool.alloc();
+		cb->cmd_bd->data_len = sizeof(PfMessageHead);
+		cb->cmd_bd->server_iocb = cb;
 		cb->data_bd = data_pool.alloc();
+		//data len of data_bd depends on length in message head
+		cb->data_bd->server_iocb = cb;
+
 		cb->reply_bd = reply_pool.alloc();
+		cb->reply_bd->data_len =  sizeof(PfMessageReply);
+		cb->reply_bd->server_iocb = cb;
 		for(int i=0;i<3;i++) {
 			cb->subtasks[i] = &cb->io_subtasks[i];
 			cb->subtasks[i]->rep_index =i;
 			cb->subtasks[i]->task_mask = 1 << i;
+			cb->subtasks[i]->parent_iocb = cb;
 		}
 		//TODO: still 2 subtasks not initialized, for metro replicating and rebalance
 		iocb_pool.free(cb);

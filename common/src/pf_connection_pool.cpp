@@ -24,6 +24,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 		return pos->second;
 	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth, 4/*connection timeout*/);
 	c->on_work_complete = on_work_complete;
+	c->volume = this->volume;
 	ip_id_map[ip] = c;
 	c->add_ref();
 	return c;

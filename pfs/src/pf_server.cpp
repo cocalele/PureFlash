@@ -25,7 +25,7 @@
 #include "pf_dispatcher.h"
 
 static void *afs_listen_thread(void *param);
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
+static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 
 static int init_trays()
 {
@@ -164,7 +164,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 		}
 		S5LOG_INFO("Handshake sent OK, conn:%s", conn->connection_info.c_str());
 
-		conn->on_work_complete = server_on_work_complete;
+		conn->on_work_complete = server_on_tcp_network_done;
 		conn->state = CONN_OK;
 
 		for(int i=0;i<conn->io_depth*2;i++)
@@ -221,7 +221,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
 	}
-	conn->ulp_data = vol;
+	conn->srv_vol = vol;
 	conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
 //	rc = conn->init_mempools();
 //	if(rc != 0)
@@ -251,33 +251,69 @@ void server_on_conn_destroy(PfConnection* conn)
 	//app_context.ingoing_connections.remove(conn);
 }
 
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
+static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	int rc = 0;
+	PfTcpConnection* conn = (PfTcpConnection*)_conn;
+	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
 
-		if(bd->wr_op == TCP_WR_RECV ) {
+		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
-				struct PfServerIocb *iocb = container_of(bd, struct PfServerIocb, cmd_bd);
+				struct PfServerIocb *iocb = bd->server_iocb;
+				iocb->vol = conn->srv_vol;
+				iocb->data_bd->data_len = bd->cmd_bd->length;
 				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
-					conn->post_recv(iocb->data_bd); //for write, let's continue to recevie data
+					iocb->data_bd->data_len = bd->cmd_bd->length;
+					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
+					return 1;
 				} else
 					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
 			}
 			else {
 				//data received
-				PfServerIocb *iocb = container_of(bd,  PfServerIocb, data_bd);
+				PfServerIocb *iocb = bd->server_iocb;
 				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
+			}
+		}
+		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){
+			//IO complete, start next
+			PfServerIocb *iocb = bd->server_iocb;
+			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
+				//message head sent complete
+				conn->start_send(iocb->data_bd);
+				return 1;
+			} else {
+				conn->post_recv(iocb->cmd_bd);
+			}
+		}
+		else {
+			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
+		}
+
+	}
+	else if(unlikely(complete_status == TCP_WC_FLUSH_ERR)) {
+
+		if(bd->wr_op == TCP_WR_RECV ) {
+			if(bd->data_len == PF_MSG_HEAD_SIZE) {
+				//message head received
+				struct PfServerIocb *iocb = bd->server_iocb;
+				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
+			}
+			else {
+				//data received
+				PfServerIocb *iocb = bd->server_iocb;
+				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
 			}
 		}
 		else if(bd->wr_op == TCP_WR_SEND){
 			//IO complete, start next
-			PfServerIocb *iocb = container_of(bd,  PfServerIocb, reply_bd);
-			conn->post_recv(iocb->cmd_bd);
+			PfServerIocb *iocb = bd->server_iocb;
+			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
 		}
 		else {
-			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
+			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
 		}
 
 	}
@@ -334,8 +370,8 @@ int PfTcpServer::accept_connection()
 		S5LOG_ERROR("Failed to alloc PfHandshakeMessage");
 		goto release4;
 	}
-	bd->buf_size = sizeof(PfHandshakeMessage);
-	bd->data_len = bd->buf_size;
+	bd->buf_capacity = sizeof(PfHandshakeMessage);
+	bd->data_len = bd->buf_capacity;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
 	conn->role = CONN_ROLE_SERVER;

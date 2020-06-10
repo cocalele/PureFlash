@@ -164,7 +164,7 @@ int main(int argc, char *argv[])
 			app_context.trays.push_back(s);
 		}
 		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
-
+		s->start();
 	}
 	for (i = 0; i < MAX_PORT_COUNT; i++)
 	{
@@ -193,13 +193,19 @@ int main(int argc, char *argv[])
 		}
 
 	}
-	for(int i=0;i<app_context.disps.size(); i++)
+	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
+	app_context.disps.reserve(disp_count);
+	for(int i=0;i<disp_count; i++)
 	{
-		app_context.disps[i] = new PfDispatcher();
+		app_context.disps.push_back(new PfDispatcher());
 		rc = app_context.disps[i]->init(i);
 		if(rc) {
 			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
 			return rc;
+		}
+		rc = app_context.disps[i]->start();
+		if(rc != 0) {
+			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
 		}
 	}
 	app_context.tcp_server=new PfTcpServer();
@@ -210,9 +216,9 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 	set_store_node_state(store_id, NS_OK, TRUE);
+	init_restful_server();
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
-	init_restful_server();
 	while(sleep(1) == 0);
 
 	S5LOG_INFO("toe_daemon exit.");
