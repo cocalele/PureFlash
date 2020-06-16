@@ -116,6 +116,7 @@ public:
 	HeadPage head;
 
 
+	~PfFlashStore();
 	/**
 	 * init flash store from device. this function will create meta data
 	 * and initialize the device if a device is not initialized.

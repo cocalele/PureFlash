@@ -1,4 +1,5 @@
 #include <exception>
+#include <malloc.h>
 #include "pf_buffer.h"
 
 using namespace std;
@@ -11,7 +12,7 @@ int BufferPool::init(size_t buffer_size, int count)
 	if(rc != 0)
 		throw std::runtime_error(format_string("init memory pool failed, rc:%d", rc));
 	clean.push_back([this](){free_bds.destroy(); });
-	data_buf = malloc(buffer_size*count);
+	data_buf = memalign(4096, buffer_size*count);
 	if(data_buf == NULL)
 		throw std::runtime_error(format_string("Failed to alloc memory of:%d bytes", buffer_size*count));
 	clean.push_back([this](){ ::free(data_buf); });

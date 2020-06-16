@@ -36,7 +36,7 @@ void PfConnectionPool::close_all()
 {
 	S5LOG_INFO("Close all connection in pool, %d connections to release", ip_id_map.size());
 
-	for(auto it = ip_id_map.begin(); it != ip_id_map.end(); ) {
+	for(auto it = ip_id_map.begin(); it != ip_id_map.end(); ++it) {
 		it->second->close();
 		it->second->dec_ref();
 	}

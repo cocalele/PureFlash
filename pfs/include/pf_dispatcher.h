@@ -53,6 +53,7 @@ public:
 			if(s->replicas[i]->status == HS_OK) {
 				subtasks[i]->complete_status=0;
 				task_mask |= subtasks[i]->task_mask;
+				add_ref();
 			}
 		}
 	}
@@ -73,6 +74,7 @@ public:
 	//PfDispatcher(const std::string &name);
 	int prepare_volume(PfVolume* vol);
 	int dispatch_io(PfServerIocb *iocb);
+	int dispatch_complete(SubTask*);
 	virtual int process_event(int event_type, int arg_i, void* arg_p);
 
 	int init(int disp_idx);

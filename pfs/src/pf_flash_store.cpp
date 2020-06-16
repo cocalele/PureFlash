@@ -22,6 +22,9 @@
 #include <string.h>
 #include <libaio.h>
 #include <thread>
+#include <sys/prctl.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "pf_flash_store.h"
 #include "pf_utils.h"
@@ -71,7 +74,15 @@ release1:
 	free(buf);
 	return rc;
 }
+static BOOL clean_meta_area(int fd, size_t size)
+{
+	size_t buf_len = 1 << 20;
+	void *buf = aligned_alloc(LBA_LENGTH, buf_len);
+	for(off_t off = 0; off < size; off += buf_len) {
+		pwrite(fd, buf, buf_len, off);
+	}
 
+}
 /**
  * init flash store from tray. this function will create meta data
  * and initialize the tray if a tray is not initialized.
@@ -98,6 +109,21 @@ int PfFlashStore::init(const char* tray_name)
 		ret = load_meta_data();
 		if (ret)
 			return ret;
+		redolog = new PfRedoLog();
+		ret = redolog->load(this);
+		if (ret)
+		{
+			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
+			return ret;
+		}
+		ret = redolog->replay();
+		if (ret)
+		{
+			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
+			return ret;
+		}
+		save_meta_data();
+		redolog->start();
 	}
 	else if (ret == -EUCLEAN)
 	{
@@ -106,6 +132,12 @@ int PfFlashStore::init(const char* tray_name)
 		{
 			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
 			return ret;
+		}
+		ret = clean_meta_area(fd, app_context.meta_size);
+		if(ret) {
+			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s", tray_name);
+			return ret;
+
 		}
 		if ((ret = initialize_store_head()) != 0)
 		{
@@ -139,6 +171,7 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 			return ret;
 		}
+		redolog->start();
 		save_meta_data();
 		S5LOG_INFO("Init new disk (%s) complete.", tray_name);
 	}
@@ -236,7 +269,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 	else
 	{
 		entry = block_pos->second;
-		if (unlikely(entry->status == EntryStatus::NORMAL))
+		if (unlikely(entry->status != EntryStatus::NORMAL))
 		{
 			S5LOG_ERROR("Block in abnormal status:%d", entry->status);
 			io->complete(MSG_STATUS_INTERNAL);
@@ -255,6 +288,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 	io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, cmd->length,
 		entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
 	struct iocb* ios[1] = {&io->aio_cb};
+	S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
 	io_submit(aio_ctx, 1, ios);
 	return 0;
 }
@@ -731,6 +765,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
         }
 
 	}
+	break;
 	default:
 		S5LOG_FATAL("Unimplemented event type:%d", event_type);
 	}
@@ -741,17 +776,15 @@ void PfFlashStore::aio_polling_proc()
 {
 #define MAX_EVT_CNT 100
 	struct io_event evts[MAX_EVT_CNT];
+	char name[32];
+	snprintf(name, sizeof(name), "aio_%s", tray_name);
+	prctl(PR_SET_NAME, name);
+	int rc=0;
 	while(1) {
-		int rc = io_getevents(aio_ctx, 1, MAX_EVT_CNT, evts, NULL);
+		rc = io_getevents(aio_ctx, 1, MAX_EVT_CNT, evts, NULL);
 		if(rc < 0)
 		{
-			if(rc == -EINTR)
-			{
-				S5LOG_INFO("%s IO poller exit", tray_name);
-				return;
-			}
-			else
-				S5LOG_INFO("%s IO poller get error:%d", tray_name, rc);
+			continue;
 		}
 		else
 		{
@@ -761,13 +794,16 @@ void PfFlashStore::aio_polling_proc()
 				int64_t len = evts[i].res;
 				int64_t res = evts[i].res2;
 				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
+				S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
 				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
+					res = (res == 0 ? len : res);
 				}
 				t->complete((uint32_t)res);
 			}
 		}
 	}
+	return ;
 }
 
 void PfFlashStore::init_aio()
@@ -778,5 +814,10 @@ void PfFlashStore::init_aio()
         S5LOG_ERROR("io_setup failed, rc:%d", rc);
         throw std::runtime_error(format_string("io_setup failed, rc:%d", rc));
     }
-    aio_poller = std::thread(&PfFlashStore::aio_polling_proc, this);
+    aio_poller = std::thread(aio_polling_proc, this);
+}
+
+PfFlashStore::~PfFlashStore()
+{
+	S5LOG_DEBUG("PfFlashStore destrutor");
 }

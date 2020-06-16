@@ -105,7 +105,7 @@ struct PfMessageHead
 	uint64_t                  offset;
 	uint16_t                  length;
 	uint16_t                  meta_ver;
-	uint32_t                  task_seq;  //use this field to hold io task sequence number
+	uint32_t                  command_seq;  //use this field to hold io task sequence number
 	uint64_t                  rsv2;
 	uint64_t                  rsv3;
 };

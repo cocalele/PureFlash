@@ -126,16 +126,26 @@ struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
-	PfClientIocb* iocb = bd->client_iocb;
-	if(bd->data_len == sizeof(PfMessageHead) && bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
-		//message head sent complete
-		conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
-		return 1;
-	} else if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
-		conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
-		return 1;
-	}
+	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
 
+		if(bd->data_len == sizeof(PfMessageHead) && bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
+			//message head sent complete
+			PfClientIocb* iocb = bd->client_iocb;
+			//conn->dec_ref(); //for head send complete
+			//conn->add_ref(); //for start send data
+			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
+			return 1;
+		} else if(bd->data_len == sizeof(PfMessageReply) ) {
+			PfClientIocb* iocb = conn->volume->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
+			iocb->reply_bd = bd;
+			if(iocb != NULL && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
+				//conn->dec_ref(); //for reply recv complete
+				//conn->add_ref(); //for start recv data
+				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
+				return 1;
+			}
+		}
+	}
 	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd);
 }
 
@@ -227,9 +237,11 @@ int PfClientVolumeInfo::do_open()
 		io->cmd_bd->client_iocb = io;
 		io->data_bd = data_pool.alloc();
 		io->data_bd->client_iocb = io;
-		io->reply_bd = reply_pool.alloc();
-		io->reply_bd->data_len = io->reply_bd->buf_capacity;
-		io->reply_bd->client_iocb = io;
+		io->reply_bd = NULL;
+		BufferDescriptor* rbd = reply_pool.alloc();
+		rbd->data_len = rbd->buf_capacity;
+		rbd->client_iocb = NULL;
+		reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
 	timeout_thread = std::thread([this] (){
@@ -398,35 +410,16 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 	return -1;
 }
 
-void PfClientVolumeInfo::free_iocb(PfClientIocb* iocb)
-{
-	if(iocb->cmd_bd != NULL) {
-		iocb->cmd_bd->conn->dec_ref();
-		cmd_pool.free(iocb->cmd_bd);
-		iocb->cmd_bd = NULL;
-	}
-	if(iocb->data_bd != NULL) {
-		iocb->data_bd->conn->dec_ref();
-		data_pool.free(iocb->data_bd);
-		iocb->data_bd = NULL;
-	}
-	if(iocb->reply_bd != NULL) {
-		iocb->reply_bd->conn->dec_ref();
-		reply_pool.free(iocb->reply_bd);
-		iocb->reply_bd = NULL;
-	}
-}
-
 void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	if (unlikely(wc_status != TCP_WC_SUCCESS))
 	{
-		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%d", wr_bd->wr_op, wc_status);
-
-		wr_bd->conn->dec_ref();
+		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", wr_bd->wr_op, WcStatusToStr(WcStatus(wc_status)));
 		PfConnection* conn = wr_bd->conn;
-		reply_pool.free(wr_bd); //this connection should be closed
+		reply_pool.free(wr_bd);
 		conn->close();
+		wr_bd->conn->dec_ref();
+		//IO not completed, it will be resend by timeout
 		return;
 	}
 
@@ -442,7 +435,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 		 */
 		if (unlikely(io == NULL))
 		{
-			S5LOG_WARN("Priori IO back but timeout!");
+			S5LOG_WARN("Previous IO back but timeout!");
 			conn->dec_ref();
 			reply_pool.free(wr_bd);
 			return;
@@ -534,7 +527,7 @@ static int reopen_volume(PfClientVolumeInfo* volume)
 int PfClientVolumeInfo::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
-	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->task_seq, 1);
+	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
 	int rc = event_queue->post_event(EVT_IO_REQ, 0, io);
 	if (rc)
 	S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
@@ -569,30 +562,41 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		if (conn == NULL)
 		{
 			io->ulp_handler(-EIO, io->ulp_arg);
-			S5LOG_ERROR("conn == NULL ,command id:%d task_sequence:%d, io_cmd :%d", io_cmd->command_id, io_cmd->task_seq, io_cmd->opcode);
+			S5LOG_ERROR("conn == NULL ,command id:%d task_sequence:%d, io_cmd :%d", io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
 			iocb_pool.free(io);
 			break;
 		}
 		io_cmd->meta_ver = (uint16_t)meta_ver;
 
-		int rc = conn->post_recv(io->reply_bd);
+		BufferDescriptor* rbd = reply_pool.alloc();
+		if(unlikely(rbd == NULL))
+		{
+			S5LOG_ERROR("No reply bd available to do io now, requeue IO");
+			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			iocb_pool.free(io);
+			break;
+		}
+		int rc = conn->post_recv(rbd);
 		if (rc)
 		{
 			S5LOG_ERROR("Failed to post reply_recv");
-			io->ulp_handler(-EIO, io->ulp_arg);
+			reply_pool.free(rbd);
+			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			iocb_pool.free(io);
 			break;
 		}
 		rc = conn->post_send(cmd_bd);
 		if (rc)
 		{
 			S5LOG_ERROR("Failed to post_request_send");
-			io->ulp_handler(-EIO, io->ulp_arg);
+			reply_pool.free(rbd);
+			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			iocb_pool.free(io);
 			break;
 		}
 		io->is_timeout = FALSE;
 		io->conn = conn;
 		io->sent_time = now_time_usec();
-		conn->add_ref();
 		break;
 	}
 	case EVT_IO_COMPLETE:

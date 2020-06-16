@@ -177,6 +177,8 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 				rc = -ENOMEM;
 				goto release0;
 			}
+			io->add_ref();
+			io->conn = conn;
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{
@@ -285,6 +287,9 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
+				iocb->dec_ref();
+				iocb = conn->dispatcher->iocb_pool.alloc();
+				iocb->add_ref();
 				conn->post_recv(iocb->cmd_bd);
 			}
 		}

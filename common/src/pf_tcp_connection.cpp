@@ -90,30 +90,34 @@ void PfTcpConnection::flush_wr()
 		send_bd = NULL;
 	}
 	PfFixedSizeQueue<S5Event>* q;
-	int rc = recv_q.get_events(&q);
-	if(rc == 0)
-	{
-		while(!q->is_empty())
+	int rc;
+	if(!recv_q.is_empty()) {
+		rc = recv_q.get_events(&q);
+		if(rc == 0)
 		{
-			S5Event* t = &q->data[q->head];
-			q->head = (q->head + 1) % q->queue_depth;
-			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-			on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+			while(!q->is_empty())
+			{
+				S5Event* t = &q->data[q->head];
+				q->head = (q->head + 1) % q->queue_depth;
+				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
+				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+			}
 		}
-
 	}
 
-	rc = send_q.get_events(&q);
-	if(rc == 0)
-	{
-		while(!q->is_empty())
+	if(!send_q.is_empty()) {
+		rc = send_q.get_events(&q);
+		if(rc == 0)
 		{
-			S5Event* t = &q->data[q->head];
-			q->head = (q->head + 1) % q->queue_depth;
-			BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-			on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
-		}
+			while(!q->is_empty())
+			{
+				S5Event* t = &q->data[q->head];
+				q->head = (q->head + 1) % q->queue_depth;
+				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
+				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+			}
 
+		}
 	}
 }
 void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
@@ -394,12 +398,16 @@ int PfTcpConnection::do_send()
 int PfTcpConnection::post_recv(BufferDescriptor *bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
+	bd->conn = this;
+	add_ref();
 	return recv_q.post_event(EVT_IO_REQ, 0, bd);
 }
 
 int PfTcpConnection::post_send(BufferDescriptor *bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
+	bd->conn = this;
+	add_ref();
 	return send_q.post_event(EVT_IO_REQ, 0, bd);
 }
 

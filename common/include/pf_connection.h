@@ -63,7 +63,8 @@ public:
 			{
 				close();
 			}
-			on_destroy(this);
+			if(on_destroy)
+				on_destroy(this);
 			delete this;
 		}
 

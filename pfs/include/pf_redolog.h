@@ -14,7 +14,7 @@ class PfRedoLog
 		FREE_OBJ = 3
 	};
 
-	class Item{
+	struct Item{
 		int64_t phase;
 		ItemType type;
 		union {
@@ -47,7 +47,7 @@ public:
 	std::thread auto_save_thread;
 
 	int init(struct PfFlashStore* ssd);
-	int load();
+	int load(struct PfFlashStore* ssd);
 	int replay();
 	int discard();
 	int log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head);
@@ -57,6 +57,7 @@ public:
 	int redo_trim(Item* e);
 	int redo_free(Item* e);
 	int stop();
+	int start();
 private:
 	int write_entry();
 };

@@ -65,7 +65,7 @@ public:
 		if(data != NULL)
 		{
 			free_obj_queue.destroy();
-			free(data);
+			::free(data);
 			pthread_spin_destroy(&lock);
 			data = NULL;
 		}

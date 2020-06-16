@@ -58,15 +58,30 @@ void *PfEventThread::thread_proc(void* arg)
 		{
 			S5Event* t = &q->data[q->head];
 			q->head = (q->head + 1) % q->queue_depth;
-			pThis->process_event(t->type, t->arg_i, t->arg_p);
+			switch(t->type){
+				case EVT_SYNC_INVOKE:
+				{
+					SyncInvokeArg* arg = (SyncInvokeArg*)t->arg_p;
+					arg->rc = arg->func();
+					sem_post(&arg->sem);
+					break;
+				}
+				default:
+					pThis->process_event(t->type, t->arg_i, t->arg_p);
+			}
 		}
 	}
 	return NULL;
 }
 
+
 int PfEventThread::sync_invoke(std::function<int(void)> _f)
 {
-	S5LOG_FATAL("sync_invoke not implemented");
-	return 0;
+	SyncInvokeArg arg;
+	sem_init(&arg.sem, 0, 0);
+	arg.func = std::move(_f);
+	this->event_queue.post_event(EVT_SYNC_INVOKE, 0, &arg);
+	sem_wait(&arg.sem);
+	return arg.rc;
 }
 

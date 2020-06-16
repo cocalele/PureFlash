@@ -37,6 +37,12 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 	switch(event_type) {
 	case EVT_IO_REQ:
 		rc = dispatch_io((PfServerIocb*)arg_p);
+		break;
+	case EVT_IO_COMPLETE:
+		rc = dispatch_complete((SubTask*)arg_p);
+		break;
+	default:
+		S5LOG_FATAL("Unknown event:%d", event_type);
 	}
 	return rc;
 }
@@ -55,6 +61,25 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	}
 	return 0;
 }
+int PfDispatcher::dispatch_complete(SubTask* sub_task)
+{
+	PfServerIocb* iocb = sub_task->parent_iocb;
+	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
+			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
+	iocb->task_mask &= (~sub_task->task_mask);
+	iocb->complete_status = (iocb->complete_status == 0 ? sub_task->complete_status : iocb->complete_status);
+	iocb->dec_ref(); //added in setup_subtask
+	if(iocb->task_mask == 0){
+		PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
+		PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
+		reply_bd->command_id = cmd_bd->command_id;
+		reply_bd->status = iocb->complete_status;
+		reply_bd->command_seq = cmd_bd->command_seq;
+		iocb->conn->post_send(iocb->reply_bd);
+	}
+	return 0;
+}
+
 int PfDispatcher::init_mempools()
 {
 	int pool_size = IO_POOL_SIZE;
