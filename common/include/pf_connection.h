@@ -15,20 +15,21 @@
 
 #define PROTOCOL_VER 1
 class PfClientVolumeInfo;
-
+class PfDispatcher;
+class PfVolume;
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
 {
 public:
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
+    PfDispatcher* dispatcher;
 	int state;
 	int transport;
 	int role;
 	uint64_t last_heartbeat_time;
 	int io_depth;
 	std::string connection_info;
-	void* ulp_data; //up layer data
 	std::string peer_ip;
 	int peer_port;
 	int inflying_heartbeat;
@@ -37,8 +38,10 @@ public:
 	BufferPool data_pool;
 	BufferPool reply_pool;
 
-	PfClientVolumeInfo* volume;
-
+	union {
+	PfClientVolumeInfo* volume; //used in client side
+	PfVolume* srv_vol; //used in server side
+	};
 	PfConnection();
 	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
@@ -60,7 +63,8 @@ public:
 			{
 				close();
 			}
-			on_destroy(this);
+			if(on_destroy)
+				on_destroy(this);
 			delete this;
 		}
 

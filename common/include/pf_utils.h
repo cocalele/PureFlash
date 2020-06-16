@@ -46,6 +46,14 @@ extern "C" {
 //#define min(a,b)    (((a) < (b)) ? (a) : (b))		///<get the smaller from two numbers.
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
+
+#define pf_offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+
+
+#define pf_container_of(ptr, type, member) \
+((type *) ((uint8_t *)(ptr) - pf_offsetof(type, member)))
+
+
 /**
 * free memory macro.
 *

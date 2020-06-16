@@ -70,8 +70,8 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 
 	for (int i = 0; i < arg.shard_count; i++)
 	{
-		S5Shard* shard = new S5Shard();
-		_c.push_back([shard](){delete shard;});
+		PfShard* shard = new PfShard(); //will be release on ~PfVolume
+		vol->shards.push_back(shard);
 		shard->id = arg.volume_id | (arg.shards[i].index << 4);
 		shard->shard_index = arg.shards[i].index;
 		S5ASSERT(shard->shard_index == i);
@@ -80,13 +80,12 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		shard->rep_count = vol->rep_count;
 		shard->snap_seq = vol->snap_seq;
 		shard->status = health_status_from_str(arg.shards[i].status);
-		vol->shards.push_back(shard);
 		for (int j = 0; j < arg.shards[i].replicas.size(); j++)
 		{
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
 			S5ASSERT(rarg.index == j);
-			PfReplica * r = new PfLocalReplica();
-			_c.push_back([r](){delete r;});
+			PfReplica * r = new PfLocalReplica(); //will be released on ~PfShard
+			shard->replicas[j] = r;
 			r->rep_index = rarg.index;
 			r->id = shard->id | r->rep_index;
 			r->store_id = rarg.store_id;
@@ -101,12 +100,11 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				{
 					throw std::runtime_error(format_string("SSD:%s not found", rarg.tray_uuid.c_str()));
 				}
-				r->tray_inst = app_context.trays[r->ssd_index];
+				((PfLocalReplica*)r)->disk = app_context.trays[r->ssd_index];
 				shard->duty_rep_index = j;
 				if (r->is_primary)
 					shard->is_primary_node = TRUE;
 			}
-			shard->replicas[j] = r;
 		}
 	}
 	_c.cancel_all();
@@ -161,15 +159,22 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 		return;
 	}
 
+	int rc = 0;
 	for(auto d : app_context.disps)
 	{
-		d->prepare_volume(vol);
+		rc = d->prepare_volume(vol);
 	}
+	if(rc == 0)
 	{
-	pthread_mutex_lock(&app_context.lock);
-	DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
-	app_context.opened_volumes[vol->id] = vol;
+		pthread_mutex_lock(&app_context.lock);
+		DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
+		app_context.opened_volumes[vol->id] = vol;
 	}//these code in separate code block, so lock can be released quickly
+	if(rc == -EALREADY)
+	{
+		S5LOG_ERROR("Volume already opened:%s, this is a bug", vol->name);
+		delete vol;
+	}
 	RestfulReply r(arg.op + "_reply");
 	json jr = r;
 	string jstr = jr.dump();

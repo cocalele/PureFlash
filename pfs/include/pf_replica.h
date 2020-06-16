@@ -12,6 +12,6 @@ class PfLocalReplica : public PfReplica
 public:
 	virtual int submit_io(IoSubTask* subtask);
 public:
-	PfFlashStore* store;
+	PfFlashStore* disk;
 };
 #endif // pf_replica_h__

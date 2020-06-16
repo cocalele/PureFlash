@@ -2,12 +2,12 @@
  * Copyright (C), 2019.
  * @endcode GBK
  *
- * flash_store ¾ÍÊÇÒ»¸ö´æ´¢µ¥Ôª£¬¼´£¬Ò»¸öSSD»òÕßflash¿¨¡£flash_storeÕâ¸öÀàµÄ¹¦ÄÜ°üÀ¨£º
- *  1. ³õÊ¼»¯Store£¬ Èç¹ûÒ»¸öSSDÊÇ¸É¾»µÄÎ´¾­³õÊ¼»¯µÄ£¬ÄÇÃ´¾Í¶ÔÆð³õÊ¼»¯¡£Èç¹ûÕâ¸öÅÌÉÏÃæÓÐÊý¾Ý£¬¾Í¼ì²éÊÇ²»ÊÇÒ»¸ö
- *     ºÏ·¨µÄStore£¬Èç¹ûÊÇ¾Í½øÐÐLoad¹ý³Ì¡£
- *  2. ×¢²ástore, ½«storeÐÅÏ¢×¢²áµ½zookeeperÀïÃæ
- *  3. ½ÓÊÕIOÇëÇó£¬Dispatcher»á½«IO·¢ËÍµ½StoreÏß³Ì£¬StoreÏß³ÌÓÃlibaio½Ó¿Ú½«IOÏÂ·¢¡£
- *  4. polling IO£¬ÏÂ·¢µ½SSD»òÕßflash¿¨µÄIOÍê³Éºó£¬ÓÉaio pollerÏß³Ì´¦Àí
+ * flash_store ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½æ´¢ï¿½ï¿½Ôªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½SSDï¿½ï¿½ï¿½ï¿½flashï¿½ï¿½ï¿½ï¿½flash_storeï¿½ï¿½ï¿½ï¿½ï¿½Ä¹ï¿½ï¿½Ü°ï¿½ï¿½ï¿½ï¿½ï¿½
+ *  1. ï¿½ï¿½Ê¼ï¿½ï¿½Storeï¿½ï¿½ ï¿½ï¿½ï¿½Ò»ï¿½ï¿½SSDï¿½Ç¸É¾ï¿½ï¿½ï¿½Î´ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½Ã´ï¿½Í¶ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½Í¼ï¿½ï¿½ï¿½Ç²ï¿½ï¿½ï¿½Ò»ï¿½ï¿½
+ *     ï¿½Ï·ï¿½ï¿½ï¿½Storeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç¾Í½ï¿½ï¿½ï¿½Loadï¿½ï¿½ï¿½Ì¡ï¿½
+ *  2. ×¢ï¿½ï¿½store, ï¿½ï¿½storeï¿½ï¿½Ï¢×¢ï¿½áµ½zookeeperï¿½ï¿½ï¿½ï¿½
+ *  3. ï¿½ï¿½ï¿½ï¿½IOï¿½ï¿½ï¿½ï¿½Dispatcherï¿½á½«IOï¿½ï¿½ï¿½Íµï¿½Storeï¿½ß³Ì£ï¿½Storeï¿½ß³ï¿½ï¿½ï¿½libaioï¿½Ó¿Ú½ï¿½IOï¿½Â·ï¿½ï¿½ï¿½
+ *  4. polling IOï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½SSDï¿½ï¿½ï¿½ï¿½flashï¿½ï¿½ï¿½ï¿½IOï¿½ï¿½Éºï¿½ï¿½ï¿½aio pollerï¿½ß³Ì´ï¿½ï¿½ï¿½
  */
 
 
@@ -20,6 +20,11 @@
 #include <sys/ioctl.h>
 #include <malloc.h>
 #include <string.h>
+#include <libaio.h>
+#include <thread>
+#include <sys/prctl.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "pf_flash_store.h"
 #include "pf_utils.h"
@@ -30,8 +35,11 @@
 #include "pf_md5.h"
 #include "pf_redolog.h"
 #include "pf_block_tray.h"
+#include "pf_dispatcher.h"
 
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
+#define offset_to_block_idx(offset, obj_size_order) ((offset) >> (obj_size_order))
+#define offset_in_block(offset, in_obj_offset_mask) ((offset) & (in_obj_offset_mask))
 
 #define OFFSET_HEAD 0
 #define OFFSET_FREE_LIST 4096
@@ -40,14 +48,16 @@
 #define OFFSET_MD5 ((1LL<<30) - 4096)
 #define OFFSET_META_COPY (1LL<<30)
 #define OFFSET_REDO_LOG (2LL<<30)
+#define REDO_LOG_SIZE (512LL<<20) //512M
+static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_REDO_LOG exceed reserve area");
 
-static BOOL is_disk_clean(PfTray *tray)
+static BOOL is_disk_clean(int fd)
 {
 	void *buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
 	BOOL rc = TRUE;
 	int64_t* p = (int64_t*)buf;
 
-	if (-1 == tray->sync_read(buf, LBA_LENGTH, 0))
+	if (-1 == pread(fd, buf, LBA_LENGTH, 0))
 	{
 		rc = FALSE;
 		goto release1;
@@ -64,7 +74,15 @@ release1:
 	free(buf);
 	return rc;
 }
+static BOOL clean_meta_area(int fd, size_t size)
+{
+	size_t buf_len = 1 << 20;
+	void *buf = aligned_alloc(LBA_LENGTH, buf_len);
+	for(off_t off = 0; off < size; off += buf_len) {
+		pwrite(fd, buf, buf_len, off);
+	}
 
+}
 /**
  * init flash store from tray. this function will create meta data
  * and initialize the tray if a tray is not initialized.
@@ -76,32 +94,55 @@ release1:
 int PfFlashStore::init(const char* tray_name)
 {
 	int ret = 0;
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH*2);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
-	S5LOG_INFO("Loading tray %s ...", tray_name);
-	tray = new BlockTray();
-	ret = tray->init(tray_name);
-	if (ret == -1)  {
+	S5LOG_INFO("Loading disk %s ...", tray_name);
+	Cleaner err_clean;
+	fd = open(tray_name, O_RDWR|O_DIRECT);
+	if (fd == -1)  {
 		return -errno;
 	}
+	err_clean.push_back([this]() {::close(fd); });
 
 	if ((ret = read_store_head()) == 0)
 	{
 		ret = load_meta_data();
 		if (ret)
-			goto error1;
+			return ret;
+		redolog = new PfRedoLog();
+		ret = redolog->load(this);
+		if (ret)
+		{
+			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
+			return ret;
+		}
+		ret = redolog->replay();
+		if (ret)
+		{
+			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
+			return ret;
+		}
+		save_meta_data();
+		redolog->start();
 	}
 	else if (ret == -EUCLEAN)
 	{
-		S5LOG_WARN("New tray found, initializing  (%s) now ...", tray_name);
-		if(!is_disk_clean(tray))
+		S5LOG_WARN("New disk found, initializing  (%s) now ...", tray_name);
+		if(!is_disk_clean(fd))
 		{
-			S5LOG_ERROR("tray %s is not clean and will not be initialized.", tray_name);
-			goto error1;
+			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
+			return ret;
+		}
+		ret = clean_meta_area(fd, app_context.meta_size);
+		if(ret) {
+			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s", tray_name);
+			return ret;
+
 		}
 		if ((ret = initialize_store_head()) != 0)
 		{
 			S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
-			goto error1;
+			return ret;
 		}
 		int obj_count = (int) ((head.tray_capacity - head.meta_size) >> head.objsize_order);
 
@@ -109,7 +150,7 @@ int PfFlashStore::init(const char* tray_name)
 		if (ret)
 		{
 			S5LOG_ERROR("free_obj_queue initialize failed ret(%d)", ret);
-			goto error1;
+			return ret;
 		}
 		for (int i = 0; i < obj_count; i++)
 		{
@@ -119,7 +160,7 @@ int PfFlashStore::init(const char* tray_name)
 		if (ret)
 		{
 			S5LOG_ERROR("trim_obj_queue initialize failed ret(%d)", ret);
-			goto error1;
+			return ret;
 		}
 
 		obj_lmt.reserve(obj_count * 2);
@@ -128,18 +169,18 @@ int PfFlashStore::init(const char* tray_name)
 		if (ret)
 		{
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
-			goto error1;
+			return ret;
 		}
+		redolog->start();
 		save_meta_data();
-		S5LOG_INFO("Init new tray (%s) complete.", tray_name);
+		S5LOG_INFO("Init new disk (%s) complete.", tray_name);
 	}
 	else
-		goto error1;
-	return ret;
+		return ret;
 
-error1:
-	tray->destroy();
-	delete tray;
+	in_obj_offset_mask = head.objsize - 1;
+	init_aio();
+	err_clean.cancel_all();
 	return ret;
 }
 
@@ -151,20 +192,37 @@ error1:
  * actual data length may less than nlba in request to read. in this case, caller
  * should treat the remaining part of buffer as 0.
  */
-int PfFlashStore::read(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba, /*out*/char* buf)
+inline int PfFlashStore::do_read(IoSubTask* io)
 {
-	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
-	//struct lmt_key key={vol_id, slba_aligned};
-	//size_t vs;
-	//auto it = obj_lmt.find(key);
-	//if(it == obj_lmt.end())
-	//	return -ENOENT;
+	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
+	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 
-	//int rc = (int)pread(dev_fd, buf, (size_t)nlba<<LBA_LENGTH_ORDER, it->second->offset + ((slba%1024) << LBA_LENGTH_ORDER));
-	//if(rc == -1)
-	//	return -ENOMEM;
-	//return rc;
+	lmt_key key = { io->rep->id, (int64_t)offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0 };
+	auto block_pos = obj_lmt.find(key);
+	lmt_entry *entry = NULL;
+	if (block_pos != obj_lmt.end())
+		entry = block_pos->second;
+	while (entry && cmd->snap_seq < entry->snap_seq)
+		entry = entry->prev_snap;
+	if (entry == NULL)
+	{
+		io->complete_read_with_zero();
+	}
+	else
+	{
+		if (likely(entry->status == EntryStatus::NORMAL)) {
+			io_prep_pread(&io->aio_cb, fd, data_bd->buf, cmd->length,
+				entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
+			struct iocb *ios[1] = {&io->aio_cb};
+			io_submit(aio_ctx, 1, ios);
+		}
+		else
+		{
+			S5LOG_ERROR("Read on object in unexpected state:%d", entry->status);
+			io->complete(MSG_STATUS_INTERNAL);
+		}
+
+	}
 	return 0;
 }
 
@@ -174,45 +232,93 @@ int PfFlashStore::read(uint64_t vol_id, int64_t slba,
  * @return number of lbas has written to store
  *         negative value for error
  */
-
-int PfFlashStore::write(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba, char* buf)
+int PfFlashStore::do_write(IoSubTask* io)
 {
-	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
-	//struct lmt_key key={vol_id, slba_aligned};
-	//size_t vs;
-	//int64_t offset;
-	//auto it = obj_lmt.find(key);
-	//if (it == obj_lmt.end())
-	//{
-	//	if (free_obj_queue.is_empty())
-	//		return -ENOSPC;
-	//	int obj_idx = free_obj_queue.dequeue();
-	//	struct lmt_entry *new_entry = lmt_entry_pool.alloc();
-	//	if (new_entry == NULL)
-	//		throw std::logic_error("No lmt entry to alloc");
-	//	*new_entry = { (obj_idx << OBJ_SIZE_ORDER) + meta_size, snap_seq };
-	//	obj_lmt[key] = new_entry;
-	//	offset = new_entry->offset + ((slba % 1024) << LBA_LENGTH_ORDER);
-	//}
-	//else
-	//	offset = it->second->offset + ((slba % 1024) << LBA_LENGTH_ORDER);
-	//int rc = (int)pwrite(dev_fd, buf, (size_t)nlba<<LBA_LENGTH_ORDER, offset);
-	//if(rc == -1)
-	//	return -ENOMEM;
+	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
+	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
+
+	lmt_key key = { io->rep->id, (int64_t)offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0};
+	auto block_pos = obj_lmt.find(key);
+	lmt_entry *entry = NULL;
+
+	if (block_pos == obj_lmt.end())
+	{
+		if (free_obj_queue.is_empty())
+		{
+			app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
+			return 0;
+		}
+		int obj_id = free_obj_queue.dequeue();
+		entry = lmt_entry_pool.alloc();
+		*entry = lmt_entry { offset: obj_id_to_offset(obj_id),
+			snap_seq : io->parent_iocb->cmd_bd->cmd_bd->snap_seq,
+			status : EntryStatus::NORMAL,
+			prev_snap : NULL,
+			waiting_io : NULL
+		};
+		obj_lmt[key] = entry;
+		int rc = redolog->log_allocation(&key, entry, free_obj_queue.head);
+		if (rc)
+		{
+			app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
+			S5LOG_ERROR("log_allocation error, rc:%d", rc);
+			return 0;
+		}
+
+	}
+	else
+	{
+		entry = block_pos->second;
+		if (unlikely(entry->status != EntryStatus::NORMAL))
+		{
+			S5LOG_ERROR("Block in abnormal status:%d", entry->status);
+			io->complete(MSG_STATUS_INTERNAL);
+			return 0;
+		}
+		if (unlikely(cmd->snap_seq < entry->snap_seq))
+		{
+			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%x request snap:%d, target snap:%d",
+				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
+			io->complete(MSG_STATUS_READONLY);
+			return 0;
+		}
+
+	}
+
+	io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, cmd->length,
+		entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
+	struct iocb* ios[1] = {&io->aio_cb};
+	S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
+	io_submit(aio_ctx, 1, ios);
+	return 0;
+}
+
+static uint64_t get_device_cap(int fd)
+{
+	struct stat fst;
+	int rc = fstat(fd, &fst);
+	if(rc != 0)
+	{
+		rc = -errno;
+		S5LOG_ERROR("Failed fstat, rc:%d", rc);
+		return rc;
+	}
+	if(S_ISBLK(fst.st_mode )){
+		long number;
+		ioctl(fd, BLKGETSIZE, &number);
+		return number*512;
+	}
+	else
+	{
+		return fst.st_size;
+	}
 	return 0;
 }
 
 int PfFlashStore::initialize_store_head()
 {
 	memset(&head, 0, sizeof(head));
-	long numblocks;
 	char uuid_str[64];
-	if(tray->get_num_blocks(&numblocks))
-	{
-		S5LOG_ERROR("Failed to get tray:%s size, rc:%d", tray_name, -errno);
-		return -errno;
-	}
 	head.magic = 0x3553424e; //magic number, NBS5
 	head.version= S5_VERSION; //S5 version
 	uuid_generate(head.uuid);
@@ -222,7 +328,7 @@ int PfFlashStore::initialize_store_head()
 	head.entry_size=sizeof(lmt_entry);
 	head.objsize=OBJ_SIZE;
 	head.objsize_order=OBJ_SIZE_ORDER; //objsize = 2 ^ objsize_order
-	head.tray_capacity = numblocks << 9;//512 byte per block
+	head.tray_capacity = get_device_cap(fd);
 	head.meta_size = app_context.meta_size;
 	head.free_list_position = OFFSET_FREE_LIST;
 	head.free_list_size = (64 << 20) - 4096;
@@ -233,7 +339,7 @@ int PfFlashStore::initialize_store_head()
 	head.metadata_md5_position = OFFSET_MD5;
 	head.head_backup_position = OFFSET_META_COPY;
 	head.redolog_position = OFFSET_REDO_LOG;
-	head.redolog_size = 512 << 20;
+	head.redolog_size = REDO_LOG_SIZE;
 	time_t time_now = time(0);
 	strftime(head.create_time, sizeof(head.create_time), "%Y%m%d %H:%M:%S", localtime(&time_now));
 
@@ -247,7 +353,7 @@ int PfFlashStore::initialize_store_head()
 	memset(buf, 0, LBA_LENGTH);
 	memcpy(buf, &head, sizeof(head));
 	int rc = 0;
-	if (-1 == tray->sync_write(buf, LBA_LENGTH, 0))
+	if (-1 == pwrite(fd, buf, LBA_LENGTH, 0))
 	{
 		rc = -errno;
 		goto release1;
@@ -453,19 +559,19 @@ int PfFlashStore::save_meta_data()
 		free(buf);
 	});
 	int rc = 0;
-	MD5Stream stream(tray);
+	MD5Stream stream(fd);
 	rc = stream.init();
 	if (rc) return rc;
 	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc != 0)
 	{
-		S5LOG_ERROR("Failed to save free obj queue, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to save free obj queue, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = save_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc != 0)
 	{
-		S5LOG_ERROR("Failed to save trim obj queue, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to save trim obj queue, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
@@ -477,7 +583,7 @@ int PfFlashStore::save_meta_data()
 	if (-1 == stream.write(buf, LBA_LENGTH, head.lmt_position))
 	{
 		rc = -errno;
-		S5LOG_ERROR("Failed to save lmt head, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to save lmt head, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
@@ -516,30 +622,30 @@ int PfFlashStore::load_meta_data()
 	});
 
 	int rc = 0;
-	MD5Stream stream(tray);
+	MD5Stream stream(fd);
 	rc = stream.init();
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to init md5 stream, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to init md5 stream, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = load_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc)
 	{
-		S5LOG_ERROR("Failed to load free obj queue, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to load free obj queue, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 	rc = load_fixed_queue<int32_t>(&trim_obj_queue, &stream, head.trim_list_position, (char*)buf, buf_size);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to load trim obj queue, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to load trim obj queue, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
 	rc = lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to init lmt_entry_pool, tray:%s rc:%d", tray_name, rc);
+		S5LOG_ERROR("Failed to init lmt_entry_pool, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
 
@@ -628,7 +734,7 @@ int PfFlashStore::read_store_head()
 	DeferCall([buf]() {
 		free(buf);
 	});
-	if (-1 == tray->sync_read(buf, LBA_LENGTH, 0))
+	if (-1 == pread(fd, buf, LBA_LENGTH, 0))
 		return -errno;
 	memcpy(&head, buf, sizeof(head));
 	if (head.magic != 0x3553424e) //magic number, NBS5
@@ -640,8 +746,78 @@ int PfFlashStore::read_store_head()
 	return 0;
 }
 
+
 int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
 {
-    S5LOG_FATAL("PfFlashStore::process_event not implemented");
+	switch (event_type) {
+	case EVT_IO_REQ:
+	{
+	    PfOpCode op = ((IoSubTask*)arg_p)->parent_iocb->cmd_bd->cmd_bd->opcode;
+        switch(op){
+            case PfOpCode::S5_OP_READ:
+                do_read((IoSubTask*)arg_p);
+                break;
+            case PfOpCode::S5_OP_WRITE:
+                do_write((IoSubTask*)arg_p);
+                break;
+            default:
+                S5LOG_FATAL("Unsupported op code:%d", op);
+        }
+
+	}
+	break;
+	default:
+		S5LOG_FATAL("Unimplemented event type:%d", event_type);
+	}
     return 0;
+}
+
+void PfFlashStore::aio_polling_proc()
+{
+#define MAX_EVT_CNT 100
+	struct io_event evts[MAX_EVT_CNT];
+	char name[32];
+	snprintf(name, sizeof(name), "aio_%s", tray_name);
+	prctl(PR_SET_NAME, name);
+	int rc=0;
+	while(1) {
+		rc = io_getevents(aio_ctx, 1, MAX_EVT_CNT, evts, NULL);
+		if(rc < 0)
+		{
+			continue;
+		}
+		else
+		{
+			for(int i=0;i<rc;i++)
+			{
+				struct iocb* aiocb = (struct iocb*)evts[i].obj;
+				int64_t len = evts[i].res;
+				int64_t res = evts[i].res2;
+				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
+				S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
+				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
+					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
+					res = (res == 0 ? len : res);
+				}
+				t->complete((uint32_t)res);
+			}
+		}
+	}
+	return ;
+}
+
+void PfFlashStore::init_aio()
+{
+    int rc = io_setup(MAX_AIO_DEPTH, &aio_ctx);
+    if(rc < 0)
+    {
+        S5LOG_ERROR("io_setup failed, rc:%d", rc);
+        throw std::runtime_error(format_string("io_setup failed, rc:%d", rc));
+    }
+    aio_poller = std::thread(aio_polling_proc, this);
+}
+
+PfFlashStore::~PfFlashStore()
+{
+	S5LOG_DEBUG("PfFlashStore destrutor");
 }

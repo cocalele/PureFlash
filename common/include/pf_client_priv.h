@@ -124,7 +124,10 @@ public:
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}
-	void free_iocb(PfClientIocb* io);
+	inline void free_iocb(PfClientIocb* io)	{
+		iocb_pool.free(io);
+	}
+
 	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 };

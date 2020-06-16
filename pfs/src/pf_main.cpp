@@ -13,6 +13,7 @@
 #include <stdexcept>
 
 #include <execinfo.h>
+#include <pf_message.h>
 
 #include "cmdopt.h"
 #include "pf_utils.h"
@@ -20,7 +21,7 @@
 #include "pf_errno.h"
 #include "pf_cluster.h"
 #include "pf_app_ctx.h"
-
+#include "pf_message.h"
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
@@ -142,6 +143,8 @@ int main(int argc, char *argv[])
 		return rc;
 	}
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
+	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
+		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
 	int i=0;
 	for(i=0;i<MAX_TRAY_COUNT;i++)
 	{
@@ -161,7 +164,7 @@ int main(int argc, char *argv[])
 			app_context.trays.push_back(s);
 		}
 		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
-
+		s->start();
 	}
 	for (i = 0; i < MAX_PORT_COUNT; i++)
 	{
@@ -190,6 +193,21 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
+	app_context.disps.reserve(disp_count);
+	for(int i=0;i<disp_count; i++)
+	{
+		app_context.disps.push_back(new PfDispatcher());
+		rc = app_context.disps[i]->init(i);
+		if(rc) {
+			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
+			return rc;
+		}
+		rc = app_context.disps[i]->start();
+		if(rc != 0) {
+			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
+		}
+	}
 	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)
@@ -198,9 +216,9 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 	set_store_node_state(store_id, NS_OK, TRUE);
+	init_restful_server();
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
-	init_restful_server();
 	while(sleep(1) == 0);
 
 	S5LOG_INFO("toe_daemon exit.");
@@ -224,6 +242,7 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 PfAfsAppContext::PfAfsAppContext()
 {
 	pthread_mutex_init(&lock, NULL);
+	error_handler = new PfErrorHandler();
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
@@ -234,6 +253,10 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 	if (pos == opened_volumes.end())
 		return NULL;
 	return pos->second;
+}
+
+PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) {
+	return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
 }
 
 void unexpected_exit_handler()

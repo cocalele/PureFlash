@@ -22,12 +22,14 @@
 #include "pf_flash_store.h"
 #include "pf_replicator.h"
 #include "pf_dispatcher.h"
+#include "pf_error_handler.h"
 
 
 class PfTcpServer;
 
 #define MAX_TRAY_COUNT 32
 #define MAX_PORT_COUNT 4
+#define IO_POOL_SIZE 4096
 
 #define DATA_PORT 0
 #define REP_PORT 1
@@ -48,10 +50,13 @@ public:
 
 	pthread_mutex_t lock;
 	std::map<uint64_t, PfVolume*> opened_volumes;
+    PfErrorHandler* error_handler;
 
 	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);
 	PfAfsAppContext();
+
+	PfDispatcher *get_dispatcher(uint64_t vol_id);
 };
 extern PfAfsAppContext app_context;
 #endif

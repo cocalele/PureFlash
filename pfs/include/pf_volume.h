@@ -36,15 +36,14 @@ public:
 	bool is_primary;
 	int	rep_index;
 	int	ssd_index;
-
-	PfFlashStore * tray_inst;
 public:
 	virtual ~PfReplica() {} //to avoid compile warning
-	virtual int submit_io(IoSubTask* subtask) = 0;
+	virtual int submit_io(IoSubTask* subtask) = 0; //override in pf_replica.h
 };
 
+
 //Shard represent a shard of volume
-struct S5Shard
+struct PfShard
 {
 	uint64_t id;
 	int	shard_index;
@@ -57,7 +56,7 @@ struct S5Shard
 	enum HealthStatus status;
 	uint64_t meta_ver;
 
-	~S5Shard();
+	~PfShard();
 };
 //Volume represent a Volume,
 struct PfVolume
@@ -67,7 +66,7 @@ struct PfVolume
 	uint64_t size;
 	int	rep_count;
 	int shard_count;
-	std::vector<S5Shard*>	shards;
+	std::vector<PfShard*>	shards;
 	int snap_seq;
 	enum HealthStatus status;
 	uint64_t meta_ver;

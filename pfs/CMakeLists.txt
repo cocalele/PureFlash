@@ -63,17 +63,19 @@ set (S5AFS_SRC
 	src/pf_restful_server.cpp
 	src/pf_restful_api.cpp
 	src/pf_volume.cpp
-)
+	src/pf_error_handler.cpp
+
+		)
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c
-)
+    )
 	
 file(GLOB_RECURSE INCS "*.h")
 
 add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 
-TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json ${GCOV})
+TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json aio ${GCOV})
 add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
 	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/pfs_template.conf ${CMAKE_BINARY_DIR}

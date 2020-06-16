@@ -248,7 +248,6 @@ int main(int argc, char* argv[])
 	if(vol == NULL) {
 		S5LOG_FATAL("Failed open volume:%s", vol_name.c_str());
 	}
-	DeferCall _c2([vol](){pf_close_volume(vol);});
 
 	S5LOG_INFO("%s with block size:%d", is_write ? "Write":"Read", bs);
 	int64_t offset_in_file = 0;
@@ -277,6 +276,9 @@ int main(int argc, char* argv[])
 		}
 	}
 	S5LOG_INFO("Succeeded %s %d blocks", is_write ? "Write" : "Read", count);
+	pf_close_volume(vol);
+	S5LOG_INFO("Volume closed");
+
 	return 0;
 }
 void unexpected_exit_handler()

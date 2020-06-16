@@ -53,9 +53,11 @@ public:
 	PfEventQueue recv_q;
 	PfEventQueue send_q;
 
-private:
 	void start_send(BufferDescriptor* bd);
+	void start_send(BufferDescriptor* bd, void* buf);
 	void start_recv(BufferDescriptor* bd);
+	void start_recv(BufferDescriptor* bd, void* buf);
+private:
 	int rcv_with_error_handle();
 	int send_with_error_handle();
 	void flush_wr();

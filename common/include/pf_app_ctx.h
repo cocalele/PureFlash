@@ -27,7 +27,7 @@ public:
 	//BufferPool reply_pool;
 	//BufferPool handshake_pool;
 
-	//ObjectMemoryPool<pf_message_head> cmd_pool;
+	//ObjectMemoryPool<PfMessageHead> cmd_pool;
 	//ObjectMemoryPool<byte[64 << 10]> data_pool;
 	//ObjectMemoryPool<pf_io_reply> reply_pool;
 	//ObjectMemoryPool<pf_handshake_msg> handshake_pool;

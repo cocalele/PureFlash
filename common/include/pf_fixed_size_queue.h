@@ -109,12 +109,15 @@ void destroy()
  */
 inline int enqueue(/*in*/const T& element)
 {
-	AutoSpinLock l(&lock);
+	pthread_spin_lock(&lock);
 	if (is_full()) {
+		pthread_spin_unlock(&lock);
+		S5LOG_ERROR("Event queue: full");
 		return -EAGAIN;
 	}
 	data[tail] = element;
 	tail = (tail + 1)%queue_depth;
+	pthread_spin_unlock(&lock);
 	return 0;
 }
 

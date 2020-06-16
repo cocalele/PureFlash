@@ -23,26 +23,31 @@ enum WcStatus {
 	TCP_WC_SUCCESS = 0,
 	TCP_WC_FLUSH_ERR = 5,
 };
+const char* WcStatusToStr(WcStatus s);
 
 //Work request op code
 enum WrOpcode {
 	TCP_WR_SEND = 0,
 	TCP_WR_RECV = 128,
 };
-
+const char* OpCodeToStr(WrOpcode op) ;
 
 struct BufferDescriptor
 {
 	WrOpcode wr_op;// work request op code
 	union {
 		void* buf;
-		struct pf_message_head* cmd_bd; //valid if thie BD used for command
-		struct pf_message_reply* reply_bd; //valid if this BD used for message reply
+		struct PfMessageHead* cmd_bd; //valid if thie BD used for command
+		struct PfMessageReply* reply_bd; //valid if this BD used for message reply
 	};
 	int data_len; /// this is the validate data len in the buffer.
+	union {
+		struct PfClientIocb *client_iocb;
+		struct PfServerIocb *server_iocb;
+	};
 	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 	void* cbk_data;
-	int buf_size; /// this is the size, i.e. max size of buf
+	int buf_capacity; /// this is the size, i.e. max size of buf
 	BufferPool* owner_pool;
 	PfConnection* conn;
 };

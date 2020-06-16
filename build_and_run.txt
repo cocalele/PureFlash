@@ -6,13 +6,45 @@ SPureFlash can be build with cmake tools.
   - ninja
     # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
     # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
+  
+  - ant
+   ant is used to compile zookeeper lib
+   # wget https://mirror.bit.edu.cn/apache//ant/binaries/apache-ant-1.9.15-bin.tar.bz2
+   # tar xjf apache-ant-1.9.15-bin.tar.bz2 && sudo ln -s `pwd`/apache-ant-1.9.15/bin/ant /usr/local/bin/ant
 
+  - java
+    install java correctly, sicne maven and jconductor need it
+    # wget https://download.java.net/java/GA/jdk14.0.1/664493ef4a6946b186ff29eb326336a2/7/GPL/openjdk-14.0.1_linux-x64_bin.tar.gz
+    # cd /opt && sudo tar xzf openjdk-14.0.1_linux-x64_bin.tar.gz
+    # export JAVA_HOME=/opt/jdk-14.0.1
+    # export PATH=$PATH:$JAVA_HOME/bin
   - Ohters
     # yum install -y  libuuid libuuid-devel gperftools-devel ant cppunit-devel
     # wget https://github.com/Kitware/CMake/releases/download/v3.15.4/cmake-3.15.4.tar.gz
     # tar xzf cmake-3.15.4.tar.gz
-    # cd make-3.15.4
+    # cd cmake-3.15.4
     # ./bootstrap && make && sudo make install
+    -  libtool
+      # yum install libtool # for centos
+
+0) Prerequisite to build on Ubuntu
+  - ninja
+    # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
+    # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
+
+  - ant
+   ant is used to compile zookeeper lib and pfconductor
+   # wget https://mirror.bit.edu.cn/apache//ant/binaries/apache-ant-1.9.15-bin.tar.bz2
+   # tar xjf apache-ant-1.9.15-bin.tar.bz2 && sudo ln -s `pwd`/apache-ant-1.9.15/bin/ant /usr/local/bin/ant
+
+  - java
+    install java correctly, sicne maven and jconductor need it
+    # wget https://download.java.net/java/GA/jdk14.0.1/664493ef4a6946b186ff29eb326336a2/7/GPL/openjdk-14.0.1_linux-x64_bin.tar.gz
+    # cd /opt && sudo tar xzf openjdk-14.0.1_linux-x64_bin.tar.gz
+    # export JAVA_HOME=/opt/jdk-14.0.1
+    # export PATH=$PATH:$JAVA_HOME/bin
+  - Ohters
+    # apt-get install libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev
 
 
 1) check out code
@@ -21,7 +53,15 @@ SPureFlash can be build with cmake tools.
   # git submodule init
   # git submodule update
 
-2) run cmake to generate ninja scripts
+2) build zookeeper
+  # cd thirdParty/zookeeper
+  # ant compile_jute
+  # cd zookeeper-client/zookeeper-client-c
+  # autoreconf -if
+  # ./configure --enable-debug --without-cppunit
+  # make
+
+3) run cmake to generate ninja scripts
   # cd PureFlash;
   # mkdir build_deb; cd build_deb
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
@@ -29,18 +69,24 @@ SPureFlash can be build with cmake tools.
 The above command will generate scripts for Debug build. To do a release build, run command:
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
 
-3) run ninja to do build
+4) run ninja to do build
   $ ninja
 
 after build finish, all binary should be found under  * bin * dir
 
+5) checkout and build jconductor
+  # git clone https://github.com/cocalele/jconductor.git
+  # cd jconductor
+  # git submodule update --init
+  # ant  -f jconductor.xml
 
 2. Run
 =================
 
 0) Prerequisite to run,
 
-   - Setup a loopback device for debug environment
+   - Setup a loopback dev
+   ice for debug environment
 
     # truncate  -s 50G /etc/pureflash/data0.img
 	the file size should great than 40GB, for the meta data will use 40GB.
@@ -49,3 +95,11 @@ after build finish, all binary should be found under  * bin * dir
 ### 2.4 Start zookeeper
 
     # $ZOOBINDIR/zkServer.sh start
+
+### 2.5 install mysql
+   ```
+   on ubuntu OS:
+    sudo apt install mysql-server
+    sudo systemctl start mysql
+    sudo mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'pureflash'@'%' IDENTIFIED BY '123456'"
+    sudo mysql -e

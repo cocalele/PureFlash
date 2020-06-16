@@ -22,9 +22,10 @@
 #include "pf_buffer.h"
 #include "pf_flash_store.h"
 #include "pf_volume.h"
+#include "pf_dispatcher.h"
 
 static void *afs_listen_thread(void *param);
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
+static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 
 static int init_trays()
 {
@@ -148,7 +149,7 @@ release1:
 int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* conn, void* cbk_data)
 {
 	int rc = 0;
-	delete (pf_handshake_message*)bd->buf;
+	delete (PfHandshakeMessage*)bd->buf;
 	bd->buf = NULL;//for debug
 	delete bd;
 
@@ -163,20 +164,22 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 		}
 		S5LOG_INFO("Handshake sent OK, conn:%s", conn->connection_info.c_str());
 
-		conn->on_work_complete = server_on_work_complete;
+		conn->on_work_complete = server_on_tcp_network_done;
 		conn->state = CONN_OK;
 
 		for(int i=0;i<conn->io_depth*2;i++)
 		{
-			BufferDescriptor* cmd_bd = conn->cmd_pool.alloc();
-			if(cmd_bd == NULL)
+			auto io = conn->dispatcher->iocb_pool.alloc();
+			if(io == NULL)
 			{
 				S5LOG_ERROR("No enough memory for connection:%s", conn->connection_info.c_str());
 				conn->close();
 				rc = -ENOMEM;
 				goto release0;
 			}
-			rc = conn->post_recv(cmd_bd);
+			io->add_ref();
+			io->conn = conn;
+			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{
 				S5LOG_ERROR("Failed to post_recv  for rc:%d", rc);
@@ -198,7 +201,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	int rc = 0;
 	PfVolume * vol;
 	PfTcpConnection* conn = (PfTcpConnection*)conn_;
-	pf_handshake_message* hs_msg = (pf_handshake_message*)bd->buf;
+	PfHandshakeMessage* hs_msg = (PfHandshakeMessage*)bd->buf;
 	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
@@ -211,7 +214,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		rc = -EINVAL;
 	}
 	conn->io_depth=hs_msg->hsqsize;
-	bd->data_len = sizeof(pf_handshake_message);
+	bd->data_len = sizeof(PfHandshakeMessage);
 	vol = app_context.get_opened_volume(hs_msg->vol_id);
 	if(vol == NULL)
 	{
@@ -220,15 +223,16 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
 	}
-	conn->ulp_data = vol;
-	rc = conn->init_mempools();
-	if(rc != 0)
-	{
-		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
-		hs_msg->hs_result = (int16_t)-rc; //return a positive value
-		conn->state = CONN_CLOSING;
-		rc = -EINVAL;
-	}
+	conn->srv_vol = vol;
+	conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+//	rc = conn->init_mempools();
+//	if(rc != 0)
+//	{
+//		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
+//		hs_msg->hs_result = (int16_t)-rc; //return a positive value
+//		conn->state = CONN_CLOSING;
+//		rc = -EINVAL;
+//	}
 	//conn->send_q.init("send_q", conn->io_depth, TRUE);
 	//conn->recv_q.init(conn->io_depth*2);
 release0:
@@ -249,12 +253,80 @@ void server_on_conn_destroy(PfConnection* conn)
 	//app_context.ingoing_connections.remove(conn);
 }
 
-static int server_on_work_complete(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data)
+static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
+	int rc = 0;
+	PfTcpConnection* conn = (PfTcpConnection*)_conn;
+	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+
+		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
+			if(bd->data_len == PF_MSG_HEAD_SIZE) {
+				//message head received
+				struct PfServerIocb *iocb = bd->server_iocb;
+				iocb->vol = conn->srv_vol;
+				iocb->data_bd->data_len = bd->cmd_bd->length;
+				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
+					iocb->data_bd->data_len = bd->cmd_bd->length;
+					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
+					return 1;
+				} else
+					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+			}
+			else {
+				//data received
+				PfServerIocb *iocb = bd->server_iocb;
+				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
+			}
+		}
+		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){
+			//IO complete, start next
+			PfServerIocb *iocb = bd->server_iocb;
+			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
+				//message head sent complete
+				conn->start_send(iocb->data_bd);
+				return 1;
+			} else {
+				iocb->dec_ref();
+				iocb = conn->dispatcher->iocb_pool.alloc();
+				iocb->add_ref();
+				conn->post_recv(iocb->cmd_bd);
+			}
+		}
+		else {
+			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
+		}
+
 	}
-	app_context.disps[conn->dispatch].event_queue.post_event(EVT_IO_REQ, bd);
-	throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
+	else if(unlikely(complete_status == TCP_WC_FLUSH_ERR)) {
+
+		if(bd->wr_op == TCP_WR_RECV ) {
+			if(bd->data_len == PF_MSG_HEAD_SIZE) {
+				//message head received
+				struct PfServerIocb *iocb = bd->server_iocb;
+				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
+			}
+			else {
+				//data received
+				PfServerIocb *iocb = bd->server_iocb;
+				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
+			}
+		}
+		else if(bd->wr_op == TCP_WR_SEND){
+			//IO complete, start next
+			PfServerIocb *iocb = bd->server_iocb;
+			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
+		}
+		else {
+			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
+		}
+
+	}
+	else {
+		S5LOG_ERROR("Socket error, error handling not implemented");
+		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
+
+	}
 	return 0;
 }
 
@@ -295,16 +367,16 @@ int PfTcpServer::accept_connection()
 		S5LOG_ERROR("Failed to alloc BufferDescriptor");
 		goto release3;
 	}
-	bd->buf = new pf_handshake_message;
+	bd->buf = new PfHandshakeMessage;
 	bd->wr_op = TCP_WR_RECV;
 	if(!bd->buf)
 	{
 		rc = -ENOMEM;
-		S5LOG_ERROR("Failed to alloc pf_handshake_message");
+		S5LOG_ERROR("Failed to alloc PfHandshakeMessage");
 		goto release4;
 	}
-	bd->buf_size = sizeof(pf_handshake_message);
-	bd->data_len = bd->buf_size;
+	bd->buf_capacity = sizeof(PfHandshakeMessage);
+	bd->data_len = bd->buf_capacity;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
 	conn->role = CONN_ROLE_SERVER;
@@ -323,7 +395,7 @@ int PfTcpServer::accept_connection()
 	S5LOG_ERROR("TODO: add to heartbead checker list");
 	return 0;
 release5:
-	delete (pf_handshake_message*)bd->buf;
+	delete (PfHandshakeMessage*)bd->buf;
 release4:
 	delete bd;
 release3:

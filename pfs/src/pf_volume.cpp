@@ -21,7 +21,7 @@ PfVolume::~PfVolume()
 	}
 }
 
-S5Shard::~S5Shard()
+PfShard::~PfShard()
 {
 	for(int i=0;i<rep_count;i++)
 	{
