@@ -268,6 +268,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				iocb->data_bd->data_len = bd->cmd_bd->length;
 				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
+					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
 					return 1;
 				} else
@@ -284,6 +285,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			PfServerIocb *iocb = bd->server_iocb;
 			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
 				//message head sent complete
+				conn->add_ref();
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {

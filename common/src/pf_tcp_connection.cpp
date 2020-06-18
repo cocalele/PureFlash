@@ -82,11 +82,13 @@ void PfTcpConnection::flush_wr()
 	if (recv_bd)
 	{
 		on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
+		dec_ref();
 		recv_bd = NULL;
 	}
 	if (send_bd)
 	{
 		on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
+		dec_ref();
 		send_bd = NULL;
 	}
 	PfFixedSizeQueue<S5Event>* q;
@@ -101,6 +103,7 @@ void PfTcpConnection::flush_wr()
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
 				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				dec_ref();
 			}
 		}
 	}
@@ -115,6 +118,7 @@ void PfTcpConnection::flush_wr()
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
 				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				dec_ref();
 			}
 
 		}
@@ -292,6 +296,7 @@ int PfTcpConnection::do_receive()
 			BufferDescriptor* temp_bd = recv_bd;
 			recv_bd = NULL;
 			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, NULL);
+			dec_ref();
 			if (unlikely(rc < 0))
 			{
 				S5LOG_WARN("on_recv_complete rc:%d", rc);
@@ -382,6 +387,7 @@ int PfTcpConnection::do_send()
 			send_bd = NULL;
 
 			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, temp_bd->cbk_data);
+			dec_ref();
 			if (unlikely(rc < 0))
 			{
 				S5LOG_ERROR("Failed on_work_complete rc:%d", rc);
@@ -400,7 +406,12 @@ int PfTcpConnection::post_recv(BufferDescriptor *bd)
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	bd->conn = this;
 	add_ref();
-	return recv_q.post_event(EVT_IO_REQ, 0, bd);
+	int rc = recv_q.post_event(EVT_IO_REQ, 0, bd);
+	if(unlikely(rc)) {
+		S5LOG_ERROR("Failed post_recv in connection:%s", connection_info.c_str());
+		dec_ref();
+	}
+	return rc;
 }
 
 int PfTcpConnection::post_send(BufferDescriptor *bd)
@@ -408,7 +419,13 @@ int PfTcpConnection::post_send(BufferDescriptor *bd)
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	bd->conn = this;
 	add_ref();
-	return send_q.post_event(EVT_IO_REQ, 0, bd);
+	int rc = send_q.post_event(EVT_IO_REQ, 0, bd);
+	if(unlikely(rc)) {
+		S5LOG_ERROR("Failed post_recv in connection:%s", connection_info.c_str());
+		dec_ref();
+	}
+	return rc;
+
 }
 
 int PfTcpConnection::post_read(BufferDescriptor *bd)

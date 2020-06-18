@@ -29,7 +29,19 @@ reference count is used to manage object life cycle. include:
      i) in IDLE state, connection keep ref_cnt (1 + io_depth * 2), because (io_depth * 2) receive bd in waiting  
      j) on closing, the (io_depth * 2) receive bd completed in FLUSH_ERROR state. and ref_cnt down to 1  
      k) at last of close, fd was removed from epoll list. the last ref_cnt down to 0. and memory reclaimed.  
-  
+
+  For client side connection, its lifecycle is:  
+     a) a connection succeeded created in PfConnectionPool::get_conn, add_ref to 1
+     b) each time an IO was issued, volume proc will 1) post a recv for reply and then 2) post a send for cmd.
+        this two operation will add ref_cnt by 2. i.e. ref_cnt += 2  
+     c) on cmd send complete, ref_cnt -= 1; immediately, if it's a write IO, a post_send for data will inc ref_cnt
+      again, ref_cnt += 1;  
+     d) on reply recevie complete, ref_cnt -= 1; immediately, if £ét's a read IO, a post_read for data will inc ref_cnt
+     again, ref_cnt += 1
+     e) on data (send for write)/(recv for reead) complete, ref_cnt -= 1; at this moment, i.e. IDLE for no IO on
+     flying, connection should has ref_cnt == 1
+     f) on connection closed, ref_cnt decrease to 0. and memory will be released.   
+     
 1.2 PfServerIocb
   PfServerIocb consisted with following members:
      - 3 BufferDescriptors (cmd, data, reply bd)

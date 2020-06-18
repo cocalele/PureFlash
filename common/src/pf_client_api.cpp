@@ -131,16 +131,14 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 		if(bd->data_len == sizeof(PfMessageHead) && bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
 			//message head sent complete
 			PfClientIocb* iocb = bd->client_iocb;
-			//conn->dec_ref(); //for head send complete
-			//conn->add_ref(); //for start send data
+			conn->add_ref(); //for start send data
 			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
 			PfClientIocb* iocb = conn->volume->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
 			iocb->reply_bd = bd;
 			if(iocb != NULL && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
-				//conn->dec_ref(); //for reply recv complete
-				//conn->add_ref(); //for start recv data
+				conn->add_ref(); //for start recv data
 				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 				return 1;
 			}
@@ -418,7 +416,6 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 		PfConnection* conn = wr_bd->conn;
 		reply_pool.free(wr_bd);
 		conn->close();
-		wr_bd->conn->dec_ref();
 		//IO not completed, it will be resend by timeout
 		return;
 	}
@@ -436,7 +433,6 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 		if (unlikely(io == NULL))
 		{
 			S5LOG_WARN("Previous IO back but timeout!");
-			conn->dec_ref();
 			reply_pool.free(wr_bd);
 			return;
 		}
@@ -576,10 +572,13 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 			iocb_pool.free(io);
 			break;
 		}
+		io->is_timeout = FALSE;
+		io->conn = conn;
+		io->sent_time = now_time_usec();
 		int rc = conn->post_recv(rbd);
 		if (rc)
 		{
-			S5LOG_ERROR("Failed to post reply_recv");
+			S5LOG_ERROR("Failed to post_recv for reply");
 			reply_pool.free(rbd);
 			io->ulp_handler(-EAGAIN, io->ulp_arg);
 			iocb_pool.free(io);
@@ -588,15 +587,12 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		rc = conn->post_send(cmd_bd);
 		if (rc)
 		{
-			S5LOG_ERROR("Failed to post_request_send");
-			reply_pool.free(rbd);
+			S5LOG_ERROR("Failed to post_send for cmd");
+			//reply_pool.free(rbd); //not reclaim rbd, since this bd has in connection's receive queue
 			io->ulp_handler(-EAGAIN, io->ulp_arg);
 			iocb_pool.free(io);
 			break;
 		}
-		io->is_timeout = FALSE;
-		io->conn = conn;
-		io->sent_time = now_time_usec();
 		break;
 	}
 	case EVT_IO_COMPLETE:
@@ -618,7 +614,6 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 		{
 			string conn_str = std::move(io->conn->connection_info);
 			io->conn->close();
-			io->conn->dec_ref();
 			io->sent_time = 0;
 			io->conn = NULL;
 			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
@@ -675,7 +670,6 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 				conn_pool->ip_id_map.erase(it++);
 				S5LOG_ERROR("connection:%p:%s timeout", conn->connection_info.c_str());
 				conn->close();
-				conn->dec_ref();
 			}
 			else
 			{
