@@ -48,7 +48,27 @@ reference count is used to manage object life cycle. include:
      - one or more subtasks
   PfServerIocb can't be released until 1) the posted bds all complete. 2) all subtask complete. 
   if a subtask is reexecuted for timeout, PfServerIocb¡¡should not release until the subtask completed as
-  many times as it was started.
+  many times as it was started.  
+     During an IO's life cycle, the following action will occur:  
+  <pre>
+     1) receive cmd  
+     2) receive data  
+     3) send subtask to local disk  
+     4) send 2 replicas to replicator  
+       4.1) replicator send cmd to remote node  
+       4.2) replicator send data to remote node  
+       4.3) replicator receive reply from remote node  
+     5) io poller get event from local disk  
+     6) send reply to client  
+ </pre> 
+  We should:  
+  <pre>
+     a) +1 to Iocb::ref_cnt before 1) and -1 after 6) complete.
+       on any abnormal complete like connection lose, the bd was complete in flush error, -1 to ref_cnt
+     b) +1 before 3) and 4.1). -1 after 4.3) and 5)
+     c) if a subtask timeout, 
+  </pre>
+  
   
   on any time a bd is posted to network, its related resource should be reserved by ref_cnt. resource include:
   1) connection this bd was posted into. 2) Server/Client IOCB this bd belongs to. 
