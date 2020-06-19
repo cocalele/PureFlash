@@ -83,6 +83,7 @@ public:
 
 inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
+    	S5LOG_DEBUG("Iocb released:%p", this);
         conn->dispatcher->iocb_pool.free(this);
     }
 }

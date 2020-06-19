@@ -16,17 +16,32 @@ int PfConnectionPool::init(int size, PfPoller* poller, PfClientVolumeInfo* vol, 
 	return 0;
 }
 
+void client_on_tcp_close(PfConnection* c)
+{
+	//c->dec_ref(); //will not dec_ref for client connection. only dec_ref when connection removed from pool
+
+}
 PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 {
 	std::lock_guard<std::mutex> _l(mtx);
 	auto pos = ip_id_map.find(ip);
-	if (pos != ip_id_map.end())
-		return pos->second;
+	if (pos != ip_id_map.end()) {
+		auto c = pos->second;
+		if(c->state == CONN_OK)
+			return c;
+		else {
+			S5LOG_WARN("Connection:%s in CLOSED state, will reconnect.", c->connection_info.c_str());
+			ip_id_map.erase(pos);
+			c->dec_ref();
+		}
+	}
+
 	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth, 4/*connection timeout*/);
+	c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
 	c->on_work_complete = on_work_complete;
+	c->on_close = client_on_tcp_close;
 	c->volume = this->volume;
 	ip_id_map[ip] = c;
-	c->add_ref();
 	return c;
 }
 
@@ -37,8 +52,9 @@ void PfConnectionPool::close_all()
 	S5LOG_INFO("Close all connection in pool, %d connections to release", ip_id_map.size());
 
 	for(auto it = ip_id_map.begin(); it != ip_id_map.end(); ++it) {
-		it->second->close();
-		it->second->dec_ref();
+		auto c = it->second;
+		c->close();
+		c->dec_ref();
 	}
 	ip_id_map.clear();
 }

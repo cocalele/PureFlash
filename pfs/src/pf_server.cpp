@@ -258,7 +258,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 	int rc = 0;
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
-	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+	if(likely(complete_status == WcStatus::TCP_WC_SUCCESS)) {
 
 		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
@@ -268,6 +268,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				iocb->data_bd->data_len = bd->cmd_bd->length;
 				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
+					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
 					return 1;
 				} else
@@ -284,11 +285,13 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			PfServerIocb *iocb = bd->server_iocb;
 			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
 				//message head sent complete
+				conn->add_ref(); //data_bd reference to connection
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
 				iocb->dec_ref();
-				iocb = conn->dispatcher->iocb_pool.alloc();
+				iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
+				iocb->conn = conn;
 				iocb->add_ref();
 				conn->post_recv(iocb->cmd_bd);
 			}
@@ -299,31 +302,32 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 
 	}
 	else if(unlikely(complete_status == TCP_WC_FLUSH_ERR)) {
-
+		struct PfServerIocb *iocb;
 		if(bd->wr_op == TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
-				struct PfServerIocb *iocb = bd->server_iocb;
+				iocb = bd->server_iocb;
 				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
 			}
 			else {
 				//data received
-				PfServerIocb *iocb = bd->server_iocb;
+				iocb = bd->server_iocb;
 				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
 			}
 		}
 		else if(bd->wr_op == TCP_WR_SEND){
 			//IO complete, start next
-			PfServerIocb *iocb = bd->server_iocb;
+			iocb = bd->server_iocb;
 			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
 		}
 		else {
 			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
+			return 0;
 		}
-
+		iocb->dec_ref();
 	}
 	else {
-		S5LOG_ERROR("Socket error, error handling not implemented");
+		S5LOG_ERROR("WR complete in unknown status:%d", complete_status);
 		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
 
 	}
