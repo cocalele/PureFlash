@@ -128,9 +128,18 @@ int PfRedoLog::replay()
 	S5LOG_INFO("%s redolog replay finished. %d items replayed", store->tray_name, cnt);
 	return 0;
 }
+
 int PfRedoLog::discard()
 {
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	this->phase ++;
+	int64_t* p = (int64_t *) entry_buff;
+	p[0] = size;
+	p[1] = phase; //phase in head is 1, and the first item writen in above has phase=0, so redo log will consider it as obsoleted item
+	if (-1 == pwrite(disk_fd, entry_buff, LBA_LENGTH, start_offset)) {
+		S5LOG_ERROR("Failed to discard redolog, rc:%d", -errno);
+		return -errno;
+	}
+
 	return 0;
 }
 int PfRedoLog::log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head)
@@ -151,7 +160,20 @@ int PfRedoLog::log_trim(const struct lmt_key* key, const struct lmt_entry* entry
 }
 int PfRedoLog::redo_allocation(Item* e)
 {
-	S5LOG_ERROR("%s not implemented", __FUNCTION__);
+	struct lmt_entry* entry = store->lmt_entry_pool.alloc();
+	if (entry == NULL)
+	{
+		return -ENOMEM;
+	}
+	*entry = e->allocation.bentry;
+	entry->init_for_redo();
+	auto pos = store->obj_lmt.find(e->allocation.bkey);
+	if(pos != store->obj_lmt.end()) {
+		store->obj_lmt[e->allocation.bkey] = entry;
+	} else {
+		store->lmt_entry_pool.free(entry);
+	}
+	store->free_obj_queue.head = e->allocation.free_list_head;
 	return 0;
 }
 int PfRedoLog::redo_trim(Item* e)

@@ -605,6 +605,7 @@ int PfFlashStore::save_meta_data()
 	}
 	rc = ser.flush_buffer();
 	stream.finalize(head.metadata_md5_position, 0);
+	redolog->discard();
 	return 0;
 }
 

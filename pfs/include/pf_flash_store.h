@@ -51,6 +51,12 @@ struct lmt_entry
 	uint32_t status; // type EntryStatus
 	lmt_entry* prev_snap;
 	IoSubTask* waiting_io;
+
+	void init_for_redo() {
+		//all other variable got value from redo log
+		prev_snap = NULL;
+		waiting_io = NULL;
+	}
 };
 static_assert(sizeof(lmt_entry) == 32, "unexpected lmt_entry size");
 
