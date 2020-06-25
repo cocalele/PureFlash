@@ -7,20 +7,26 @@
 
 class PfConnection;
 class PfPoller;
+
 class PfConnectionPool
 {
 public:
 	PfConnectionPool() : pool_size(0){ }
-	int init(int size, PfPoller* poller, PfClientVolumeInfo* vol, int io_depth, work_complete_handler _handler);
+	int init(int size, PfPoller* poller, void* owner, uint64_t vol_id, int io_depth, work_complete_handler _handler);
 	PfConnection* get_conn(const std::string& ip);
 	void close_all();
 public:
 	std::map<std::string, PfConnection*> ip_id_map;
 	std::mutex mtx;
 	int pool_size;
-	PfPoller* poller;
 	int io_depth;
-	PfClientVolumeInfo* volume;
+	PfPoller* poller;
+	union{
+		PfClientVolumeInfo* volume; //used in client side
+		PfReplicator* replicator;
+		void* owner;
+	};
+	uint64_t vol_id;
 	work_complete_handler on_work_complete;
 };
 

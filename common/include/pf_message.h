@@ -27,8 +27,9 @@ enum PfOpCode : uint8_t {
     S5_OP_COW_WRITE = 0X83,
     S5_OP_RECOVERY_READ = 0X84,
     S5_OP_RECOVERY_WRITE = 0X85,
-    S5_OP_HEARTBEAT = 0X86
+    S5_OP_HEARTBEAT = 0X86,
 };
+const char* PfOpCode2Str(PfOpCode op);
 
 enum PfMessageStatus : uint16_t{
 	MSG_STATUS_SUCCESS = 0x0,
@@ -117,8 +118,9 @@ struct PfMessageReply {
 	uint16_t  status;         /* did the command fail, and if so, why? */
 	uint16_t  meta_ver;
 	uint16_t  command_id;     /* of the command which completed */
-	uint16_t  command_seq;
-	uint64_t  rsv1;
+	uint16_t  rsv0;
+	uint32_t  command_seq;
+	uint32_t  rsv1;
 	uint64_t  rsv2;
 	uint64_t  rsv3;
 };
@@ -130,17 +132,18 @@ struct PfHandshakeMessage {
 	union {
 		int16_t qid;
 		int16_t crqsize; //server return this on accept's private data, indicates real IO depth
+		int16_t hsqsize;//host send queue size, i.e. max IO queue depth for ULP
 	};
 	int16_t rsv0;//host receive queue size
-	int16_t hsqsize;//host send queue size, i.e. max IO queue depth for ULP
+	int16_t rsv1;//host send queue size, i.e. max IO queue depth for ULP
 	uint64_t vol_id; //srv1 defined by NVMe over Fabric
-	int32_t snap_seq;
+	int32_t rsv2;
 	union {
 		int16_t protocol_ver; //on client to server, this is protocol version
 		int16_t hs_result; //on server to client, this is  shake result, 0 for success, others for failure.
 	};
-	uint16_t rsv1;
-	uint64_t rsv2;
+	uint16_t rsv3;
+	uint64_t rsv4;
 };
 static_assert(sizeof(struct PfHandshakeMessage) == 32, "PfHandshakeMessage");
 #pragma pack()

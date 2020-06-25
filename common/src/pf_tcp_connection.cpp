@@ -472,7 +472,7 @@ static int pf_tcp_recv_all(int fd, void* buf, int len, int flag)
 	return len;
 }
 
-PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int port, PfPoller *poller, PfClientVolumeInfo* vol, int io_depth, int timeout_sec)
+PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int port, PfPoller *poller, uint64_t vol_id, int& io_depth, int timeout_sec)
 {
 	Cleaner clean;
 	int rc = 0;
@@ -558,9 +558,8 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	fcntl(socket_fd, F_SETFL, fdopt);
 	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
 	memset(hmsg, 0, sizeof(PfHandshakeMessage));
-	hmsg->hsqsize = (int16_t)vol->io_depth;
-	hmsg->vol_id = vol->volume_id;
-	hmsg->snap_seq = vol->snap_seq;;
+	hmsg->hsqsize = (int16_t)io_depth;
+	hmsg->vol_id = vol_id;
 	hmsg->protocol_ver = PROTOCOL_VER;
 
 	rc = pf_tcp_send_all(socket_fd, hmsg, sizeof(*hmsg), 0);
@@ -581,11 +580,11 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 		S5LOG_ERROR("Connection rejected by server with result: %d", hmsg->hs_result);
 		throw runtime_error(format_string("Connection rejected by server with result: %d", hmsg->hs_result));
 	}
-	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", vol->io_depth, hmsg->crqsize);
-	vol->io_depth = hmsg->hsqsize;
+	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", io_depth, hmsg->crqsize);
+	io_depth = hmsg->hsqsize;
 	PfTcpConnection* conn = new PfTcpConnection;
 	clean.push_back([conn]() {delete conn; });
-	rc = conn->init(socket_fd, poller, vol->io_depth, vol->io_depth);
+	rc = conn->init(socket_fd, poller, io_depth, io_depth);
 	if (rc != 0)
 		throw runtime_error(format_string("Failed call connection init, rc:%d", rc));
 	clean.cancel_all();

@@ -7,6 +7,7 @@
 #include "pf_connection.h"
 #include "pf_mempool.h"
 #include "pf_volume.h"
+#include "pf_message.h"
 
 #define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
 struct PfServerIocb;
@@ -18,7 +19,7 @@ struct SubTask
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	uint32_t complete_status;
-	inline void complete(uint32_t comp_status);
+	inline void complete(PfMessageStatus comp_status);
 
 };
 
@@ -87,8 +88,8 @@ inline void PfServerIocb::dec_ref() {
         conn->dispatcher->iocb_pool.free(this);
     }
 }
-inline void SubTask::complete(uint32_t comp_status){
-    complete_status = comp_status;
+inline void SubTask::complete(PfMessageStatus comp_status){
+    complete_status = (uint32_t)comp_status;
     parent_iocb->conn->dispatcher->event_queue.post_event(EVT_IO_COMPLETE, 0, this);
 }
 inline void IoSubTask::complete_read_with_zero() {
@@ -96,7 +97,7 @@ inline void IoSubTask::complete_read_with_zero() {
     BufferDescriptor* data_bd = parent_iocb->data_bd;
 
     memset(data_bd->buf, 0, data_bd->data_len);
-    complete(0);
+    complete(PfMessageStatus::MSG_STATUS_SUCCESS);
 
 }
 #endif // pf_dispatcher_h__

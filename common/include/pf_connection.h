@@ -17,6 +17,8 @@
 class PfClientVolumeInfo;
 class PfDispatcher;
 class PfVolume;
+class PfReplicator;
+
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
 {
@@ -39,8 +41,10 @@ public:
 	BufferPool reply_pool;
 
 	union {
-	PfClientVolumeInfo* volume; //used in client side
-	PfVolume* srv_vol; //used in server side
+		PfClientVolumeInfo* volume; //used in client side
+		PfVolume* srv_vol; //used in server side
+		PfReplicator* replicator;
+		void* master;
 	};
 	PfConnection();
 	virtual ~PfConnection();

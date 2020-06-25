@@ -28,8 +28,9 @@
  */
 
 
-class PfConnectionPool;
 class PfClientVolumeInfo;
+class PfConnectionPool;
+
 class PfVolumeEventProc : public PfEventThread
 {
 public:

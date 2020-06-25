@@ -58,13 +58,13 @@ set (S5AFS_SRC
 	src/pf_dispatcher.cpp
 	src/pf_md5.cpp
 	src/pf_redolog.cpp
-    src/pf_block_tray.cpp
+	src/pf_block_tray.cpp
 	src/pf_replica.cpp
 	src/pf_restful_server.cpp
 	src/pf_restful_api.cpp
 	src/pf_volume.cpp
 	src/pf_error_handler.cpp
-
+	src/pf_replicator.cpp
 		)
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c

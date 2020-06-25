@@ -799,8 +799,9 @@ void PfFlashStore::aio_polling_proc()
 				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
 					res = (res == 0 ? len : res);
-				}
-				t->complete((uint32_t)res);
+					app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
+				} else
+					t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
 			}
 		}
 	}

@@ -5,14 +5,14 @@
 
 using namespace  std;
 
-
-int PfConnectionPool::init(int size, PfPoller* poller, PfClientVolumeInfo* vol, int io_depth, work_complete_handler _handler)
+int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vol_id, int io_depth, work_complete_handler _handler)
 {
 	pool_size = size;
 	this->poller = poller;
-	this->volume = vol;
+	this->owner = owner;
 	this->io_depth = io_depth;
 	on_work_complete = _handler;
+	this->vol_id = vol_id;
 	return 0;
 }
 
@@ -21,6 +21,7 @@ void client_on_tcp_close(PfConnection* c)
 	//c->dec_ref(); //will not dec_ref for client connection. only dec_ref when connection removed from pool
 
 }
+
 PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 {
 	std::lock_guard<std::mutex> _l(mtx);
@@ -36,16 +37,14 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 		}
 	}
 
-	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, volume, io_depth, 4/*connection timeout*/);
+	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth, 4/*connection timeout*/);
 	c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
 	c->on_work_complete = on_work_complete;
 	c->on_close = client_on_tcp_close;
-	c->volume = this->volume;
+	c->master = this->owner;
 	ip_id_map[ip] = c;
 	return c;
 }
-
-
 
 void PfConnectionPool::close_all()
 {
