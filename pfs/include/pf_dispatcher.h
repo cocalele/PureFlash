@@ -18,7 +18,7 @@ struct SubTask
 	PfReplica* rep;
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
-	uint32_t complete_status;
+	PfMessageStatus complete_status;
 	inline void complete(PfMessageStatus comp_status);
 
 };
@@ -39,7 +39,7 @@ public:
 
 	PfConnection *conn;
 	PfVolume* vol;
-	uint32_t complete_status;
+	PfMessageStatus complete_status;
 	uint32_t task_mask;
 	uint32_t ref_count;
 	BOOL is_timeout;
@@ -52,7 +52,7 @@ public:
 	{
 		for (int i = 0; i < s->rep_count; i++) {
 			if(s->replicas[i]->status == HS_OK) {
-				subtasks[i]->complete_status=0;
+				subtasks[i]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
 				task_mask |= subtasks[i]->task_mask;
 				add_ref();
 			}
@@ -89,7 +89,7 @@ inline void PfServerIocb::dec_ref() {
     }
 }
 inline void SubTask::complete(PfMessageStatus comp_status){
-    complete_status = (uint32_t)comp_status;
+    complete_status = comp_status;
     parent_iocb->conn->dispatcher->event_queue.post_event(EVT_IO_COMPLETE, 0, this);
 }
 inline void IoSubTask::complete_read_with_zero() {

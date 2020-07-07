@@ -151,7 +151,7 @@ uint64_t now_time_usec()
 
 static const char** log_level_str;
 static const char* stderr_log[] = { KRED "FATA" KNRM, KRED "ERRO" KNRM, KYEL "WARN" KNRM, KBLU "INFO" KNRM, KGRN "DEBU" KNRM };
-static const char* file_log[] = { "CRIT", "FATA", "ERRO", "WARN", "INFO", "DEBU" };
+static const char* file_log[] = { "FATA", "ERRO", "WARN", "INFO", "DEBU" };
 
 static void __attribute__((constructor)) initialize()
 {
@@ -212,4 +212,33 @@ const std::string get_socket_addr(int sock_fd)
 	}
 	return format_string("TCP://%s:%d<=%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
 		inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
+}
+
+std::vector<std::string> split_string(const std::string& str, char delim)
+{
+	std::vector<std::string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == std::string::npos) pos = str.length();
+		std::string token = str.substr(prev, pos-prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + 1;
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
+}
+std::vector<std::string> split_string(const std::string& str, const std::string& delim)
+{
+	std::vector<std::string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == std::string::npos) pos = str.length();
+		std::string token = str.substr(prev, pos-prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + delim.length();
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
 }

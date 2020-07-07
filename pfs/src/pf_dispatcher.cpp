@@ -67,7 +67,7 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
 			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
-	iocb->complete_status = (iocb->complete_status == 0 ? sub_task->complete_status : iocb->complete_status);
+	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
 	if(iocb->task_mask == 0){
 		PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;

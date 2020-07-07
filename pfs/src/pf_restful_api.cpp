@@ -22,6 +22,7 @@ void from_json(const json& j, ReplicaArg& p) {
 	j.at("store_id").get_to(p.store_id);
 	j.at("tray_uuid").get_to(p.tray_uuid);
 	j.at("status").get_to(p.status);
+	j.at("rep_ports").get_to(p.rep_ports);
 
 }
 
@@ -84,17 +85,21 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		{
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
 			S5ASSERT(rarg.index == j);
-			PfReplica * r = new PfLocalReplica(); //will be released on ~PfShard
+			bool is_local = (rarg.store_id == app_context.store_id);
+			PfReplica * r;
+			if(is_local)
+				r = new PfLocalReplica(); //will be released on ~PfShard
+			else
+				r = new PfSyncRemoteReplica();
 			shard->replicas[j] = r;
 			r->rep_index = rarg.index;
 			r->id = shard->id | r->rep_index;
 			r->store_id = rarg.store_id;
 			r->is_primary = (rarg.index == shard->primary_replica_index);
-			r->is_local = (r->store_id == app_context.store_id);
+			r->is_local = is_local;
 			r->status = health_status_from_str(rarg.status);
 			r->ssd_index = -1;
-			if (r->is_local)
-			{
+			if (r->is_local) {
 				r->ssd_index = app_context.get_ssd_index(rarg.tray_uuid);
 				if(r->ssd_index == -1)
 				{
@@ -104,6 +109,25 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				shard->duty_rep_index = j;
 				if (r->is_primary)
 					shard->is_primary_node = TRUE;
+			}
+			else {
+				r->ssd_index = -1;
+				PfReplicator *rp = app_context.replicators[vol->id%app_context.replicators.size()];
+				((PfSyncRemoteReplica*)r)->replicator = rp;
+
+				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');
+				for(int i=0;i<ips.size();i++)
+				{
+					S5LOG_INFO("%d %s", i, ips[i].c_str());
+				}
+//				while(ips.size() < 2)
+//					ips.push_back("");
+//				rp->sync_invoke([rp, &rarg, &ips](){
+//					rp->conn_pool->add_peer(rarg.store_id, ips[0], ips[1]);
+//					rp->conn_pool->connect_peer(rarg.store_id);
+//					return 0;
+//				});
+
 			}
 		}
 	}
@@ -125,15 +149,15 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 *      "rep_count":3,
 *      "shards":[
 *               { "index":0, "replicas":[
-* 					{ "index":0, "tray_uuid":"xxxxxxxx", "store_id":1},
-* 					{ "index":1, "tray_uuid":"xxxxxxxx", "store_id":2},
-* 					{ "index":2, "tray_uuid":"xxxxxxxx", "store_id":3}
+* 					{ "index":0, "tray_uuid":"xxxxxxxx", "store_id":1, "rep_ports":"ip1,ip2"},
+* 					{ "index":1, "tray_uuid":"xxxxxxxx", "store_id":2, "rep_ports":"ip1,ip2"},
+* 					{ "index":2, "tray_uuid":"xxxxxxxx", "store_id":3, "rep_ports":"ip1,ip2"}
 *					]
 * 			 },
 *               { "index":1, "replicas":[
-* 					{ "index":0, "tray_uuid" :"xxxxxxxx", "store_id":1},
-* 					{ "index":1, "tray_uuid" :"xxxxxxxx", "store_id":2},
-* 					{ "index":2, "tray_uuid" :"xxxxxxxx", "store_id":3}
+* 					{ "index":0, "tray_uuid" :"xxxxxxxx", "store_id":1, "rep_ports":"ip1,ip2"},
+* 					{ "index":1, "tray_uuid" :"xxxxxxxx", "store_id":2, "rep_ports":"ip1,ip2"},
+* 					{ "index":2, "tray_uuid" :"xxxxxxxx", "store_id":3, "rep_ports":"ip1,ip2"}
 *					]
 * 			 }
 * 			]

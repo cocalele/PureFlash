@@ -12,6 +12,7 @@ public:
 	int store_id;
 	std::string tray_uuid;
 	std::string status;
+	std::string rep_ports;
 };
 class ShardArg
 {

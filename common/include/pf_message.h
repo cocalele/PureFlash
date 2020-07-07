@@ -115,7 +115,7 @@ static_assert(sizeof(PfMessageHead) == PF_MSG_HEAD_SIZE, "PfMessageHead");
 
 
 struct PfMessageReply {
-	uint16_t  status;         /* did the command fail, and if so, why? */
+	PfMessageStatus  status;         /* did the command fail, and if so, why? */
 	uint16_t  meta_ver;
 	uint16_t  command_id;     /* of the command which completed */
 	uint16_t  rsv0;

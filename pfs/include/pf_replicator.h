@@ -28,7 +28,7 @@ public:
 	int init(int index);
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int replicate_io(IoSubTask* t);
-	inline PfClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq){
+	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}

@@ -208,6 +208,23 @@ int main(int argc, char *argv[])
 			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
 		}
 	}
+
+	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
+	app_context.replicators.reserve(rep_count);
+	for(int i=0; i< rep_count; i++) {
+		PfReplicator* rp = new PfReplicator();
+		rc = rp->init(i);
+		if(rc) {
+			S5LOG_ERROR("Failed init replicator[%d], rc:%d", i, rc);
+			return rc;
+		}
+		app_context.replicators.push_back(rp);
+		rc = rp->start();
+		if(rc != 0) {
+			S5LOG_FATAL("Failed to start replicator, index:%d", i);
+		}
+	}
+
 	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)

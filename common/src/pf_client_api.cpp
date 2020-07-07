@@ -39,6 +39,7 @@ static const char* pf_lib_ver = "S5 client version:0x00010000";
 void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("index").get_to(p.index);
 	j.at("store_ips").get_to(p.store_ips);
+	j.at("status").get_to(p.status);
 
 }
 void from_json(const json& j, PfClientVolumeInfo& p) {
@@ -183,6 +184,9 @@ int PfClientVolumeInfo::do_open()
 	if (rc != 0)
 		return rc;
 
+	for(int i=0;i<shards.size();i++){
+		shards[i].parsed_store_ips = split_string(shards[i].store_ips, ',');
+	}
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -713,7 +717,7 @@ PfConnection* PfClientVolumeInfo::get_shard_conn(int shard_index)
 	PfClientShardInfo * shard = &shards[shard_index];
 	for (int i=0; i < shard->store_ips.size(); i++)
 	{
-		conn = conn_pool->get_conn(shard->store_ips[shard->current_ip]);
+		conn = conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip]);
 		if (conn != NULL) {
 			return conn;
 		}

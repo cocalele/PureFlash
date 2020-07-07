@@ -63,6 +63,7 @@ int PfRedoLog::load(struct PfFlashStore* s)
 
 	p = (int64_t *) entry_buff;
 	phase = p[1] ;
+	assert(p[2] == 0xeeeedddd);
 	return 0;
 release1:
 	free(entry_buff);
@@ -135,6 +136,7 @@ int PfRedoLog::discard()
 	int64_t* p = (int64_t *) entry_buff;
 	p[0] = size;
 	p[1] = phase; //phase in head is 1, and the first item writen in above has phase=0, so redo log will consider it as obsoleted item
+	p[2] = 0xeeeedddd;
 	if (-1 == pwrite(disk_fd, entry_buff, LBA_LENGTH, start_offset)) {
 		S5LOG_ERROR("Failed to discard redolog, rc:%d", -errno);
 		return -errno;
