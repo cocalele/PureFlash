@@ -214,7 +214,7 @@ const std::string get_socket_addr(int sock_fd)
 		inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
 }
 
-std::vector<std::string> split_string(const std::string& str, char delim)
+std::vector<std::string>&& split_string(const std::string& str, char delim)
 {
 	std::vector<std::string> tokens;
 	size_t prev = 0, pos = 0;
@@ -226,11 +226,10 @@ std::vector<std::string> split_string(const std::string& str, char delim)
 		if (!token.empty()) tokens.push_back(token);
 		prev = pos + 1;
 	} while (pos < str.length() && prev < str.length());
-	return tokens;
+	return move(tokens);
 }
-std::vector<std::string> split_string(const std::string& str, const std::string& delim)
+void split_string(const std::string& str, char delim, std::vector<std::string>& tokens)
 {
-	std::vector<std::string> tokens;
 	size_t prev = 0, pos = 0;
 	do
 	{
@@ -238,7 +237,21 @@ std::vector<std::string> split_string(const std::string& str, const std::string&
 		if (pos == std::string::npos) pos = str.length();
 		std::string token = str.substr(prev, pos-prev);
 		if (!token.empty()) tokens.push_back(token);
-		prev = pos + delim.length();
+		prev = pos + 1;
 	} while (pos < str.length() && prev < str.length());
-	return tokens;
+
 }
+//std::vector<std::string> split_string(const std::string& str, const std::string& delim)
+//{
+//	std::vector<std::string> tokens;
+//	size_t prev = 0, pos = 0;
+//	do
+//	{
+//		pos = str.find(delim, prev);
+//		if (pos == std::string::npos) pos = str.length();
+//		std::string token = str.substr(prev, pos-prev);
+//		if (!token.empty()) tokens.push_back(token);
+//		prev = pos + delim.length();
+//	} while (pos < str.length() && prev < str.length());
+//	return tokens;
+//}
