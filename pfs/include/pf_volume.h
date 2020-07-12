@@ -20,7 +20,8 @@ class BufferDescriptor;
 enum HealthStatus : int32_t {
 	HS_OK = 0,
 	HS_ERROR = 1,
-	HS_DEGRADED = 2
+	HS_DEGRADED = 2,
+	HS_RECOVERYING  = 3,
 };
 #define MAX_REP_COUNT 5 //3 for normal replica, 1 for remote replicating, 1 for recoverying
 HealthStatus health_status_from_str(const std::string&  status_str);

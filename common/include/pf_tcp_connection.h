@@ -14,15 +14,18 @@ class BufferDescriptor;
 class PfTcpConnection : public PfConnection
 {
 public:
-	PfTcpConnection();
+	PfTcpConnection(bool is_client);
 	virtual ~PfTcpConnection();
 	virtual int post_recv(BufferDescriptor* buf);
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf);
 	virtual int post_write(BufferDescriptor* buf);
 	virtual int do_close();
-	int do_receive();
-	int do_send();
+
+	void start_send(BufferDescriptor* bd);
+	void start_send(BufferDescriptor* bd, void* buf);
+	void start_recv(BufferDescriptor* bd);
+	void start_recv(BufferDescriptor* bd, void* buf);
 
 	static void on_send_q_event(int fd, uint32_t event, void* c);
 	static void on_recv_q_event(int fd, uint32_t event, void* c);
@@ -53,11 +56,11 @@ public:
 	PfEventQueue recv_q;
 	PfEventQueue send_q;
 
-	void start_send(BufferDescriptor* bd);
-	void start_send(BufferDescriptor* bd, void* buf);
-	void start_recv(BufferDescriptor* bd);
-	void start_recv(BufferDescriptor* bd, void* buf);
+	bool is_client; //is this a client side connection
+
 private:
+	int do_receive();
+	int do_send();
 	int rcv_with_error_handle();
 	int send_with_error_handle();
 	void flush_wr();

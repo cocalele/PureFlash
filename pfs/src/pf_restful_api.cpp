@@ -115,17 +115,15 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				PfReplicator *rp = app_context.replicators[vol->id%app_context.replicators.size()];
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
-				std::vector<std::string> ips;
-				split_string(rarg.rep_ports, ',', ips);
-				for(int i=0;i<ips.size();i++)
-				{
-					S5LOG_INFO("%d %s", i, ips[i].c_str());
-				}
+				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');
 				while(ips.size() < 2)
 					ips.push_back("");
 				rp->sync_invoke([rp, &rarg, &ips](){
-					rp->conn_pool->add_peer(rarg.store_id, ips[0], ips[1]);
-					rp->conn_pool->connect_peer(rarg.store_id);
+					auto pos = rp->conn_pool->peers.find(rarg.store_id);
+					if(pos == rp->conn_pool->peers.end() || pos->second.conn == NULL) {
+						rp->conn_pool->add_peer(rarg.store_id, ips[0], ips[1]);
+						rp->conn_pool->connect_peer(rarg.store_id);
+					}
 					return 0;
 				});
 

@@ -160,9 +160,9 @@ inline uint64_t up_align(uint64_t number, uint64_t alignment)
 uint64_t now_time_usec();
 #define US2MS(u) ((u)/1000)
 const std::string format_string(const char * format, ...);
-const std::string get_socket_addr(int sock_fd);
+const std::string get_socket_addr(int sock_fd, bool is_client);
 void split_string(const std::string& str, char delim, std::vector<std::string>& tokens);
-std::vector<std::string>&& split_string(const std::string& str, char delim);
+std::vector<std::string> split_string(const std::string& str, char delim);
 std::vector<std::string> split_string(const std::string& str, const std::string& delim);
 class DeferCall {
 	std::function<void(void)> f;

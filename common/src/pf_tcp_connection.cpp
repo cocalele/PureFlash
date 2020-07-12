@@ -6,14 +6,15 @@
 #include <unistd.h>
 #include <exception>
 #include <fcntl.h>
+#include <pf_app_ctx.h>
 
 #include "pf_tcp_connection.h"
 #include "pf_utils.h"
 #include "pf_client_priv.h"
 using namespace  std;
-PfTcpConnection::PfTcpConnection() :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
+PfTcpConnection::PfTcpConnection(bool _is_client) :socket_fd(0), poller(NULL), recv_buf(NULL), recved_len(0), wanted_recv_len(0),
                                     recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
-                                    readable(FALSE), writeable(FALSE),need_reconnect(FALSE)
+                                    readable(FALSE), writeable(FALSE),need_reconnect(FALSE), is_client(_is_client)
                                     {}
 PfTcpConnection::~PfTcpConnection()    { }
 int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int recv_q_depth)
@@ -28,7 +29,7 @@ int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int r
 		S5LOG_ERROR("set TCP_NODELAY failed!");
 	}
 
-	connection_info = get_socket_addr(sock_fd);
+	connection_info = get_socket_addr(sock_fd, is_client);
 	rc = send_q.init("net_send_q", send_q_depth, TRUE);
 	if (rc)
 		goto release1;
@@ -341,7 +342,7 @@ int PfTcpConnection::send_with_error_handle()
 			}
 			else if (errno == EFAULT)
 			{
-				S5LOG_FATAL("socket send return EFAULT");
+				S5LOG_FATAL("socket send return EFAULT, buffer addr:%p, len:%d", (char*)send_buf + sent_len, wanted_send_len - sent_len);
 			}
 			else
 			{
@@ -476,6 +477,10 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 {
 	Cleaner clean;
 	int rc = 0;
+	if(io_depth > MAX_IO_DEPTH) {
+		S5LOG_ERROR("io_depth:%d exceed max allowed:%d", io_depth, MAX_IO_DEPTH);
+		return NULL;
+	}
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (socket_fd == -1)
 	{
@@ -519,7 +524,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	}
 	else if (errno == EINPROGRESS)
 	{
-		S5LOG_INFO("connecting to %s:%d", ip.c_str(), port);
+		S5LOG_INFO("waiting connect to %s:%d", ip.c_str(), port);
 		fd_set wset, eset;
 		FD_ZERO(&wset);
 		FD_ZERO(&eset);
@@ -582,11 +587,12 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	}
 	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", io_depth, hmsg->crqsize);
 	io_depth = hmsg->hsqsize;
-	PfTcpConnection* conn = new PfTcpConnection;
+	PfTcpConnection* conn = new PfTcpConnection(true);
 	clean.push_back([conn]() {delete conn; });
 	rc = conn->init(socket_fd, poller, io_depth, io_depth);
 	if (rc != 0)
 		throw runtime_error(format_string("Failed call connection init, rc:%d", rc));
+	conn->state = CONN_OK;
 	clean.cancel_all();
 	return conn;
 }

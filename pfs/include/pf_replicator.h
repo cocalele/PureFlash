@@ -12,6 +12,7 @@ class PfReplicator : public PfEventThread
 	{
 	public:
 		int store_id;
+		PfConnection *conn;
 		int curr_ip_idx;
 		std::vector<std::string> ip;
 	};

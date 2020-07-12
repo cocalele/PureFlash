@@ -58,6 +58,14 @@ public:
 			}
 		}
 	}
+	void inline setup_one_subtask(PfShard* s, int rep_index)
+	{
+
+		subtasks[rep_index]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
+		task_mask |= subtasks[rep_index]->task_mask;
+		add_ref();
+	}
+
 	inline void add_ref() { __sync_fetch_and_add(&ref_count, 1); }
     inline void dec_ref();
 
@@ -80,11 +88,15 @@ public:
 
 	int init(int disp_idx);
 	int init_mempools();
+
+	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
+	int dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
+	int dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 };
 
 inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
-    	S5LOG_DEBUG("Iocb released:%p", this);
+//    	S5LOG_DEBUG("Iocb released:%p", this);
         conn->dispatcher->iocb_pool.free(this);
     }
 }

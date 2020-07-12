@@ -22,7 +22,7 @@ void client_on_tcp_close(PfConnection* c)
 
 }
 
-PfConnection* PfConnectionPool::get_conn(const std::string& ip)
+PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
 {
 	std::lock_guard<std::mutex> _l(mtx);
 	auto pos = ip_id_map.find(ip);
@@ -31,19 +31,26 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip)
 		if(c->state == CONN_OK)
 			return c;
 		else {
-			S5LOG_WARN("Connection:%s in CLOSED state, will reconnect.", c->connection_info.c_str());
+			S5LOG_WARN("Connection:%s in state:%s, will reconnect.", c->connection_info.c_str(), ConnState2Str(c->state));
 			ip_id_map.erase(pos);
 			c->dec_ref();
 		}
 	}
 
-	PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth, 4/*connection timeout*/);
-	c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
-	c->on_work_complete = on_work_complete;
-	c->on_close = client_on_tcp_close;
-	c->master = this->owner;
-	ip_id_map[ip] = c;
-	return c;
+	try {
+		PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth,
+		                                                        4/*connection timeout*/);
+		c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
+		c->on_work_complete = on_work_complete;
+		c->on_close = client_on_tcp_close;
+		c->master = this->owner;
+		ip_id_map[ip] = c;
+		return c;
+	}
+	catch(std::exception& e) {
+		S5LOG_ERROR("Error connect to:%s, exception:%s", ip.c_str(), e.what());
+	}
+	return NULL;
 }
 
 void PfConnectionPool::close_all()

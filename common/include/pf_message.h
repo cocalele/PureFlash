@@ -15,6 +15,7 @@
 #include <linux/types.h>
 #include <stdarg.h>
 #include "basetype.h"
+#include <type_traits>
 
 #define MAX_NAME_LEN 96	///< max length of name used in s5 modules.
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
@@ -41,6 +42,7 @@ enum PfMessageStatus : uint16_t{
 	MSG_STATUS_INTERNAL = 0x6,
 	MSG_STATUS_ABORT_REQ = 0x7,
 	MSG_STATUS_INVALID_IO_TIMEOUT = 0x8,
+	MSG_STATUS_INVALID_STATE = 0x09,
 	MSG_STATUS_LBA_RANGE = 0x80,
 	MSG_STATUS_NS_NOT_READY = 0x82,
 	MSG_STATUS_NOT_PRIMARY = 0xC0,
@@ -57,36 +59,25 @@ enum PfMessageStatus : uint16_t{
 	MSG_STATUS_METRO_REPLICATING_FAILED = 0xCB,
 	MSG_STATUS_RECOVERY_FAILED = 0xCC,
 	MSG_STATUS_SSD_ERROR = 0xCD,
+	MSG_STATUS_REP_TO_PRIMARY = 0xCE, //replicating write to primary node
 
 	MSG_STATUS_DEGRADE = 0x2000,
 	MSG_STATUS_REOPEN = 0x4000,
 };
+inline PfMessageStatus operator | (PfMessageStatus lhs, PfMessageStatus rhs)
+{
+	typedef std::underlying_type <PfMessageStatus>::type T;
+	return static_cast<PfMessageStatus>(static_cast<T >(lhs) | static_cast<T >(rhs));
+}
 
 /**
  * Get the name of s5message's status, get the string name refer to enum type.
  *
  * @param[in] 	msg_status	status enum type.
  * @return 	status's name on success, UNKNOWN_STATUS on failure.
- * @retval	MSG_STATUS_ERR				MSG_STATUS_ERR.
- * @retval	MSG_STATUS_OK					MSG_STATUS_OK.
- * @retval	MSG_STATUS_DELAY_RETRY		MSG_STATUS_DELAY_RETRY.
- * @retval	MSG_STATUS_REPLY_FLUSH		MSG_STATUS_REPLY_FLUSH.
- * @retval	MSG_STATUS_REPLY_LOAD		MSG_STATUS_REPLY_LOAD.
- * @retval	MSG_STATUS_NOSPACE			MSG_STATUS_NOSPACE.
- * @retval	MSG_STATUS_RETRY_LOAD		MSG_STATUS_RETRY_LOAD.
- * @retval	MSG_STATUS_AUTH_ERR			MSG_STATUS_AUTH_ERR.
- * @retval	MSG_STATUS_VER_MISMATCH		MSG_STATUS_VER_MISMATCH.
- * @retval	MSG_STATUS_CANCEL_FLUSH		MSG_STATUS_CANCEL_FLUSH.
- * @retval	MSG_STATUS_CRC_ERR			MSG_STATUS_CRC_ERR.
- * @retval	MSG_STATUS_OPENIMAGE_ERR	MSG_STATUS_OPENIMAGE_ERR.
- * @retval	MSG_STATUS_NOTFOUND			MSG_STATUS_NOTFOUND.
- * @retval	MSG_STATUS_BIND_ERR			MSG_STATUS_BIND_ERR.
- * @retval	MSG_STATUS_NET_ERR			MSG_STATUS_NET_ERR.
- * @retval	MSG_STATUS_CONF_ERR			MSG_STATUS_CONF_ERR.
- * @retval	MSG_STATUS_INVAL				MSG_STATUS_INVAL.
  * @retval	UNKNOWN_STATUS				msg_status is invalid.
  */
-
+const char* PfMessageStatus2Str(PfMessageStatus s);
 
 #pragma pack(1)
 
@@ -154,6 +145,7 @@ static_assert(sizeof(struct PfHandshakeMessage) == 32, "PfHandshakeMessage");
 // bit[3..0] replica index
 #define VOL_ID_TO_VOL_INDEX(x)((x)>>24)
 #define VOL_ID_TO_SHARD_INDEX(x)(((x)>>4) & 0x0fffff)
+#define OFFSET_TO_SHARD_INDEX(offset) ((offset) >> (LBA_LENGTH_ORDER + SHARD_LBA_CNT_ORDER))
 #define debug_data_len 10	///< debug data length.
 
 /**

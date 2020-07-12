@@ -13,7 +13,7 @@ class PfConnectionPool
 public:
 	PfConnectionPool() : pool_size(0){ }
 	int init(int size, PfPoller* poller, void* owner, uint64_t vol_id, int io_depth, work_complete_handler _handler);
-	PfConnection* get_conn(const std::string& ip);
+	PfConnection* get_conn(const std::string& ip) noexcept ;
 	void close_all();
 public:
 	std::map<std::string, PfConnection*> ip_id_map;

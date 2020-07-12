@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 	int rc = -1;
 	const char*	s5daemon_conf = NULL;
 
-	S5LOG_INFO("S5afs start...");
+	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
 	if (argc < 3)
 	{
 		printUsage();
@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
 
 	conf_file_t fp = NULL;
 	if(s5daemon_conf == NULL)
-		s5daemon_conf = "/etc/pureflash/s5afs.conf";
+		s5daemon_conf = "/etc/pureflash/pfs.conf";
 	fp = conf_open(s5daemon_conf);
 	if(!fp)
 	{

@@ -38,11 +38,31 @@ int PfReplicator::replicate_io(IoSubTask* t)
 		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}
-	rc = c->post_send(io->cmd_bd);
-	if(unlikely(rc)) {
-		S5LOG_ERROR("Failed to post_send in replicating connection:%s, rc:%d", c->connection_info.c_str(), rc);
+	BufferDescriptor* rbd = reply_pool.alloc();
+	if(unlikely(rbd == NULL))
+	{
+		S5LOG_ERROR("replicator[%d] has no recv_bd availableio now, requeue IO", rep_index);
 		usleep(100);
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		iocb_pool.free(io);
+		return -EAGAIN;
+	}
+	rc = c->post_recv(rbd);
+	if(unlikely(rc)) {
+		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d", rep_index, c->connection_info.c_str(), rc);
+		usleep(100);
+		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		reply_pool.free(rbd);
+		iocb_pool.free(io);
+		return -EAGAIN;
+	}
+	rc = c->post_send(io->cmd_bd);
+	if(unlikely(rc)) {
+		S5LOG_ERROR("Failed to post_send in replicator[%d], connection:%s, rc:%d", rep_index, c->connection_info.c_str(), rc);
+		usleep(100);
+		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		//cann't free reply bd, since it was post into connection
+		iocb_pool.free(io);
 		return -EAGAIN;
 	}
 	return rc;
@@ -76,6 +96,7 @@ int PfReplicator::process_io_complete(BufferDescriptor* bd, int complete_status)
 
 		struct PfMessageReply *reply = bd->reply_bd;
 		PfClientIocb* io = pick_iocb(reply->command_id, reply->command_seq);
+		io->reply_bd = bd;
 		PfMessageHead* io_cmd = io->cmd_bd->cmd_bd;
 		uint64_t ms1 = 1000;
 		/*
@@ -143,7 +164,7 @@ int PfReplicator::process_event(int event_type, int arg_i, void *arg_p)
 
 void PfReplicator::PfRepConnectionPool::add_peer(int store_id, std::string ip1, std::string ip2)
 {
-	PeerAddr a = {.store_id=store_id, .curr_ip_idx=0, .ip={ip1, ip2}};
+	PeerAddr a = {.store_id=store_id, .conn=NULL, .curr_ip_idx=0, .ip={ip1, ip2} };
 	peers[store_id] = a;
 }
 
@@ -158,10 +179,12 @@ PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 	if(pos == peers.end())
 		return NULL;
 	PeerAddr& addr = pos->second;
+	if(addr.conn != NULL && addr.conn->state == CONN_OK)
+		return addr.conn;
 	for(int i=0;i<addr.ip.size();i++){
-		PfConnection* c = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx]);
-		if(c)
-			return c;
+		addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx]);
+		if(addr.conn)
+			return addr.conn;
 		addr.curr_ip_idx = (addr.curr_ip_idx+1)%(int)addr.ip.size();
 	}
 	return NULL;
@@ -177,7 +200,8 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 				//message head sent complete
 				PfClientIocb *iocb = bd->client_iocb;
 				conn->add_ref(); //for start send data
-				conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
+				IoSubTask* t = (IoSubTask*)iocb->ulp_arg;
+				conn->start_send(t->parent_iocb->data_bd); //on client side, use use's buffer
 				return 1;
 			}
 			assert(bd->cmd_bd->opcode == PfOpCode::S5_OP_HEARTBEAT);
@@ -192,7 +216,7 @@ int PfReplicator::init(int index)
 	int rc;
 	rep_index = index;
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
-	int rep_iodepth = 256;
+	int rep_iodepth = 64;
 	PfEventThread::init(name, rep_iodepth*2);
 	Cleaner clean;
 	tcp_poller = new PfPoller();
