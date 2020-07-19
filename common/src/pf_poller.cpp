@@ -123,10 +123,10 @@ void PfPoller::destroy()
 {
 	if(tid == 0)
 		return;
+	del_fd(ctrl_queue.event_fd);
 	pthread_cancel(tid);
 	pthread_join(tid, NULL);
 	tid=0;
-	del_fd(ctrl_queue.event_fd);
 	close(epfd);
 	epfd = 0;
 	ctrl_queue.destroy();

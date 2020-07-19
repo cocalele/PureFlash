@@ -27,42 +27,6 @@
 static void *afs_listen_thread(void *param);
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 
-static int init_trays()
-{
-	int rc = -1;
-	return rc;
-}
-
-static int release_trays()
-{
-	return 0;
-}
-
-int init_store_server()
-{
-    int rc = -1;
-
-    // get s5daemon config file
-    app_context.conf = conf_open(app_context.conf_file_name.c_str());
-    if(!app_context.conf)
-    {
-        S5LOG_ERROR("Failed to find S5afs conf(%s)", app_context.conf_file_name.c_str());
-        rc = -S5_CONF_ERR;
-        return rc;
-    }
-
-	rc = init_trays();
-    if(rc < 0)
-    {
-    	return rc;
-	}
-
-	return rc;
-}
-
-
-
-
 void *afs_listen_thread(void *param)
 {
 	((PfTcpServer*)param)->listen_proc();
@@ -234,7 +198,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		S5LOG_INFO("get replicating connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), rep_disp_id);
 		conn->srv_vol = NULL;
 		conn->dispatcher = app_context.disps[rep_disp_id];
-		rep_disp_id = (rep_disp_id+1)%app_context.disps.size();
+		rep_disp_id = (int) ((rep_disp_id+1)%app_context.disps.size());
 	}
 //	rc = conn->init_mempools();
 //	if(rc != 0)
@@ -266,7 +230,6 @@ void server_on_conn_destroy(PfConnection* conn)
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
-	int rc = 0;
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
 	if(likely(complete_status == WcStatus::TCP_WC_SUCCESS)) {
@@ -434,4 +397,16 @@ PfPoller* PfTcpServer::get_best_poller()
 	static unsigned int poller_idx = 0;
 	poller_idx = (poller_idx + 1)%poller_cnt;
 	return &pollers[poller_idx];
+}
+
+void PfTcpServer::stop()
+{
+	pthread_cancel(listen_s5toe_thread);
+	pthread_join(listen_s5toe_thread, NULL);
+
+	for(int i=0;i<poller_cnt;i++)
+	{
+		pollers[i].destroy();
+	}
+	S5LOG_INFO("TCP server stopped");
 }

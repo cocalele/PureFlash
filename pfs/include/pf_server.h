@@ -27,6 +27,7 @@ public:
 	int init();
 	void listen_proc();
 	int accept_connection();
+	void stop();
 private:
 	/**
 	 * choose the best poller to poll incoming connection.

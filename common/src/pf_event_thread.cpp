@@ -66,6 +66,11 @@ void *PfEventThread::thread_proc(void* arg)
 					sem_post(&arg->sem);
 					break;
 				}
+				case EVT_THREAD_EXIT:
+				{
+					S5LOG_INFO("exit thread:%s", pThis->name);
+					return NULL;
+				}
 				default:
 					pThis->process_event(t->type, t->arg_i, t->arg_p);
 			}

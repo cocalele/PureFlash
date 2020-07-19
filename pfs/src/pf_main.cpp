@@ -25,6 +25,7 @@
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
+void stop_app();
 PfAfsAppContext app_context;
 
 void sigroutine(int dunno)
@@ -37,7 +38,8 @@ void sigroutine(int dunno)
 
 		case SIGINT:
 			S5LOG_INFO("Recieve signal SIGINT.");
-			exit(1);
+			stop_app();
+			exit(0);
 	}
 	return;
 }
@@ -233,9 +235,9 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 	set_store_node_state(store_id, NS_OK, TRUE);
-	init_restful_server();
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
+	init_restful_server(); //never return
 	while(sleep(1) == 0);
 
 	S5LOG_INFO("toe_daemon exit.");
@@ -298,3 +300,13 @@ void unexpected_exit_handler()
     exit(1);
 */
 }   
+
+void stop_app()
+{
+	app_context.tcp_server->stop();
+	for(int i=0;i<app_context.trays.size();i++)
+	{
+		app_context.trays[i]->save_meta_data();
+		app_context.trays[i]->stop();
+	}
+}
