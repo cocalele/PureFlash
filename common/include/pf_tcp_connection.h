@@ -14,21 +14,24 @@ class BufferDescriptor;
 class PfTcpConnection : public PfConnection
 {
 public:
-	PfTcpConnection();
+	PfTcpConnection(bool is_client);
 	virtual ~PfTcpConnection();
 	virtual int post_recv(BufferDescriptor* buf);
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf);
 	virtual int post_write(BufferDescriptor* buf);
 	virtual int do_close();
-	int do_receive();
-	int do_send();
+
+	void start_send(BufferDescriptor* bd);
+	void start_send(BufferDescriptor* bd, void* buf);
+	void start_recv(BufferDescriptor* bd);
+	void start_recv(BufferDescriptor* bd, void* buf);
 
 	static void on_send_q_event(int fd, uint32_t event, void* c);
 	static void on_recv_q_event(int fd, uint32_t event, void* c);
 	static void on_socket_event(int fd, uint32_t event, void* c);
 	static PfTcpConnection* connect_to_server(const std::string& ip, int port, PfPoller *poller,
-		PfClientVolumeInfo* vol, int io_depth, int timeout_sec);
+											  uint64_t vol_id, int& io_depth, int timeout_sec);
 
 	int init(int sock_fd, PfPoller *poller, int send_q_depth, int recv_q_depth);
 
@@ -53,11 +56,11 @@ public:
 	PfEventQueue recv_q;
 	PfEventQueue send_q;
 
-	void start_send(BufferDescriptor* bd);
-	void start_send(BufferDescriptor* bd, void* buf);
-	void start_recv(BufferDescriptor* bd);
-	void start_recv(BufferDescriptor* bd, void* buf);
+	bool is_client; //is this a client side connection
+
 private:
+	int do_receive();
+	int do_send();
 	int rcv_with_error_handle();
 	int send_with_error_handle();
 	void flush_wr();

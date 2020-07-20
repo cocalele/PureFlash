@@ -28,8 +28,9 @@
  */
 
 
-class PfConnectionPool;
 class PfClientVolumeInfo;
+class PfConnectionPool;
+
 class PfVolumeEventProc : public PfEventThread
 {
 public:
@@ -62,7 +63,9 @@ public:
 
 	//following are from server open_volume reply
 	int index;
-	std::vector<std::string> store_ips;
+	std::string store_ips; //a comma separated string from jconductor
+	std::string status;
+	std::vector<std::string> parsed_store_ips; //splited from store_ips
 
 	//following are internal data constructed by client
 	std::vector<int> conn_id; // connection ID in connection pool. this vector correspond to store_ips
@@ -120,7 +123,7 @@ public:
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(PfClientIocb* io);
 	void timeout_check_proc();
-	inline PfClientIocb* pick_iocb(uint16_t cid, uint16_t cmd_seq){
+	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}

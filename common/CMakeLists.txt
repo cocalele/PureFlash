@@ -3,10 +3,11 @@ cmake_minimum_required(VERSION 2.8)
 if(COMMAND cmake_policy)
   cmake_policy(SET CMP0015 NEW)
 endif()
+use_cxx11()
 
 project(S5Common)
 set(CMAKE_C_FLAGS   "-Wall -Wno-sign-compare -Wconversion -std=c99 -I/usr/include ${CXX_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -Wno-sign-compare -std=c++11 -Wconversion -fPIC ${CXX_FLAG_GCOV}")
+set(CMAKE_CXX_FLAGS   "-Wall -Wno-sign-compare -Wconversion -fPIC ${CXX_FLAG_GCOV}")
 
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g ")
 set(CMAKE_CXX_COMPILER g++)

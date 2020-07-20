@@ -10,13 +10,17 @@
 #include "pf_log.h"
 
 using namespace std;
+static  void on_zk_event(zhandle_t *zh, int type, int state, const char *path,void *watcherCtx)
+{
+	S5LOG_INFO("ZK event:%d state:%d path:%s", type, state, path);
+}
 
 int PfZkClient::init(const char *zk_ip, int zk_timeout, const char* cluster_name) {
 	int rc = 0;
 	this->cluster_name = cluster_name;
 	zoo_set_debug_level(ZOO_LOG_LEVEL_WARN);
 	S5LOG_INFO("Connecting to zk:%s ...", zk_ip);
-	zkhandle = zookeeper_init(zk_ip, NULL, zk_timeout, NULL, NULL, 0);
+	zkhandle = zookeeper_init(zk_ip, on_zk_event, zk_timeout, NULL, this, 0);
 	if (zkhandle == NULL) {
 		rc = -errno;
 		S5LOG_ERROR("Failed to connect zk:%s, rc:%d ", zk_ip, rc);

@@ -107,7 +107,6 @@ int register_store_node(int store_id, const char* mngt_ip)
 	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 	return 0;
-	return 0;
 }
 
 int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL online)
@@ -157,7 +156,7 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
 	if ((rc = zk_update(zk_node_name, value_buf, (int)len)) != ZOK)
 		return rc;
-
+	set_tray_state(store_id, uuid, "OK", true);
 	return 0;
 }
 

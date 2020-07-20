@@ -27,42 +27,6 @@
 static void *afs_listen_thread(void *param);
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 
-static int init_trays()
-{
-	int rc = -1;
-	return rc;
-}
-
-static int release_trays()
-{
-	return 0;
-}
-
-int init_store_server()
-{
-    int rc = -1;
-
-    // get s5daemon config file
-    app_context.conf = conf_open(app_context.conf_file_name.c_str());
-    if(!app_context.conf)
-    {
-        S5LOG_ERROR("Failed to find S5afs conf(%s)", app_context.conf_file_name.c_str());
-        rc = -S5_CONF_ERR;
-        return rc;
-    }
-
-	rc = init_trays();
-    if(rc < 0)
-    {
-    	return rc;
-	}
-
-	return rc;
-}
-
-
-
-
 void *afs_listen_thread(void *param)
 {
 	((PfTcpServer*)param)->listen_proc();
@@ -162,7 +126,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 			conn->close();
 			goto release0;
 		}
-		S5LOG_INFO("Handshake sent OK, conn:%s", conn->connection_info.c_str());
+		S5LOG_INFO("Handshake sent OK, conn:%s, io_depth:%d", conn->connection_info.c_str(), conn->io_depth);
 
 		conn->on_work_complete = server_on_tcp_network_done;
 		conn->state = CONN_OK;
@@ -182,7 +146,9 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{
-				S5LOG_ERROR("Failed to post_recv  for rc:%d", rc);
+				io->dec_ref();
+				S5LOG_ERROR("Failed to post_recv:%d  for rc:%d", i, rc);
+				break;
 			}
 		}
 	}
@@ -202,29 +168,38 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	PfVolume * vol;
 	PfTcpConnection* conn = (PfTcpConnection*)conn_;
 	PfHandshakeMessage* hs_msg = (PfHandshakeMessage*)bd->buf;
-	S5LOG_INFO("Receive handshake for conn:%s", conn->connection_info.c_str());
+	S5LOG_INFO("Receive handshake for conn:%s, io_depth:%d", conn->connection_info.c_str(), hs_msg->hsqsize);
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
-	if(hs_msg->hsqsize > MAX_IO_DEPTH || hs_msg->hsqsize <= 0)
+	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
 	{
 		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, MAX_IO_DEPTH);
 		hs_msg->hsqsize=MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
+		goto release0;
 	}
 	conn->io_depth=hs_msg->hsqsize;
 	bd->data_len = sizeof(PfHandshakeMessage);
-	vol = app_context.get_opened_volume(hs_msg->vol_id);
-	if(vol == NULL)
-	{
-		S5LOG_ERROR("Request volume:0x%lx not opened", hs_msg->vol_id);
-		hs_msg->hs_result = (int16_t) EINVAL;
-		conn->state = CONN_CLOSING;
-		rc = -EINVAL;
+	if(hs_msg->vol_id != 0) {
+		vol = app_context.get_opened_volume(hs_msg->vol_id);
+		if (vol == NULL) {
+			S5LOG_ERROR("Request volume:0x%lx not opened", hs_msg->vol_id);
+			hs_msg->hs_result = (int16_t) EINVAL;
+			conn->state = CONN_CLOSING;
+			rc = -EINVAL;
+			goto release0;
+		}
+		conn->srv_vol = vol;
+		conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+	} else {
+		static int rep_disp_id  = 0;
+		S5LOG_INFO("get replicating connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), rep_disp_id);
+		conn->srv_vol = NULL;
+		conn->dispatcher = app_context.disps[rep_disp_id];
+		rep_disp_id = (int) ((rep_disp_id+1)%app_context.disps.size());
 	}
-	conn->srv_vol = vol;
-	conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
 //	rc = conn->init_mempools();
 //	if(rc != 0)
 //	{
@@ -255,7 +230,6 @@ void server_on_conn_destroy(PfConnection* conn)
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
-	int rc = 0;
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
 	if(likely(complete_status == WcStatus::TCP_WC_SUCCESS)) {
@@ -266,7 +240,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				struct PfServerIocb *iocb = bd->server_iocb;
 				iocb->vol = conn->srv_vol;
 				iocb->data_bd->data_len = bd->cmd_bd->length;
-				if (bd->cmd_bd->opcode == S5_OP_WRITE) {
+				if (bd->cmd_bd->opcode == S5_OP_WRITE || bd->cmd_bd->opcode == S5_OP_REPLICATE_WRITE) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
 					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
@@ -293,6 +267,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
 				iocb->conn = conn;
 				iocb->add_ref();
+				S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
 				conn->post_recv(iocb->cmd_bd);
 			}
 		}
@@ -307,18 +282,18 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
 				iocb = bd->server_iocb;
-				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
+//				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
 			}
 			else {
 				//data received
 				iocb = bd->server_iocb;
-				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
+//				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
 			}
 		}
 		else if(bd->wr_op == TCP_WR_SEND){
 			//IO complete, start next
 			iocb = bd->server_iocb;
-			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
+//			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
 		}
 		else {
 			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
@@ -348,7 +323,7 @@ int PfTcpServer::accept_connection()
 		return -errno;
 	}
 
-	PfTcpConnection* conn = new PfTcpConnection();
+	PfTcpConnection* conn = new PfTcpConnection(false);
 	if (conn == NULL)
 	{
 		rc = -ENOMEM;
@@ -383,7 +358,6 @@ int PfTcpServer::accept_connection()
 	bd->data_len = bd->buf_capacity;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
-	conn->role = CONN_ROLE_SERVER;
 	conn->transport = TRANSPORT_TCP;
 	conn->on_close = server_on_conn_close;
 	conn->on_destroy = server_on_conn_destroy;
@@ -423,4 +397,16 @@ PfPoller* PfTcpServer::get_best_poller()
 	static unsigned int poller_idx = 0;
 	poller_idx = (poller_idx + 1)%poller_cnt;
 	return &pollers[poller_idx];
+}
+
+void PfTcpServer::stop()
+{
+	pthread_cancel(listen_s5toe_thread);
+	pthread_join(listen_s5toe_thread, NULL);
+
+	for(int i=0;i<poller_cnt;i++)
+	{
+		pollers[i].destroy();
+	}
+	S5LOG_INFO("TCP server stopped");
 }

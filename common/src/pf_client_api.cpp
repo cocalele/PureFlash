@@ -39,6 +39,7 @@ static const char* pf_lib_ver = "S5 client version:0x00010000";
 void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("index").get_to(p.index);
 	j.at("store_ips").get_to(p.store_ips);
+	j.at("status").get_to(p.status);
 
 }
 void from_json(const json& j, PfClientVolumeInfo& p) {
@@ -132,6 +133,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			//message head sent complete
 			PfClientIocb* iocb = bd->client_iocb;
 			conn->add_ref(); //for start send data
+			iocb->data_bd->conn = conn;
 			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
@@ -139,6 +141,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			iocb->reply_bd = bd;
 			if(iocb != NULL && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
 				conn->add_ref(); //for start recv data
+				iocb->data_bd->conn = conn;
 				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 				return 1;
 			}
@@ -181,6 +184,9 @@ int PfClientVolumeInfo::do_open()
 	if (rc != 0)
 		return rc;
 
+	for(int i=0;i<shards.size();i++){
+		shards[i].parsed_store_ips = split_string(shards[i].store_ips, ',');
+	}
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -200,7 +206,7 @@ int PfClientVolumeInfo::do_open()
 		return -ENOMEM;
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init((int) shards.size() * 2, tcp_poller, this, io_depth, client_on_tcp_network_done);
+	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done);
 	rc = data_pool.init(S5_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
@@ -231,6 +237,7 @@ int PfClientVolumeInfo::do_open()
 	{
 		PfClientIocb* io = iocb_pool.alloc();
 		io->cmd_bd = cmd_pool.alloc();
+		io->cmd_bd->cmd_bd->command_id = i;
 		io->cmd_bd->data_len = io->cmd_bd->buf_capacity;
 		io->cmd_bd->client_iocb = io;
 		io->data_bd = data_pool.alloc();
@@ -710,7 +717,7 @@ PfConnection* PfClientVolumeInfo::get_shard_conn(int shard_index)
 	PfClientShardInfo * shard = &shards[shard_index];
 	for (int i=0; i < shard->store_ips.size(); i++)
 	{
-		conn = conn_pool->get_conn(shard->store_ips[shard->current_ip]);
+		conn = conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip]);
 		if (conn != NULL) {
 			return conn;
 		}

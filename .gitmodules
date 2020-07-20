@@ -3,7 +3,7 @@
 	url = https://gitee.com/cocalele/zookeeper.git
 [submodule "thirdParty/mongoose"]
 	path = thirdParty/mongoose
-	url = https://gitee.com/coclalele/mongoose.git
+	url = https://gitee.com/cocalele/mongoose.git
 	branch = 6.7.1
 [submodule "pfs/nlohmann_json"]
 	path = pfs/nlohmann_json

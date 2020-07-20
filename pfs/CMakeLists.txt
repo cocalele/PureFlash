@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 if(COMMAND cmake_policy)
   cmake_policy(SET CMP0015 NEW)
 endif()
-
+use_cxx11()
 project(pfs)
 
 if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
@@ -26,9 +26,9 @@ ENDIF()
 USE_ZOOKEEPER()
 
 set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-extensions -Wno-variadic-macros -I/usr/include ${C_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare --std=c++11 -fms-extensions -Wno-variadic-macros -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
-set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
-set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG -D_GLIBCXX_DEBUG")
+set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wno-variadic-macros -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
+set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
+set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 add_definitions(-D_XOPEN_SOURCE)
 #set(CMAKE_CXX_COMPILER g++)
 
@@ -58,13 +58,13 @@ set (S5AFS_SRC
 	src/pf_dispatcher.cpp
 	src/pf_md5.cpp
 	src/pf_redolog.cpp
-    src/pf_block_tray.cpp
+	src/pf_block_tray.cpp
 	src/pf_replica.cpp
 	src/pf_restful_server.cpp
 	src/pf_restful_api.cpp
 	src/pf_volume.cpp
 	src/pf_error_handler.cpp
-
+	src/pf_replicator.cpp
 		)
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c

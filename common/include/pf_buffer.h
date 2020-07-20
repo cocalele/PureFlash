@@ -57,7 +57,7 @@ class BufferPool
 public:
 	int init(size_t buffer_size, int count);
 	inline BufferDescriptor* alloc() { return free_bds.dequeue(); }
-	inline int free(BufferDescriptor* bd){ return free_bds.enqueue(bd); }
+	inline int free(BufferDescriptor* bd){ bd->client_iocb = NULL; return free_bds.enqueue(bd); }
 	void destroy();
 private:
 	PfFixedSizeQueue<BufferDescriptor*> free_bds;

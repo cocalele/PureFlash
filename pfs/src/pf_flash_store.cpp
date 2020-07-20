@@ -74,14 +74,17 @@ release1:
 	free(buf);
 	return rc;
 }
-static BOOL clean_meta_area(int fd, size_t size)
+static int clean_meta_area(int fd, size_t size)
 {
 	size_t buf_len = 1 << 20;
 	void *buf = aligned_alloc(LBA_LENGTH, buf_len);
 	for(off_t off = 0; off < size; off += buf_len) {
-		pwrite(fd, buf, buf_len, off);
+		if(pwrite(fd, buf, buf_len, off) == -1){
+			S5LOG_ERROR("Failed write zero to meta area, rc:%d", errno);
+			return -errno;
+		}
 	}
-
+	return 0;
 }
 /**
  * init flash store from tray. this function will create meta data
@@ -135,7 +138,7 @@ int PfFlashStore::init(const char* tray_name)
 		}
 		ret = clean_meta_area(fd, app_context.meta_size);
 		if(ret) {
-			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s", tray_name);
+			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s, rc:%d", tray_name, ret);
 			return ret;
 
 		}
@@ -759,6 +762,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
                 do_read((IoSubTask*)arg_p);
                 break;
             case PfOpCode::S5_OP_WRITE:
+            case PfOpCode::S5_OP_REPLICATE_WRITE:
                 do_write((IoSubTask*)arg_p);
                 break;
             default:
@@ -799,8 +803,9 @@ void PfFlashStore::aio_polling_proc()
 				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
 					res = (res == 0 ? len : res);
-				}
-				t->complete((uint32_t)res);
+					app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
+				} else
+					t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
 			}
 		}
 	}

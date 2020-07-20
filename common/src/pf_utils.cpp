@@ -151,7 +151,7 @@ uint64_t now_time_usec()
 
 static const char** log_level_str;
 static const char* stderr_log[] = { KRED "FATA" KNRM, KRED "ERRO" KNRM, KYEL "WARN" KNRM, KBLU "INFO" KNRM, KGRN "DEBU" KNRM };
-static const char* file_log[] = { "CRIT", "FATA", "ERRO", "WARN", "INFO", "DEBU" };
+static const char* file_log[] = { "FATA", "ERRO", "WARN", "INFO", "DEBU" };
 
 static void __attribute__((constructor)) initialize()
 {
@@ -173,8 +173,11 @@ void s5log(int level, const char * format, ...)
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
 	char time_buf[100];
-	time_t now = time(0);
-	strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&now));
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME, &tp);
+
+	strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&tp.tv_sec));
+	snprintf(&time_buf[strlen(time_buf)], 100, ".%03d", (int)(tp.tv_nsec/1000000L));
 	fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
 	if (level == S5LOG_LEVEL_FATAL)
 		exit(-1);
@@ -194,7 +197,13 @@ const std::string format_string(const char * format, ...)
 		return{ buffer };
 }
 
-const std::string get_socket_addr(int sock_fd)
+/**
+ *
+ * @param sock_fd, the socket to get both side addr info
+ * @param is_client , 1 if this socket_fd is client. 0 for server
+ * @return a string describe this socket, like TCP://(me)srv_ip:srv_port<=client_ip:client_port
+ */
+const std::string get_socket_addr(int sock_fd, bool is_client)
 {
 	struct sockaddr_in local_addr, remote_addr;
 	socklen_t len = sizeof(local_addr);
@@ -210,6 +219,50 @@ const std::string get_socket_addr(int sock_fd)
 		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);
 		return "[Unknow socket addr]";
 	}
-	return format_string("TCP://%s:%d<=%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
-		inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
+	std::string remote_str  = inet_ntoa(remote_addr.sin_addr);
+	return format_string("TCP://(me)%s:%d%s%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
+						 is_client ? "=>" : "<=",
+		                 remote_str.c_str(), ntohs(remote_addr.sin_port));
+}
+
+std::vector<std::string> split_string(const std::string& str, char delim)
+{
+	std::vector<std::string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == std::string::npos) pos = str.length();
+		std::string token = str.substr(prev, pos-prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + 1;
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
+}
+//void split_string(const std::string& str, char delim, std::vector<std::string>& tokens)
+//{
+//	size_t prev = 0, pos = 0;
+//	do
+//	{
+//		pos = str.find(delim, prev);
+//		if (pos == std::string::npos) pos = str.length();
+//		std::string token = str.substr(prev, pos-prev);
+//		if (!token.empty()) tokens.push_back(token);
+//		prev = pos + 1;
+//	} while (pos < str.length() && prev < str.length());
+//
+//}
+std::vector<std::string> split_string(const std::string& str, const std::string& delim)
+{
+	std::vector<std::string> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		pos = str.find(delim, prev);
+		if (pos == std::string::npos) pos = str.length();
+		std::string token = str.substr(prev, pos-prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + delim.length();
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
 }

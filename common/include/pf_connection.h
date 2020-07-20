@@ -7,16 +7,18 @@
 #define CONN_CLOSED 2
 #define CONN_CLOSING 3
 
+const char* ConnState2Str(int conn_state);
+
+
 #define TRANSPORT_TCP 1
 #define TRANSPORT_RDMA 2
-
-#define CONN_ROLE_SERVER 1
-#define CONN_ROLE_CLIENT 2
 
 #define PROTOCOL_VER 1
 class PfClientVolumeInfo;
 class PfDispatcher;
 class PfVolume;
+class PfReplicator;
+
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
 {
@@ -26,7 +28,6 @@ public:
     PfDispatcher* dispatcher;
 	int state;
 	int transport;
-	int role;
 	uint64_t last_heartbeat_time;
 	int io_depth;
 	std::string connection_info;
@@ -39,8 +40,10 @@ public:
 	BufferPool reply_pool;
 
 	union {
-	PfClientVolumeInfo* volume; //used in client side
-	PfVolume* srv_vol; //used in server side
+		PfClientVolumeInfo* volume; //used in client side
+		PfVolume* srv_vol; //used in server side
+		PfReplicator* replicator;
+		void* master;
 	};
 	PfConnection();
 	virtual ~PfConnection();

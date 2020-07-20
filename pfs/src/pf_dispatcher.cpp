@@ -46,13 +46,71 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 	}
 	return rc;
 }
+static inline void reply_io_to_client(PfServerIocb *iocb)
+{
+	PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
+	PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
+	reply_bd->command_id = cmd_bd->command_id;
+	reply_bd->status = iocb->complete_status;
+	reply_bd->command_seq = cmd_bd->command_seq;
+	iocb->conn->post_send(iocb->reply_bd);
+}
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 {
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
-	uint32_t shard_index = VOL_ID_TO_SHARD_INDEX(cmd->vol_id);
-	PfShard * s = iocb->vol->shards[shard_index];
+	PfVolume* vol = opened_volumes[cmd->vol_id];
+	if(unlikely(vol == NULL)){
+		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x not opened", PfOpCode2Str(cmd->opcode), cmd->vol_id);
+		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_STATE;
+		reply_io_to_client(iocb);
+		return 0;
+	}
+	uint32_t shard_index = (uint32_t)OFFSET_TO_SHARD_INDEX(cmd->offset);
+	if(unlikely(shard_index > vol->shard_count)) {
+		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x, offset:%lld exceeds volume size:%lld",
+		            PfOpCode2Str(cmd->opcode), cmd->vol_id, cmd->offset, vol->size);
+		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_FIELD;
+		reply_io_to_client(iocb);
+		return 0;
+	}
+	PfShard * s = vol->shards[shard_index];
+
+	switch(cmd->opcode) {
+		case S5_OP_WRITE:
+			return dispatch_write(iocb, vol, s);
+			break;
+		case S5_OP_READ:
+
+			return dispatch_read(iocb, vol, s);
+			break;
+		case S5_OP_REPLICATE_WRITE:
+			return dispatch_rep_write(iocb, vol, s);
+			break;
+		default:
+			S5LOG_FATAL("Unknown opcode:%d", cmd->opcode);
+
+	}
+	return 1;
+
+}
+
+int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
+{
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
 	iocb->setup_subtask(s);
+	if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)){
+		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+		            vol->id, vol->name, s->id, s->duty_rep_index);
+		iocb->add_ref();
+		app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[s->duty_rep_index], PfMessageStatus::MSG_STATUS_NOT_PRIMARY);
+		for (int i = 0; i < iocb->vol->rep_count; i++) {
+			if(s->replicas[i]->status == HS_OK) {
+				iocb->dec_ref();
+			}
+		}
+		return 1;
+	}
 	for (int i = 0; i < iocb->vol->rep_count; i++) {
 		if(s->replicas[i]->status == HS_OK) {
 			iocb->subtasks[i]->rep = s->replicas[i];
@@ -61,21 +119,60 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	}
 	return 0;
 }
+
+int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
+{
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+
+	iocb->task_mask = 0;
+	int i = s->duty_rep_index;
+	if(s->replicas[i]->status == HS_OK) {
+		iocb->setup_one_subtask(s, i);
+		iocb->subtasks[i]->rep = s->replicas[i];
+		if(unlikely(!s->is_primary_node)) {
+			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+			            vol->id, vol->name, s->id, s->duty_rep_index);
+			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_NOT_PRIMARY);
+			return 1;
+		}
+		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	}
+
+	return 0;
+}
+
+int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
+{
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+
+	iocb->task_mask = 0;
+	int i = s->duty_rep_index;
+	if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
+		iocb->setup_one_subtask(s, i);
+		iocb->subtasks[i]->rep = s->replicas[i];
+		if(unlikely(s->is_primary_node)) {
+			S5LOG_ERROR("Repwrite on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+			            vol->id, vol->name, s->id, s->duty_rep_index);
+			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_REP_TO_PRIMARY);
+			return 1;
+		}
+		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	}
+
+	return 0;
+}
+
+
 int PfDispatcher::dispatch_complete(SubTask* sub_task)
 {
 	PfServerIocb* iocb = sub_task->parent_iocb;
 	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
 			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
-	iocb->complete_status = (iocb->complete_status == 0 ? sub_task->complete_status : iocb->complete_status);
+	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
 	if(iocb->task_mask == 0){
-		PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
-		PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
-		reply_bd->command_id = cmd_bd->command_id;
-		reply_bd->status = iocb->complete_status;
-		reply_bd->command_seq = cmd_bd->command_seq;
-		iocb->conn->post_send(iocb->reply_bd);
+		reply_io_to_client(iocb);
 	}
 	return 0;
 }

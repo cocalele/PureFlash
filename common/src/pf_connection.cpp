@@ -74,3 +74,19 @@ int PfConnection::send_heartbeat()
 	S5LOG_FATAL("send_heartbeat not implemented");
 	return 0;
 }
+
+#define C_NAME(x) case x: return #x;
+const char* ConnState2Str(int conn_state)
+{
+	static __thread char buf[64];
+
+	switch(conn_state){
+		C_NAME(CONN_INIT)
+		C_NAME(CONN_OK)
+		C_NAME(CONN_CLOSED)
+		C_NAME(CONN_CLOSING)
+		default:
+			sprintf(buf, "%d", conn_state);
+			return buf;
+	}
+}
