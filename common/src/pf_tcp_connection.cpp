@@ -63,6 +63,7 @@ release1:
 
 int PfTcpConnection::do_close()
 {
+	S5LOG_INFO("Close connection conn:%p %s", this, connection_info.c_str());
 	poller->del_fd(send_q.event_fd);
 	poller->del_fd(recv_q.event_fd);
 	poller->del_fd(socket_fd);
@@ -75,6 +76,8 @@ int PfTcpConnection::do_close()
 			this->flush_wr();
 			return 0;
 		});
+	send_q.destroy();
+	recv_q.destroy();
 	return 0;
 }
 

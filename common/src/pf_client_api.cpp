@@ -42,7 +42,7 @@ void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("status").get_to(p.status);
 
 }
-void from_json(const json& j, PfClientVolumeInfo& p) {
+void from_json(const json& j, PfClientVolume& p) {
 	j.at("status").get_to(p.status);
 	j.at("volume_name").get_to(p.volume_name);
 	j.at("volume_size").get_to(p.volume_size);
@@ -53,7 +53,25 @@ void from_json(const json& j, PfClientVolumeInfo& p) {
 	j.at("snap_seq").get_to(p.snap_seq);
 	j.at("shards").get_to(p.shards);
 }
-
+void from_json(const json& j, PfClientVolumeInfo& p) {
+	string temp;
+	j.at("status").get_to(temp);
+	strcpy(p.status, temp.c_str());
+	j.at("name").get_to(temp);
+	strcpy(p.volume_name, temp.c_str());
+	j.at("size").get_to(p.volume_size);
+	j.at("id").get_to(p.volume_id);
+	j.at("rep_count").get_to(p.rep_count);
+	j.at("meta_ver").get_to(p.meta_ver);
+	j.at("snap_seq").get_to(p.snap_seq);
+}
+void from_json(const json&j, ListVolumeReply &reply)
+{
+	j.at("volumes").get_to(reply.volumes);
+	j.at("ret_code").get_to(reply.ret_code);
+	if(reply.ret_code != 0)
+		j.at("reason").get_to(reply.reason);
+}
 template<typename ReplyT>
 static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply);
 
@@ -78,8 +96,8 @@ typedef struct curl_memory {
 	size_t size;
 }curl_memory_t;
 
-struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
-	int lib_ver)
+struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+                                      int lib_ver)
 {
 	int rc = 0;
 	if (lib_ver != S5_LIB_VER)
@@ -92,7 +110,7 @@ struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 	try
 	{
 		Cleaner _clean;
-		PfClientVolumeInfo* volume = new PfClientVolumeInfo;
+		PfClientVolume* volume = new PfClientVolume;
 		if (volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -124,6 +142,71 @@ struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* c
 	return NULL;
 }
 
+int pf_query_volume_info(const char* volume_name, const char* cfg_filename, const char* snap_name,
+                                       int lib_ver, struct PfClientVolumeInfo* volume)
+{
+	int rc = 0;
+	if (lib_ver != S5_LIB_VER)
+	{
+		S5LOG_ERROR("Caller lib version:%d mismatch lib:%d", lib_ver, S5_LIB_VER);
+		return -EINVAL;
+	}
+	S5LOG_INFO("Opening volume %s@%s", volume_name,
+	           (snap_name == NULL || strlen(snap_name) == 0) ? "HEAD" : snap_name);
+	try
+	{
+		Cleaner _clean;
+		ListVolumeReply reply;
+
+		int rc = 0;
+		conf_file_t cfg = conf_open(cfg_filename);
+		if(cfg == NULL)
+		{
+			S5LOG_ERROR("Failed open config file:%s, rc:%d", cfg_filename, -errno);
+			return -errno;
+		}
+		DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+		char* esc_vol_name = curl_easy_escape(NULL, volume_name, 0);
+		if (!esc_vol_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+			return -ENOMEM;
+		}
+		DeferCall _1([esc_vol_name]() { curl_free(esc_vol_name); });
+		std::string query = format_string("op=list_volume&name=%s", esc_vol_name);
+		char* esc_snap_name = NULL;
+		if(snap_name != NULL) {
+			curl_easy_escape(NULL, snap_name, 0);
+			if (!esc_snap_name) {
+				S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+				return -ENOMEM;
+			}
+			query += format_string("&snap_name=%s", esc_snap_name);
+			curl_free(esc_snap_name);
+		}
+
+		rc = query_conductor(cfg, query, reply);
+		if (rc != 0)
+		{
+			S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+			return rc;
+		}
+
+		*volume = reply.volumes[0];
+		S5LOG_INFO("Succeeded query volume %s@%s(0x%lx), meta_ver=%d", volume->volume_name,
+		           volume->snap_seq == -1 ? "HEAD" : volume->snap_name, volume->volume_id, volume->meta_ver);
+
+		_clean.cancel_all();
+		return 0;
+	}
+	catch (std::exception& e)
+	{
+		S5LOG_ERROR("Exception in open volume:%s", e.what());
+	}
+	return -1;
+}
+
 static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
@@ -151,7 +234,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 }
 
 
-int PfClientVolumeInfo::do_open()
+int PfClientVolume::do_open()
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_file.c_str());
@@ -237,7 +320,7 @@ int PfClientVolumeInfo::do_open()
 	{
 		PfClientIocb* io = iocb_pool.alloc();
 		io->cmd_bd = cmd_pool.alloc();
-		io->cmd_bd->cmd_bd->command_id = i;
+		io->cmd_bd->cmd_bd->command_id = (uint16_t)i;
 		io->cmd_bd->data_len = io->cmd_bd->buf_capacity;
 		io->cmd_bd->client_iocb = io;
 		io->data_bd = data_pool.alloc();
@@ -415,7 +498,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 	return -1;
 }
 
-void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
+void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	if (unlikely(wc_status != TCP_WC_SUCCESS))
 	{
@@ -430,7 +513,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
     if (wr_bd->wr_op == TCP_WR_RECV)
     {
 		PfConnection* conn = wr_bd->conn;
-		PfClientVolumeInfo* vol = conn->volume;
+		PfClientVolume* vol = conn->volume;
 		struct PfMessageReply *reply = wr_bd->reply_bd;
 		PfClientIocb* io = vol->pick_iocb(reply->command_id, reply->command_seq);
 		uint64_t ms1 = 1000;
@@ -439,10 +522,13 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 		 */
 		if (unlikely(io == NULL))
 		{
+
 			S5LOG_WARN("Previous IO back but timeout!");
 			reply_pool.free(wr_bd);
 			return;
 		}
+
+
 		io->reply_time = now_time_usec();
 		PfMessageStatus s = (PfMessageStatus)reply->status;
 		if (unlikely(s & (MSG_STATUS_REOPEN)))
@@ -452,8 +538,10 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			if (vol->meta_ver < reply->meta_ver)
 			{
 				S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
-				vol->event_queue->post_event(EVT_REOPEN_VOLUME, 0, (void *)(now_time_usec()));
+				vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()));
 			}
+			vol->event_queue->post_event(EVT_IO_REQ, 0, io);
+			reply_pool.free(wr_bd);
 			return;
 		}
 
@@ -465,6 +553,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			{
 				__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
 				free_iocb(io);
+				reply_pool.free(wr_bd);
 				return;
 			}
 
@@ -485,6 +574,7 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 			}
 
 			free_iocb(io);
+			reply_pool.free(wr_bd);
 			h(s, arg);
 		}
     }
@@ -495,13 +585,13 @@ void PfClientVolumeInfo::client_do_complete(int wc_status, BufferDescriptor* wr_
 }
 
 
-void pf_close_volume(PfClientVolumeInfo* volume)
+void pf_close_volume(PfClientVolume* volume)
 {
 	volume->close();
 	delete volume;
 }
 
-static int reopen_volume(PfClientVolumeInfo* volume)
+static int reopen_volume(PfClientVolume* volume)
 {
 	int rc = 0;
 	S5LOG_INFO( "Reopening volume %s@%s, meta_ver:%d", volume->volume_name.c_str(),
@@ -527,7 +617,7 @@ static int reopen_volume(PfClientVolumeInfo* volume)
 	return rc;
 }
 
-int PfClientVolumeInfo::resend_io(PfClientIocb* io)
+int PfClientVolume::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
@@ -548,7 +638,7 @@ int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
 	return volume->process_event(event_type, arg_i, arg_p);
 }
 
-int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
+int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 {
 	S5LOG_INFO("get event:%d", event_type);
 	switch (event_type)
@@ -707,7 +797,7 @@ int PfClientVolumeInfo::process_event(int event_type, int arg_i, void* arg_p)
 /**
 * get a shard connection from pool. connection is shared by shards on same node.
 */
-PfConnection* PfClientVolumeInfo::get_shard_conn(int shard_index)
+PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 {
 	PfConnection* conn = NULL;
 	if (state != VOLUME_OPENED)
@@ -728,7 +818,7 @@ PfConnection* PfClientVolumeInfo::get_shard_conn(int shard_index)
 	return NULL;
 }
 
-void PfClientVolumeInfo::timeout_check_proc()
+void PfClientVolume::timeout_check_proc()
 {
 	prctl(PR_SET_NAME, "clnt_time_chk");
 	while (1)
@@ -752,7 +842,7 @@ void PfClientVolumeInfo::timeout_check_proc()
 
 }
 
-void PfClientVolumeInfo::close() {
+void PfClientVolume::close() {
 	S5LOG_INFO("close volume:%s", volume_name.c_str());
 	state = VOLUME_CLOSED;
 
@@ -773,8 +863,8 @@ void PfClientVolumeInfo::close() {
 //	}
 }
 
-int pf_io_submit(struct PfClientVolumeInfo* volume, void* buf, size_t length, off_t offset,
-					ulp_io_handler callback, void* cbk_arg, int is_write) {
+int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+                 ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
 		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
@@ -789,9 +879,9 @@ int pf_io_submit(struct PfClientVolumeInfo* volume, void* buf, size_t length, of
 	io->ulp_arg = cbk_arg;
 
 	struct PfMessageHead *cmd = io->cmd_bd->cmd_bd;
-
+	io->submit_time = now_time_usec();
 	io->user_buf = buf;
-	io->data_bd->data_len = length;
+	io->data_bd->data_len = (int)length;
 	cmd->opcode = is_write ? S5_OP_WRITE : S5_OP_READ;
 	cmd->vol_id = volume->volume_id;
 	cmd->buf_addr = (__le64) buf;

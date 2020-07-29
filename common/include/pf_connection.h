@@ -14,7 +14,7 @@ const char* ConnState2Str(int conn_state);
 #define TRANSPORT_RDMA 2
 
 #define PROTOCOL_VER 1
-class PfClientVolumeInfo;
+class PfClientVolume;
 class PfDispatcher;
 class PfVolume;
 class PfReplicator;
@@ -40,7 +40,7 @@ public:
 	BufferPool reply_pool;
 
 	union {
-		PfClientVolumeInfo* volume; //used in client side
+		PfClientVolume* volume; //used in client side
 		PfVolume* srv_vol; //used in server side
 		PfReplicator* replicator;
 		void* master;

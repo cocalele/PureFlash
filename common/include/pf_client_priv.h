@@ -28,14 +28,14 @@
  */
 
 
-class PfClientVolumeInfo;
+class PfClientVolume;
 class PfConnectionPool;
 
 class PfVolumeEventProc : public PfEventThread
 {
 public:
-	PfVolumeEventProc(PfClientVolumeInfo* _volume) :volume(_volume) {};
-	PfClientVolumeInfo* volume;
+	PfVolumeEventProc(PfClientVolume* _volume) : volume(_volume) {};
+	PfClientVolume* volume;
 	virtual int process_event(int event_type, int arg_i, void* arg_p);
 };
 
@@ -81,7 +81,7 @@ enum PfVolumeState
 	VOLUME_DISCONNECTED = 4
 };
 
-class PfClientVolumeInfo
+class PfClientVolume
 {
 public:
 	//following data are from server open_volume reply
@@ -102,7 +102,7 @@ public:
 	std::string cfg_file;
 	int io_depth;
 	int io_timeout; //timeout in second
-	int state;
+	PfVolumeState state;
 	PfEventQueue* event_queue;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	BufferPool cmd_pool;
@@ -135,6 +135,13 @@ public:
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 };
 
+class ListVolumeReply
+{
+public:
+	std::vector<PfClientVolumeInfo> volumes;
+	int ret_code;
+	std::string reason;
+};
 
 #define SECT_SIZE_MASK (512-1) //sector size in linux is always 512 byte
 

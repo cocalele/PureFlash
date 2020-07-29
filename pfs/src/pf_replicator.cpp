@@ -139,9 +139,9 @@ int PfReplicator::process_io_complete(BufferDescriptor* bd, int complete_status)
 		io->reply_bd = NULL;
 		io->data_bd = NULL;
 		iocb_pool.free(io);
-	} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
+	} else if(bd->data_len == sizeof(PfMessageHead)) {
 
-	} else { //error during send data
+	} else {
 
 	}
 	return 0;

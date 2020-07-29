@@ -8,7 +8,7 @@
 #include "pf_utils.h"
 
 class PfPoller;
-class PfClientVolumeInfo;
+class PfClientVolume;
 class BufferDescriptor;
 
 class PfTcpConnection : public PfConnection

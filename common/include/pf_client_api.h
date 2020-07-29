@@ -1,21 +1,53 @@
 //
 // Created by lele on 2020/4/11.
 //
-
 #ifndef PUREFLASH_S5_CLIENT_API_H
 #define PUREFLASH_S5_CLIENT_API_H
-#define S5_LIB_VER 0x00010000
-struct PfClientVolumeInfo;
-typedef void(*ulp_io_handler)(int complete_status, void* cbk_arg);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-struct PfClientVolumeInfo* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
-										  int lib_ver);
-void pf_close_volume(PfClientVolumeInfo* volume);
-const char* show_ver();
-int pf_io_submit(struct PfClientVolumeInfo* volume, void* buf, size_t length, off_t offset,
-				 ulp_io_handler callback, void* cbk_arg, int is_write);
+#define S5_LIB_VER 0x00010000
+struct PfClientVolume;
+typedef void(*ulp_io_handler)(int complete_status, void *cbk_arg);
+
+struct PfClientVolumeInfo {
+	char status[64];
+	char volume_name[128];
+	char snap_name[128];
+
+	uint64_t volume_size;
+	uint64_t volume_id;
+	int shard_count;
+	int rep_count;
+	int meta_ver;
+	int snap_seq;
+};
+struct PfClientVolume *pf_open_volume(const char *volume_name, const char *cfg_filename, const char *snap_name,
+                                      int lib_ver);
+/**
+ * Query volume static information but not open it
+ * NOTE: Though this API returns the same data struct as `pf_open_volume`, but the returned volume can't be used
+ * to perform read/write IO.
+ * @param volume_name, volume name
+ * @param cfg_filename, config file name
+ * @param snap_name
+ * @param lib_ver, for version compatibility check, client must use S5_LIB_VER
+ * @return
+ */
+int pf_query_volume_info(const char *volume_name, const char *cfg_filename, const char *snap_name,
+                                       int lib_ver, /*out*/ struct PfClientVolumeInfo *volume);
+void pf_close_volume(struct PfClientVolume *volume);
+const char *show_ver();
+int pf_io_submit(struct PfClientVolume *volume, void *buf, size_t length, off_t offset,
+                 ulp_io_handler callback, void *cbk_arg, int is_write);
 
 #define pf_io_submit_read(v, buf, len, off, cbk, arg)  pf_io_submit(v, buf, len, off, cbk, arg, 0)
 #define pf_io_submit_write(v, buf, len, off, cbk, arg)  pf_io_submit(v, buf, len, off, cbk, arg, 1)
+
+#ifdef __cplusplus
+}
+#endif
+
 
 #endif //PUREFLASH_S5_CLIENT_API_H

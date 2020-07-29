@@ -93,10 +93,10 @@ struct PfMessageHead
 	uint64_t                  vol_id;
 	uint64_t                  buf_addr;
 	uint32_t                  rkey;
-	uint32_t                  rsv4;
-	uint64_t                  offset;
-	uint16_t                  length;
 	uint16_t                  meta_ver;
+	uint16_t                  rsv4;
+	uint64_t                  offset;
+	uint32_t                  length;
 	uint32_t                  command_seq;  //use this field to hold io task sequence number
 	uint64_t                  rsv2;
 	uint64_t                  rsv3;
