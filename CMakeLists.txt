@@ -20,8 +20,9 @@ set(THIRDPARTY ${CMAKE_CURRENT_SOURCE_DIR}/thirdParty)
 set(ZOOKEEPER_SOURCE ${THIRDPARTY}/zookeeper/zookeeper-client/zookeeper-client-c)
 set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
 #set(ZOOKEEPER_BIN ${THIRDPARTY}/zookeeper-3.4.6/src/c/.libs)
+
 macro(USE_ZOOKEEPER)
-    if(LINUX)
+    if(UNIX)
     foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
         if(NOT EXISTS "${f}")
             execute_process(COMMAND ant clean
@@ -30,7 +31,7 @@ macro(USE_ZOOKEEPER)
                     WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
         endif()
     endforeach()
-    endif(LINUX)
+    endif(UNIX)
     add_definitions(-DTHREADED)# to use zookeeper multi thread library
     include_directories(${ZOOKEEPER_INC})
     #link_directories(${ZOOKEEPER_BIN})
@@ -53,6 +54,6 @@ add_subdirectory(pfs)
 add_subdirectory(common)
 add_custom_target(scripts ALL
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/scripts ${CMAKE_BINARY_DIR}
-    COMMAND cp -rpfu ${ZOOKEEPER_SOURCE}/.libs/libzookeeper_mt.a ${CMAKE_BINARY_DIR}
+#    COMMAND cp -rpfu ${ZOOKEEPER_SOURCE}/.libs/libzookeeper_mt.a ${CMAKE_BINARY_DIR}
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..
 )

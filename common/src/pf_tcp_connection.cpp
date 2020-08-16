@@ -63,7 +63,7 @@ release1:
 
 int PfTcpConnection::do_close()
 {
-	S5LOG_INFO("Close connection conn:%p %s", this, connection_info.c_str());
+	S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
 	poller->del_fd(send_q.event_fd);
 	poller->del_fd(recv_q.event_fd);
 	poller->del_fd(socket_fd);
@@ -130,7 +130,7 @@ void PfTcpConnection::flush_wr()
 }
 void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 {
-	S5LOG_DEBUG("on_send_q_event called, event:%d", event);
+	//S5LOG_DEBUG("on_send_q_event called, event:%d", event);
 	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->send_bd != NULL)
 		return; //send in progress
@@ -148,7 +148,7 @@ void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 }
 void PfTcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 {
-	S5LOG_DEBUG("on_recv_q_event called, event:%d", event);
+	//S5LOG_DEBUG("on_recv_q_event called, event:%d", event);
 	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->recv_bd != NULL)
 		return;//receive in progress
@@ -244,7 +244,7 @@ int PfTcpConnection::rcv_with_error_handle()
 		ssize_t rc = 0;
 		rc = recv(socket_fd, (char*)recv_buf + recved_len,
 			(size_t)(wanted_recv_len - recved_len), MSG_DONTWAIT);
-		S5LOG_DEBUG("recv %d bytes", rc);
+		//S5LOG_DEBUG("recv %d bytes", rc);
 		if (likely(rc > 0))
 			recved_len += (int)rc;
 		else if (rc == 0)
@@ -322,7 +322,7 @@ int PfTcpConnection::send_with_error_handle()
 	{
 		ssize_t rc = send(socket_fd, (char*)send_buf + sent_len,
 			wanted_send_len - sent_len, MSG_DONTWAIT);
-		S5LOG_DEBUG("send %d bytes", rc);
+		//S5LOG_DEBUG("send %d bytes", rc);
 		if (rc > 0)
 		{
 			sent_len += (int)rc;

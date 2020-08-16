@@ -291,7 +291,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 	io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, cmd->length,
 		entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
 	struct iocb* ios[1] = {&io->aio_cb};
-	S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
+	//S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
 	io_submit(aio_ctx, 1, ios);
 	return 0;
 }
@@ -799,7 +799,7 @@ void PfFlashStore::aio_polling_proc()
 				int64_t len = evts[i].res;
 				int64_t res = evts[i].res2;
 				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
-				S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
+				//S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
 				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
 					res = (res == 0 ? len : res);

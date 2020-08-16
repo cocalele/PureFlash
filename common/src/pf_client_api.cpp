@@ -195,7 +195,7 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 
 		*volume = reply.volumes[0];
 		S5LOG_INFO("Succeeded query volume %s@%s(0x%lx), meta_ver=%d", volume->volume_name,
-		           volume->snap_seq == -1 ? "HEAD" : volume->snap_name, volume->volume_id, volume->meta_ver);
+		           snap_name == NULL ? "HEAD" : volume->snap_name, volume->volume_id, volume->meta_ver);
 
 		_clean.cancel_all();
 		return 0;
@@ -220,11 +220,22 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
+			assert(bd->reply_bd->command_id<32);
 			PfClientIocb* iocb = conn->volume->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
+			//In io timeout case, we just ignore this completion
+
+			if (unlikely(iocb == NULL)) {
+				//this should never happen, since whenever an IO timeout, the connection will be closed
+				S5LOG_FATAL("Previous IO cid:%d back but timeout!", bd->reply_bd->command_id);
+				return 1;
+			}
+
 			iocb->reply_bd = bd;
+			bd->client_iocb = iocb;
 			if(iocb != NULL && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
 				conn->add_ref(); //for start recv data
 				iocb->data_bd->conn = conn;
+				S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
 				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 				return 1;
 			}
@@ -353,7 +364,7 @@ static inline int cmp(const void *a, const void *b)
 	return strcmp(*(char * const *)a, *(char * const *)b);
 }
 
-static string get_master_conductor_ip(const char *zk_host)
+static string get_master_conductor_ip(const char *zk_host, const char* cluster_name)
 {
     struct String_vector condutors = {0};
     char **str = NULL;
@@ -380,8 +391,9 @@ static string get_master_conductor_ip(const char *zk_host)
 	}
 
 	int rc = 0;
-	const char* zk_root = "/s5/conductors";
-	rc = zoo_get_children(zkhandle, zk_root, 0, &condutors);
+	//const char* zk_root = "/pureflash/" + cluster_name;
+	string zk_root = format_string("/pureflash/%s", cluster_name);
+	rc = zoo_get_children(zkhandle, zk_root.c_str(), 0, &condutors);
 	if (ZOK != rc || condutors.count == 0)
     {
 		throw std::runtime_error(format_string("Error when get S5 conductor from zk, rc:%d, conductor count:%d", rc, condutors.count));
@@ -391,7 +403,7 @@ static string get_master_conductor_ip(const char *zk_host)
     qsort(str, condutors.count, sizeof(char *), cmp);
 
 	char leader_path[256];
-    int len = snprintf(leader_path, sizeof(leader_path), "%s/%s", zk_root, str[0]);
+    int len = snprintf(leader_path, sizeof(leader_path), "%s/%s", zk_root.c_str(), str[0]);
     if (len >= sizeof(leader_path) || len < 0)
     {
 		throw std::runtime_error(format_string("Cluster name is too long, max length is:%d", sizeof(leader_path)));
@@ -441,7 +453,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
     {
 		throw std::runtime_error("zookeeper ip not found in conf file");
     }
-
+	const char* cluster_name = conf_get(cfg, "cluster", "name", "cluster1", FALSE);
 
 	CURLcode res;
 	CURL *curl = NULL;
@@ -472,7 +484,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 	int retry_times = 5;
 	for (int i = 0; i < retry_times; i++)
 	{
-		std::string conductor_ip = get_master_conductor_ip(zk_ip);
+		std::string conductor_ip = get_master_conductor_ip(zk_ip, cluster_name);
 
 		sprintf(url, "http://%s:49180/s5c/?%s", conductor_ip.c_str(), query_str.c_str());
 		S5LOG_DEBUG("Query %s ...", url);
@@ -500,6 +512,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 
 void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
+	const static int ms1 = 1000;
 	if (unlikely(wc_status != TCP_WC_SUCCESS))
 	{
 		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", wr_bd->wr_op, WcStatusToStr(WcStatus(wc_status)));
@@ -514,38 +527,26 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
     {
 		PfConnection* conn = wr_bd->conn;
 		PfClientVolume* vol = conn->volume;
-		struct PfMessageReply *reply = wr_bd->reply_bd;
-		PfClientIocb* io = vol->pick_iocb(reply->command_id, reply->command_seq);
-		uint64_t ms1 = 1000;
-		/*
-		 * In io timeout case, we just ignore this completion
-		 */
-		if (unlikely(io == NULL))
-		{
+	    PfClientIocb* io = wr_bd->client_iocb;
+		PfMessageReply* reply = io->reply_bd->reply_bd;
 
-			S5LOG_WARN("Previous IO back but timeout!");
-			reply_pool.free(wr_bd);
-			return;
-		}
-
-
-		io->reply_time = now_time_usec();
-		PfMessageStatus s = (PfMessageStatus)reply->status;
-		if (unlikely(s & (MSG_STATUS_REOPEN)))
-		{
-			S5LOG_WARN( "Get reopen from store %s status code:%x, req meta_ver:%d store meta_ver:%d",
-				conn->connection_info.c_str(), s, io->cmd_bd->cmd_bd->meta_ver, reply->meta_ver);
-			if (vol->meta_ver < reply->meta_ver)
+			io->reply_time = now_time_usec();
+			PfMessageStatus s = (PfMessageStatus)reply->status;
+			if (unlikely(s & (MSG_STATUS_REOPEN)))
 			{
-				S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
-				vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()));
+				S5LOG_WARN( "Get reopen from store %s status code:%x, req meta_ver:%d store meta_ver:%d",
+					conn->connection_info.c_str(), s, io->cmd_bd->cmd_bd->meta_ver, reply->meta_ver);
+				if (vol->meta_ver < reply->meta_ver)
+				{
+					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
+					vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()));
+				}
+				vol->event_queue->post_event(EVT_IO_REQ, 0, io);
+				reply_pool.free(wr_bd);
+				return;
 			}
-			vol->event_queue->post_event(EVT_IO_REQ, 0, io);
-			reply_pool.free(wr_bd);
-			return;
-		}
 
-		{
+
 			PfMessageHead* io_cmd = io->cmd_bd->cmd_bd;
 			//On client side, we rely on the io timeout mechnism to release time connection
 			//Here we just release the io task
@@ -576,7 +577,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			free_iocb(io);
 			reply_pool.free(wr_bd);
 			h(s, arg);
-		}
+
     }
     else if(wr_bd->wr_op != TCP_WR_SEND)
     {
@@ -640,7 +641,7 @@ int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
 
 int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 {
-	S5LOG_INFO("get event:%d", event_type);
+	//S5LOG_INFO("get event:%d", event_type);
 	switch (event_type)
 	{
 	case EVT_IO_REQ:

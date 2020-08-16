@@ -1,4 +1,8 @@
-SPureFlash can be build with cmake tools.
+
+> this documentation describe build and run PureFlash for developer.
+> for production deployment, please refer deploy.md
+
+PureFlash can be build with cmake tools.
 
 1. Build on Linux
 =================

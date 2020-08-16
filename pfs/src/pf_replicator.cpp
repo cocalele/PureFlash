@@ -18,7 +18,7 @@ int PfReplicator::replicate_io(IoSubTask* t)
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
 		return -EAGAIN;
 	}
-
+	io->submit_time = now_time_usec();
 	auto old_cid = io->cmd_bd->cmd_bd->command_id;
 	memcpy(io->cmd_bd->cmd_bd, t->parent_iocb->cmd_bd->cmd_bd, sizeof(PfMessageHead));
 	io->cmd_bd->cmd_bd->command_id = old_cid;

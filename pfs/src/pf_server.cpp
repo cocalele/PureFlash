@@ -218,20 +218,20 @@ release0:
 }
 void server_on_conn_close(PfConnection* conn)
 {
-	S5LOG_INFO("conn:%s closed!", conn->connection_info.c_str());
+	S5LOG_INFO("conn:%p, %s closed!", conn, conn->connection_info.c_str());
 	conn->dec_ref();
 }
 void server_on_conn_destroy(PfConnection* conn)
 {
-	S5LOG_INFO("conn:%s destroyed!", conn->connection_info.c_str());
-	S5LOG_ERROR("TODO: remove conn from heartbeat checker list");
+	S5LOG_INFO("conn:%p, %s destroyed!", conn, conn->connection_info.c_str());
+	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
 	//app_context.ingoing_connections.remove(conn);
 }
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
-	S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
+	//S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
 	if(likely(complete_status == WcStatus::TCP_WC_SUCCESS)) {
 
 		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
@@ -267,7 +267,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
 				iocb->conn = conn;
 				iocb->add_ref();
-				S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
+				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
 				conn->post_recv(iocb->cmd_bd);
 			}
 		}
