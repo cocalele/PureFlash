@@ -134,7 +134,7 @@ void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->send_bd != NULL)
 		return; //send in progress
-	if(conn->send_bd == NULL)
+	if(conn->send_bd == NULL && !conn->send_q.is_empty())
 	{
 		S5Event evt;
 		int rc = conn->send_q.get_event(&evt);
@@ -152,7 +152,7 @@ void PfTcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 	PfTcpConnection* conn = (PfTcpConnection*)c;
 	if (conn->recv_bd != NULL)
 		return;//receive in progress
-	if (conn->recv_bd == NULL)
+	if (conn->recv_bd == NULL && !conn->recv_q.is_empty())
 	{
 		S5Event evt;
 		int rc = conn->recv_q.get_event(&evt);
@@ -410,7 +410,7 @@ int PfTcpConnection::post_recv(BufferDescriptor *bd)
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	bd->conn = this;
 	add_ref();
-	int rc = recv_q.post_event(EVT_IO_REQ, 0, bd);
+	int rc = recv_q.post_event(EVT_RECV_REQ, 0, bd);
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed post_recv in connection:%s", connection_info.c_str());
 		dec_ref();
@@ -423,9 +423,9 @@ int PfTcpConnection::post_send(BufferDescriptor *bd)
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	bd->conn = this;
 	add_ref();
-	int rc = send_q.post_event(EVT_IO_REQ, 0, bd);
+	int rc = send_q.post_event(EVT_SEND_REQ, 0, bd);
 	if(unlikely(rc)) {
-		S5LOG_ERROR("Failed post_recv in connection:%s", connection_info.c_str());
+		S5LOG_ERROR("Failed post_send in connection:%s", connection_info.c_str());
 		dec_ref();
 	}
 	return rc;

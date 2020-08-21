@@ -220,7 +220,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
-			assert(bd->reply_bd->command_id<32);
+			//assert(bd->reply_bd->command_id<32);
 			PfClientIocb* iocb = conn->volume->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
 			//In io timeout case, we just ignore this completion
 
@@ -235,7 +235,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			if(iocb != NULL && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
 				conn->add_ref(); //for start recv data
 				iocb->data_bd->conn = conn;
-				S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
+				//S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
 				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
 				return 1;
 			}
@@ -392,7 +392,7 @@ static string get_master_conductor_ip(const char *zk_host, const char* cluster_n
 
 	int rc = 0;
 	//const char* zk_root = "/pureflash/" + cluster_name;
-	string zk_root = format_string("/pureflash/%s", cluster_name);
+	string zk_root = format_string("/pureflash/%s/conductors", cluster_name);
 	rc = zoo_get_children(zkhandle, zk_root.c_str(), 0, &condutors);
 	if (ZOK != rc || condutors.count == 0)
     {
@@ -574,8 +574,11 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 					);
 			}
 
+
+	        reply_pool.free(io->reply_bd);
+	        io->reply_bd = NULL;
 			free_iocb(io);
-			reply_pool.free(wr_bd);
+
 			h(s, arg);
 
     }
@@ -875,6 +878,8 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	auto io = volume->iocb_pool.alloc();
 	if (io == NULL)
 		return -EAGAIN;
+	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
+	//assert(io->data_bd->client_iocb != NULL);
 
 	io->ulp_handler = callback;
 	io->ulp_arg = cbk_arg;

@@ -24,7 +24,10 @@ enum S5EventType : int
 	EVT_VOLUME_RECONNECT,
 	EVT_SEND_HEARTBEAT,
 	EVT_THREAD_EXIT,
+	EVT_RECV_REQ,
+	EVT_SEND_REQ,
 };
+const char* EventTypeToStr(S5EventType t);
 
 class PfEventQueue
 {

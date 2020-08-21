@@ -57,11 +57,16 @@ void PfEventQueue::destroy()
 
 int PfEventQueue::post_event(int type, int arg_i, void* arg_p)
 {
-	AutoSpinLock _l(&lock);
-	int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p });
-	if(rc)
-		return rc;
-	write(event_fd, &event_delta, sizeof(event_delta)); 
+	//S5LOG_INFO("post_event %s into:%s", EventTypeToStr((S5EventType)type), name);
+	{
+		AutoSpinLock _l(&lock);
+		int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p });
+		if(rc)
+			return rc;
+	}
+	write(event_fd, &event_delta, sizeof(event_delta));
+	//S5LOG_INFO("wrote to evtfd: %d ", event_fd);
+
 	return 0;
 	//if (current_queue->is_full())
 	//	return -EAGAIN;
@@ -89,6 +94,7 @@ int PfEventQueue::get_events(PfFixedSizeQueue<S5Event>** /*out*/ q)
 		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
 		return -errno;
 	}
+	//S5LOG_INFO("batch read from evt_fd:%d value:%ld", event_fd, v);
 	AutoSpinLock _l(&lock);
 	*q = current_queue;
 	current_queue = current_queue == &queue1 ? &queue2 : &queue1;
@@ -103,13 +109,16 @@ int PfEventQueue::get_event(S5Event* /*out*/ evt)
 		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
 		return -errno;
 	}
-	AutoSpinLock _l(&lock);
-	if(current_queue->is_empty())
-		return -ENOENT;
-	*evt = current_queue->data[current_queue->head];
-	current_queue->head++;
-	current_queue->head %= current_queue->queue_depth;
-	return 0;
+	//S5LOG_INFO("read from evt_fd:%d value:%ld", event_fd, v);
+	{
+		AutoSpinLock _l(&lock);
+		if(current_queue->is_empty())
+			return -ENOENT;
+		*evt = current_queue->data[current_queue->head];
+		current_queue->head++;
+		current_queue->head %= current_queue->queue_depth;
+		return 0;
+	}
 }
 
 int PfEventQueue::sync_invoke(std::function<int()> f)
@@ -127,4 +136,26 @@ int PfEventQueue::sync_invoke(std::function<int()> f)
 	sem_wait(&arg.sem);
 	sem_destroy(&arg.sem);
 	return arg.rc;
+}
+const char* EventTypeToStr(S5EventType t)
+{
+#define C_NAME(x) case x: return #x;
+	static __thread char buf[64];
+	switch(t) {
+		C_NAME(EVT_SYNC_INVOKE)
+		C_NAME(EVT_EPCTL_DEL)
+		C_NAME(EVT_EPCTL_ADD)
+		C_NAME(EVT_IO_REQ)
+		C_NAME(EVT_IO_COMPLETE)
+		C_NAME(EVT_IO_TIMEOUT)
+		C_NAME(EVT_REOPEN_VOLUME)
+		C_NAME(EVT_VOLUME_RECONNECT)
+		C_NAME(EVT_SEND_HEARTBEAT)
+		C_NAME(EVT_THREAD_EXIT)
+		C_NAME(EVT_SEND_REQ)
+		C_NAME(EVT_RECV_REQ)
+		default:
+			snprintf(buf, sizeof(buf), "Unknown_EVT_%d", t);
+			return buf;
+	}
 }
