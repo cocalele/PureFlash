@@ -78,31 +78,41 @@ int PfZkClient::create_node(const std::string& node_path, bool is_ephemeral, con
 
 	string full_path=node_path;
 	if(node_path[0] != '/')
-		full_path="/"+cluster_name+"/"+node_path;
+		full_path="/pureflash/"+cluster_name+"/"+node_path;
+	if(zoo_exists(zkhandle, full_path.c_str(), 0, NULL) == ZOK){
+		if(is_ephemeral){
+			S5LOG_WARN("Emphereal zk node:%s already exists! arg node_path:%s", full_path.c_str(), node_path.c_str());
+			return ZNODEEXISTS;
+		}
+		return ZOK;
+	}
 	size_t pos = full_path.find_last_of('/');
 	string parent = full_path.substr(0, pos);
-	int rc = zoo_exists(zkhandle, parent.c_str(), 0, NULL);
-	if(rc == ZNONODE)
+	int rc = ZOK;
+	if(!parent.empty())
 	{
-		rc = create_node(parent, 0, NULL);
-		if(rc)
-		{
-			return rc;
+		rc = zoo_exists(zkhandle, parent.c_str(), 0, NULL);
+
+		if(rc != ZOK) {
+			if (rc == ZNONODE) {
+				rc = create_node(parent, 0, NULL);
+				if(rc != ZOK) {
+					return rc;
+				}
+			} else {
+				S5LOG_ERROR("Failed to check existence ZK node:%s, node_path:%s, rc:%d", full_path.c_str(), node_path.c_str(), rc);
+				return rc;
+			}
 		}
 	}
-	else if(rc == ZOK)
-	{
-		rc = zoo_create(zkhandle, full_path.c_str(), node_data, (int)strlen(node_data), &ZOO_CREATOR_ALL_ACL,
-			is_ephemeral ? ZOO_EPHEMERAL : 0, NULL, 0);
-		if(rc != ZOK)
-		{
-			S5LOG_ERROR("Failed to create ZK node:%s, rc:%d", full_path.c_str(), rc);
-		}
-		return rc;
-	}
-	else
-	{
-		S5LOG_ERROR("Failed to create ZK node:%s, rc:%d", parent.c_str(), rc);
+	rc = zoo_create(zkhandle, full_path.c_str(), node_data, node_data ? (int)strlen(node_data) : 0, &ZOO_OPEN_ACL_UNSAFE,
+		is_ephemeral ? ZOO_EPHEMERAL : 0, NULL, 0);
+	if(rc != ZOK) {
+		S5LOG_ERROR("Failed to create ZK node:%s, node_path:%s, rc:%d", full_path.c_str(), node_path.c_str(), rc);
 	}
 	return rc;
+}
+int PfZkClient::delete_node(const std::string& node_path)
+{
+	return zoo_delete(zkhandle, node_path.c_str(), -1);
 }

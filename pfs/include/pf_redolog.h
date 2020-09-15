@@ -11,7 +11,8 @@ class PfRedoLog
 	enum class ItemType : uint32_t {
 		ALLOCATE_OBJ = 1,
 		TRIM_OBJ = 2,
-		FREE_OBJ = 3
+		FREE_OBJ = 3,
+		SNAP_SEQ_CHANGE = 4,
 	};
 
 	struct Item{
@@ -33,6 +34,11 @@ class PfRedoLog
 				int trim_list_head;
 				int free_list_tail;
 			}free;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				uint32_t old_snap_seq;
+			}snap_seq_change;
 		};
 	};
 
@@ -56,6 +62,8 @@ public:
 	int redo_allocation(Item* e);
 	int redo_trim(Item* e);
 	int redo_free(Item* e);
+	int log_snap_seq_change(const struct lmt_key* key, const struct lmt_entry* entry, int old_seq);
+	int redo_snap_seq_change(PfRedoLog::Item* e);
 	int stop();
 	int start();
 private:

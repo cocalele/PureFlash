@@ -101,9 +101,36 @@ after build finish, all binary should be found under  * bin * dir
     # $ZOOBINDIR/zkServer.sh start
 
 ### 2.5 install mysql
-   ```
+
    on ubuntu OS:
+```
     sudo apt install mysql-server
     sudo systemctl start mysql
     sudo mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'pureflash'@'%' IDENTIFIED BY '123456'"
     sudo mysql -e
+```
+
+1) Config file
+   Please reference `pfs_template.conf` and `pfc_template.conf` to prepare config file for pfs and pfc(jconductor).
+   by default, pfs and jconductor will lookup config file under directory /etc/pureflash/{pfc.conf, pfs.conf}
+
+
+2) Start pureflash store
+   ```
+   # source build_deb/env.sh  # supporse you have do a build under directory build_deb
+   # pfs
+   ```
+3) Start jconductor
+   ```
+   # source jconductor/env-pfc.sh
+   # pfc
+   ```
+
+3. Run testcase
+===================
+   There are some testcase under pfs/testing directory. it can be run like bellow:
+   ```
+   # source build_deb/env.sh
+   # source jconductor/env-pfc.sh
+   # test_1.sh
+   ```

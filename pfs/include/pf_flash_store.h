@@ -13,6 +13,8 @@
 #include "pf_event_queue.h"
 #include "pf_event_thread.h"
 #include "pf_tray.h"
+#include "pf_threadpool.h"
+#include "pf_volume.h"
 
 
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
@@ -40,6 +42,7 @@ enum EntryStatus: uint32_t {
 	UNINIT = 0, //not initialized
 	NORMAL = 1,
 	COPYING = 2, //COW on going
+	DELAY_DELETE_AFTER_COW = 3,
 };
 /**
  * represent a 4M block entry
@@ -48,7 +51,7 @@ struct lmt_entry
 {
 	int64_t offset; //offset of this 4M block in device. in bytes
 	uint32_t snap_seq;
-	uint32_t status; // type EntryStatus
+	EntryStatus status; // type EntryStatus
 	lmt_entry* prev_snap;
 	IoSubTask* waiting_io;
 
@@ -156,18 +159,26 @@ public:
 	 */
 	int do_write(IoSubTask* io);
 
-	/**
-	 * delete a 4M object
-	 */
-	int delete_obj(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba);
-
 	int save_meta_data();
+	void delete_snapshot(shard_id_t replica_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 private:
+	ThreadPool cow_thread_pool;
+
 	int read_store_head();
 	int initialize_store_head();
 	int load_meta_data();
+
+	/** these two function convert physical object id (i.e. object in disk space) and offset in disk
+	 *  Note: don't confuse these function with vol_offset_to_block_idx, which do convert
+	 *        in volume space
+	 */
 	inline int64_t obj_id_to_offset(int64_t obj_id) { return (obj_id << head.objsize_order) + head.meta_size; }
+	inline int64_t offset_to_obj_id(int64_t offset) { return (offset - head.meta_size) >> head.objsize_order; }
+
+	void begin_cow(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
+	void do_cow_entry(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
+	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
+	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 };
 
 #endif // flash_store_h__

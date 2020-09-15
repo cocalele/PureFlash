@@ -103,7 +103,7 @@ struct PfMessageHead
 };
 #define PF_MSG_HEAD_SIZE 64
 static_assert(sizeof(PfMessageHead) == PF_MSG_HEAD_SIZE, "PfMessageHead");
-
+#define SNAP_SEQ_HEAD 0xffffffff
 
 struct PfMessageReply {
 	PfMessageStatus  status;         /* did the command fail, and if so, why? */

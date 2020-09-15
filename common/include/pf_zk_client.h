@@ -15,7 +15,7 @@ public:
 	~PfZkClient();
 	int init(const char* zk_ip, int zk_timeout, const char* cluster_name);
 	int create_node(const std::string& node_path, bool is_ephemeral, const char* node_data);
-
+	int delete_node(const std::string& node_path);
 	//members:
 	zhandle_t *zkhandle;
 	std::string cluster_name;

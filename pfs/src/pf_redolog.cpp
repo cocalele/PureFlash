@@ -210,3 +210,34 @@ int PfRedoLog::stop()
 	auto_save_thread.join();
 	return 0;
 }
+
+int PfRedoLog::log_snap_seq_change(const struct lmt_key* key, const struct lmt_entry* entry, int old_seq)
+{
+	PfRedoLog::Item *item = (PfRedoLog::Item*)entry_buff;
+	item->phase = phase;
+	item->type = ItemType::SNAP_SEQ_CHANGE;
+	item->snap_seq_change.bkey = *key;
+	item->snap_seq_change.bentry = *entry;
+	item->snap_seq_change.old_snap_seq = old_seq;
+	return write_entry();
+
+}
+
+int PfRedoLog::redo_snap_seq_change(PfRedoLog::Item* e)
+{
+	auto pos = store->obj_lmt.find(e->snap_seq_change.bkey);
+	if (pos != store->obj_lmt.end())
+	{
+		for (struct lmt_entry* h = pos->second; h != NULL; h = h->prev_snap)
+		{
+			if (h->offset == e->snap_seq_change.bentry.offset)
+			{
+				if (h->snap_seq == e->snap_seq_change.old_snap_seq)
+					h->snap_seq = e->snap_seq_change.bentry.snap_seq;
+				break;
+			}
+		}
+	}
+	return 0;
+
+}

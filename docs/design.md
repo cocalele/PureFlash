@@ -35,7 +35,7 @@ reference count is used to manage object life cycle. include:
         this two operation will add ref_cnt by 2. i.e. ref_cnt += 2  
      c) on cmd send complete, ref_cnt -= 1; immediately, if it's a write IO, a post_send for data will inc ref_cnt
       again, ref_cnt += 1;  
-     d) on reply recevie complete, ref_cnt -= 1; immediately, if £ét's a read IO, a post_read for data will inc ref_cnt
+     d) on reply recevie complete, ref_cnt -= 1; immediately, if it's a read IO, a post_read for data will inc ref_cnt
      again, ref_cnt += 1
      e) on data (send for write)/(recv for reead) complete, ref_cnt -= 1; at this moment, i.e. IDLE for no IO on
      flying, connection should has ref_cnt == 1

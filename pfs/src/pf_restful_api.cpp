@@ -53,7 +53,15 @@ void to_json(json& j, const RestfulReply& r)
 	j = json{ { "ret_code", r.ret_code },{ "reason", r.reason },{ "op", r.op } };
 
 }
+template <typename R>
+void send_reply_to_client(R r, struct mg_connection *nc) {
 
+	json jr = r;
+	string jstr = jr.dump();
+	const char* cstr = jstr.c_str();
+	mg_send_head(nc, 200, strlen(cstr), "Content-Type: text/plain");
+	mg_printf(nc, "%s", cstr);
+}
 
 static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 {
@@ -165,7 +173,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 {
 	string vol_name = get_http_param_as_string(&hm->query_string, "name", NULL, true);
-	S5LOG_DEBUG("Receive prepare volume req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
+	S5LOG_INFO("Receive prepare volume req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
 	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
 	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
 	PfVolume* vol = NULL;
@@ -185,12 +193,13 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	int rc = 0;
 	for(auto d : app_context.disps)
 	{
-		rc = d->prepare_volume(vol);
+		rc = d->sync_invoke([d, vol]()->int {return d->prepare_volume(vol);});
+
 	}
 	if(rc == 0)
 	{
-		pthread_mutex_lock(&app_context.lock);
-		DeferCall _c([]() {pthread_mutex_unlock(&app_context.lock);});
+		S5LOG_INFO("Succeeded prepare volume:%s", vol->name);
+		AutoMutexLock _l(&app_context.lock);
 		app_context.opened_volumes[vol->id] = vol;
 	}//these code in separate code block, so lock can be released quickly
 	if(rc == -EALREADY)
@@ -199,9 +208,60 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 		delete vol;
 	}
 	RestfulReply r(arg.op + "_reply");
-	json jr = r;
-	string jstr = jr.dump();
-	const char* cstr = jstr.c_str();
-	mg_send_head(nc, 200, strlen(cstr), "Content-Type: text/plain");
-	mg_printf(nc, "%s", cstr);
+	send_reply_to_client(r, nc);
+}
+void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm) {
+	int64_t vol_id = get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
+	int snap_seq = (int)get_http_param_as_int64(&hm->query_string, "snap_seq", 0, true);
+
+	for(auto d : app_context.disps)
+	{
+		d->sync_invoke([d, vol_id, snap_seq]()->int {d->set_snap_seq(vol_id, snap_seq); return 0;});
+	}
+	RestfulReply r("set_snap_seq_reply");
+	send_reply_to_client(r, nc);
+}
+
+void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm) {
+	int64_t vol_id = get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
+	int meta_ver = (int)get_http_param_as_int64(&hm->query_string, "meta_ver", 0, true);
+
+	for(auto d : app_context.disps)
+	{
+		d->sync_invoke([d, vol_id, meta_ver]()->int {d->set_meta_ver(vol_id, meta_ver); return 0;});
+	}
+	RestfulReply r("set_meta_ver_reply");
+	send_reply_to_client(r, nc);
+}
+void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) {
+	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "shard_id", 0, true);
+	int snap_seq = (int)get_http_param_as_int64(&hm->query_string, "snap_seq", 0, true);
+	int prev_seq = (int)get_http_param_as_int64(&hm->query_string, "prev_snap_seq", 0, true);
+	int next_seq = (int)get_http_param_as_int64(&hm->query_string, "next_snap_seq", 0, true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", 0, true);
+	int ssd_idx = app_context.get_ssd_index(ssd_uuid);
+	RestfulReply r("delete_snapshot_reply");
+	if(ssd_idx < 0) {
+		r.ret_code = -ENOENT;
+		r.reason = format_string("ssd:%s not found", ssd_uuid.c_str());
+	} else {
+		PfFlashStore *disk = app_context.trays[ssd_idx];
+		disk->event_queue.sync_invoke([disk, rep_id,snap_seq, prev_seq, next_seq]()->int{
+			disk->delete_snapshot(int64_to_shard_id(SHARD_ID(rep_id)),snap_seq, prev_seq, next_seq);
+			return 0;
+		});
+	}
+
+	send_reply_to_client(r, nc);
+}
+
+void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
+	int cnt = 0;
+	for(auto disk : app_context.trays) {
+		cnt += disk->event_queue.sync_invoke([disk]()->int{
+			return disk->free_obj_queue.space();
+		});
+	}
+	mg_send_head(nc, 200, 16, "Content-Type: text/plain");
+	mg_printf(nc, "%-16d", cnt);
 }

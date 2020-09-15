@@ -33,6 +33,9 @@ class PfTcpServer;
 
 #define DATA_PORT 0
 #define REP_PORT 1
+
+#define COW_OBJ_SIZE (128<<10)
+
 class PfVolume;
 class PfAfsAppContext : public PfAppCtx
 {
@@ -57,6 +60,8 @@ public:
 	PfAfsAppContext();
 
 	PfDispatcher *get_dispatcher(uint64_t vol_id);
+
+	BigMemPool cow_buf_pool;
 };
 extern PfAfsAppContext app_context;
 #endif

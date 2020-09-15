@@ -38,7 +38,7 @@
 #include "pf_dispatcher.h"
 
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
-#define offset_to_block_idx(offset, obj_size_order) ((offset) >> (obj_size_order))
+#define vol_offset_to_block_idx(offset, obj_size_order) ((offset) >> (obj_size_order))
 #define offset_in_block(offset, in_obj_offset_mask) ((offset) & (in_obj_offset_mask))
 
 #define OFFSET_HEAD 0
@@ -50,6 +50,17 @@
 #define OFFSET_REDO_LOG (2LL<<30)
 #define REDO_LOG_SIZE (512LL<<20) //512M
 static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_REDO_LOG exceed reserve area");
+
+static uint64_t get_device_cap(int fd);
+
+struct CowTask : public IoSubTask{
+	off_t src_offset;
+	off_t dst_offset;
+	void* buf;
+	int size;
+	sem_t sem;
+};
+
 
 static BOOL is_disk_clean(int fd)
 {
@@ -126,6 +137,9 @@ int PfFlashStore::init(const char* tray_name)
 			return ret;
 		}
 		save_meta_data();
+		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d", obj_lmt.size(),
+		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count());
+
 		redolog->start();
 	}
 	else if (ret == -EUCLEAN)
@@ -135,6 +149,10 @@ int PfFlashStore::init(const char* tray_name)
 		{
 			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
 			return ret;
+		}
+		size_t dev_cap = get_device_cap(fd);
+		if(get_device_cap(fd) < (10LL<<30)) {
+			S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap>>30);
 		}
 		ret = clean_meta_area(fd, app_context.meta_size);
 		if(ret) {
@@ -200,7 +218,7 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 
-	lmt_key key = { io->rep->id, (int64_t)offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0 };
+	lmt_key key = {io->rep->id, (int64_t)vol_offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0 };
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 	if (block_pos != obj_lmt.end())
@@ -213,9 +231,11 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	}
 	else
 	{
-		if (likely(entry->status == EntryStatus::NORMAL)) {
+		if (likely(entry->status == EntryStatus::NORMAL || entry->status == EntryStatus::DELAY_DELETE_AFTER_COW)) {
+			//TODO: should we lock this entry first?
 			io_prep_pread(&io->aio_cb, fd, data_bd->buf, cmd->length,
 				entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
+			io->opcode = S5_OP_READ;
 			struct iocb *ios[1] = {&io->aio_cb};
 			io_submit(aio_ctx, 1, ios);
 		}
@@ -239,8 +259,8 @@ int PfFlashStore::do_write(IoSubTask* io)
 {
 	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
-
-	lmt_key key = { io->rep->id, (int64_t)offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0};
+	io->opcode = cmd->opcode;
+	lmt_key key = {io->rep->id, (int64_t)vol_offset_to_block_idx(cmd->offset, head.objsize_order), 0, 0};
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 
@@ -254,7 +274,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 		int obj_id = free_obj_queue.dequeue();
 		entry = lmt_entry_pool.alloc();
 		*entry = lmt_entry { offset: obj_id_to_offset(obj_id),
-			snap_seq : io->parent_iocb->cmd_bd->cmd_bd->snap_seq,
+			snap_seq : cmd->snap_seq,
 			status : EntryStatus::NORMAL,
 			prev_snap : NULL,
 			waiting_io : NULL
@@ -272,24 +292,59 @@ int PfFlashStore::do_write(IoSubTask* io)
 	else
 	{
 		entry = block_pos->second;
-		if (unlikely(entry->status != EntryStatus::NORMAL))
-		{
-			S5LOG_ERROR("Block in abnormal status:%d", entry->status);
-			io->complete(MSG_STATUS_INTERNAL);
-			return 0;
-		}
-		if (unlikely(cmd->snap_seq < entry->snap_seq))
-		{
+
+		if(likely(cmd->snap_seq == entry->snap_seq)) {
+			if (unlikely(entry->status != EntryStatus::NORMAL))
+			{
+				if(entry->status == EntryStatus::COPYING) {
+					io->next = entry->waiting_io;
+					entry->waiting_io = io; //insert io to waiting list
+					return 0;
+				}
+				S5LOG_FATAL("Block in abnormal status:%d", entry->status);
+				io->complete(MSG_STATUS_INTERNAL);
+				return -EINVAL;
+			}
+
+		} else if (unlikely(cmd->snap_seq < entry->snap_seq)) {
 			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%x request snap:%d, target snap:%d",
 				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
 			io->complete(MSG_STATUS_READONLY);
 			return 0;
+		} else if(unlikely(cmd->snap_seq > entry->snap_seq)) {
+			if (free_obj_queue.is_empty())
+			{
+				app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
+				return -ENOSPC;
+			}
+			int obj_id = free_obj_queue.dequeue();
+			struct lmt_entry* dstEntry = lmt_entry_pool.alloc();
+			*dstEntry = lmt_entry { offset: obj_id_to_offset(obj_id),
+					snap_seq : cmd->snap_seq,
+					status : EntryStatus::COPYING,
+					prev_snap : entry,
+					waiting_io : NULL
+			};
+			obj_lmt[key] = dstEntry;
+			int rc = redolog->log_allocation(&key, dstEntry, free_obj_queue.head);
+			if (rc)
+			{
+				app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
+				S5LOG_ERROR("log_allocation error, rc:%d", rc);
+				return -EIO;
+			}
+			io->next = dstEntry->waiting_io;
+			dstEntry->waiting_io = io; //insert io to waiting list
+			S5LOG_DEBUG("Call begin_cow for io:%p, entry:%p dstEntry:%p", io, entry, dstEntry);
+			begin_cow(&key, entry, dstEntry);
+			return 0;
 		}
 
-	}
 
+	}
+	//below is the most possible case
 	io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, cmd->length,
-		entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
+	               entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
 	struct iocb* ios[1] = {&io->aio_cb};
 	//S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
 	io_submit(aio_ctx, 1, ios);
@@ -665,65 +720,46 @@ int PfFlashStore::load_meta_data()
 	int key_count = buf_as_int[0];
 
 	LmtEntrySerializer reader(head.lmt_position + LBA_LENGTH, buf, buf_size, 0, &stream);
+	for (int i = 0; i < key_count; i++)
 	{
-		for (int i = 0; i < key_count; i++)
+		lmt_key k;
+		lmt_entry *head_entry = lmt_entry_pool.alloc();
+		head_entry->prev_snap = NULL;
+		head_entry->waiting_io = NULL;
+		rc = reader.read_key(&k);
+		if (rc) {
+			S5LOG_ERROR("Failed to read key.");
+			return rc;
+		}
+		rc = reader.read_entry(head_entry);
+		if (rc) {
+			S5LOG_ERROR("Failed to read entry.");
+			return rc;
+		}
+		lmt_entry *tail = head_entry;
+		while (tail->prev_snap != NULL)
 		{
-			lmt_key k;
-			lmt_entry *head_entry = lmt_entry_pool.alloc();
-			head_entry->prev_snap = NULL;
-			head_entry->waiting_io = NULL;
-			rc = reader.read_key(&k);
-			if (rc) {
-				S5LOG_ERROR("Failed to read key.");
-				return rc;
-			}
-			rc = reader.read_entry(head_entry);
+			lmt_entry * b = lmt_entry_pool.alloc();
+			b->prev_snap = NULL;
+			b->waiting_io = NULL;
+			tail->prev_snap = b;
+			rc = reader.read_entry(tail->prev_snap);
 			if (rc) {
 				S5LOG_ERROR("Failed to read entry.");
 				return rc;
 			}
-			lmt_entry *tail = head_entry;
-			while (tail->prev_snap != NULL)
-			{
-				lmt_entry * b = lmt_entry_pool.alloc();
-				b->prev_snap = NULL;
-				b->waiting_io = NULL;
-				tail->prev_snap = b;
-				rc = reader.read_entry(tail->prev_snap);
-				if (rc) {
-					S5LOG_ERROR("Failed to read entry.");
-					return rc;
-				}
-				tail = tail->prev_snap;
-			}
-			obj_lmt[k] = head_entry;
+			tail = tail->prev_snap;
 		}
-		/*just for update md5*/
-		if (key_count == 0)
-			reader.load_buffer();
-		S5LOG_INFO("Load block map, key:%d ", key_count);
+		obj_lmt[k] = head_entry;
 	}
+	/*just for update md5*/
+	if (key_count == 0)
+		reader.load_buffer();
+	S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d", key_count,
+		 free_obj_queue.queue_depth -1, free_obj_queue.count());
 
 	return 0;
 
-}
-
-/**
-* delete an object, i.e. an allocation block
-*/
-int PfFlashStore::delete_obj(uint64_t vol_id, int64_t slba,
-	int32_t snap_seq, int32_t nlba)
-{
-	//int64_t slba_aligned = (int64_t)CUT_LOW_10BIT(slba);
-	//struct lmt_key key = { vol_id, slba_aligned };
-	//struct lmt_entry* entry = (struct lmt_entry*)ht_remove(&obj_lmt, &key, sizeof(key));
-	//if (entry == NULL)
-	//	return 0;
-	////offset = (obj_idx << OBJ_SIZE_ORDER) + store->meta_size
-	//int obj_idx = (int)((entry->offset - meta_size) >> OBJ_SIZE_ORDER);
-	//free(entry);
-	//fsq_int_enqueue(&free_obj_queue, obj_idx);
-	return 0;
 }
 
 int PfFlashStore::read_store_head()
@@ -771,6 +807,27 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
 
 	}
 	break;
+	case EVT_COW_READ:
+	{
+		struct CowTask *req = (struct CowTask*)arg_p;
+		req->opcode = S5_OP_COW_READ;
+		io_prep_pread(&req->aio_cb, fd, req->buf, req->size, req->src_offset );
+		struct iocb* ios[1] = {&req->aio_cb};
+		S5LOG_DEBUG("io_submit for cow read, ssd:%s, buf:%p len:%d  offset:0x%llx", this->tray_name, req->buf,
+			  req->size, req->src_offset);
+		io_submit(aio_ctx, 1, ios);
+	}
+	break;
+	case EVT_COW_WRITE:
+	{
+		struct CowTask *req = (struct CowTask*)arg_p;
+		req->opcode = S5_OP_COW_WRITE;
+		io_prep_pwrite(&req->aio_cb, fd, req->buf, req->size, req->dst_offset );
+		struct iocb* ios[1] = {&req->aio_cb};
+		//S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
+		io_submit(aio_ctx, 1, ios);
+	}
+	break;
 	default:
 		S5LOG_FATAL("Unimplemented event type:%d", event_type);
 	}
@@ -799,17 +856,38 @@ void PfFlashStore::aio_polling_proc()
 				int64_t len = evts[i].res;
 				int64_t res = evts[i].res2;
 				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
-				//S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
-				if(unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
-					S5LOG_ERROR("aio error, len:%d rc:%d", (int)len, (int)res);
-					res = (res == 0 ? len : res);
-					app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
-				} else
-					t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
+				switch(t->opcode) {
+					case S5_OP_READ:
+					case S5_OP_WRITE:
+					case S5_OP_REPLICATE_WRITE:
+						//S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
+						if (unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
+							S5LOG_ERROR("aio error, len:%d rc:%d", (int) len, (int) res);
+							//res = (res == 0 ? len : res);
+							app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
+						} else
+							t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
+						break;
+					case S5_OP_COW_READ:
+					case S5_OP_COW_WRITE:
+						if (unlikely(len != ((CowTask *) t)->size || res < 0)) {
+							S5LOG_ERROR("cow aio error, op:%d, len:%d rc:%d", t->opcode, (int) len, (int) res);
+							//res = (res == 0 ? len : res);
+							app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
+
+						} else {
+							t->complete_status = PfMessageStatus::MSG_STATUS_SUCCESS;
+							sem_post(&((CowTask*)t)->sem);
+						}
+
+						break;
+					default:
+						S5LOG_FATAL("Unknown task opcode:%d", t->opcode);
+				}
+
 			}
 		}
 	}
-	return ;
 }
 
 void PfFlashStore::init_aio()
@@ -826,4 +904,386 @@ void PfFlashStore::init_aio()
 PfFlashStore::~PfFlashStore()
 {
 	S5LOG_DEBUG("PfFlashStore destrutor");
+}
+
+void PfFlashStore::begin_cow(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEntry)
+{
+	auto f = cow_thread_pool.commit([this, key, srcEntry, dstEntry]{do_cow_entry(key, srcEntry, dstEntry);});
+}
+
+
+void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEntry)
+{
+	CowTask r;
+	r.src_offset = srcEntry->offset;
+	r.dst_offset = dstEntry->offset;
+	r.size = COW_OBJ_SIZE;
+	sem_init(&r.sem, 0, 0);
+
+	r.buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE);
+	event_queue.post_event(EVT_COW_READ, 0, &r);
+	sem_wait(&r.sem);
+	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
+		goto cowfail;
+	}
+
+	event_queue.post_event(EVT_COW_WRITE, 0, &r);
+	sem_wait(&r.sem);
+	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
+		goto cowfail;
+	}
+	sync_invoke([key, srcEntry, dstEntry, this]()->int {
+		dstEntry->status = EntryStatus::NORMAL;
+		IoSubTask *t = dstEntry->waiting_io;
+		dstEntry->waiting_io = NULL;
+		while (t) {
+			if (unlikely(t->opcode != S5_OP_WRITE && t->opcode != S5_OP_REPLICATE_WRITE)) {
+				S5LOG_FATAL("Unexcepted op code:%d", t->opcode);
+			}
+
+			do_write(t);
+			t = t->next;
+		}
+		if(srcEntry->status == DELAY_DELETE_AFTER_COW) {
+			delete_obj(key, srcEntry);
+		}
+		return 0;
+	});
+	app_context.cow_buf_pool.free(r.buf);
+	return;
+cowfail:
+	sync_invoke([dstEntry]()->int
+	{
+		IoSubTask* t = dstEntry->waiting_io;
+		dstEntry->waiting_io = NULL;
+		while (t) {
+			t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+			t=t->next;
+		}
+		return 0;
+	});
+	app_context.cow_buf_pool.free(r.buf);
+	return;
+}
+
+void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq) {
+	uint64_t shard_index = SHARD_INDEX(shard_id.val());
+	uint64_t vol_id = VOLUME_ID(shard_id.val());
+	int obj_lba_cnt = (int)(head.objsize / LBA_LENGTH);
+	for(int i=0; i<SHARD_LBA_CNT; i += obj_lba_cnt)
+	{
+		uint64_t start_lba = shard_index * SHARD_LBA_CNT + i;
+		delete_obj_snapshot(vol_id, start_lba, snap_seq_to_del, prev_snap_seq, next_snap_seq);
+	}
+
+}
+
+int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq)
+{
+	lmt_key key={.vol_id=volume_id, .slba = slba};
+	auto pos = obj_lmt.find(key);
+	if(pos == obj_lmt.end())
+		return -ENOENT;
+	/*
+	 * so far, we have two lines about snap sequence
+	 * 1) logically, whenever a snapshot is created, a snap sequence is created. this snap_seq list can be get from snapshot table
+	 * 2) physically, depends the objected allocated in disk, since not every snapshot has object allocated in disk, this list
+	 *    is a subset of logical list
+	 *
+	 * the snap sequence passed as argument is logical list,
+	 * bellow we iterate obj list will get physical list.
+	 */
+
+	lmt_entry* target_entry = pos->second;
+	lmt_entry* prev_entry = target_entry->prev_snap;
+	lmt_entry* next_entry = NULL;
+	while (target_entry && snap_seq < target_entry->snap_seq) {
+		next_entry = target_entry;
+		target_entry = target_entry->prev_snap;
+		prev_entry = target_entry->prev_snap;
+	}
+
+	if( (prev_entry != NULL && prev_entry->status != EntryStatus::NORMAL)
+		|| (target_entry != NULL && target_entry->status != EntryStatus::NORMAL)
+		|| (next_entry != NULL && next_entry->status != EntryStatus::NORMAL)) {
+		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%llx slba:%lld", volume_id, slba);
+		return -EAGAIN;
+	}
+
+	/*
+	 * next problem is to determine should we delete the target object in disk
+	 * for clearify, define symbol:
+	 * Lps: logical prev snap sequence
+	 * Lts: logical target snap sequence, i.e. the snapshot to delete
+	 * Lns: logical next snap sequence
+	 *
+	 * Pps: physical prev object snap_seq
+	 * Pts: physical target object snap_seq
+	 * Pns: physical next object snap_seq
+	 *
+	 * our goal is to determine how to treat physical-target object Ot, i.e. `targent_entry`, only three choice:
+	 *   C1) delete this entry
+	 *   C2) keep it, change its snap sequence
+	 *   C3) keet it, not change its snap sequence
+	 *
+	 * we have the always truth:   Pts <= Lts, Lts < Pns
+	 * and possible A:   1) Lps < Pps < Pts <= Lts  2) Pps <= Lps < Pts <= Lts 3) Pps < Pts < Lps < Lts
+	 *              B:   1) Pts <= Lts < Pns <= Lns  2) Pts <= Lts < Lns < Pns   3) Pns not exists
+	 *
+	 *  A1 is illegal, Lps < Pps < Pts is impossible.
+	 *
+	 *
+	 *  in one sentence, we should keep this object if it is needed by Lps or Lns. otherwise, delete it.
+	 */
+	uint32_t Lps = prev_snap_seq;
+	uint32_t Lts = snap_seq;
+	uint32_t Lns = next_snap_seq;
+
+	uint32_t Pps = prev_entry == NULL ? 0 : prev_entry->snap_seq;
+	uint32_t Pts = target_entry == NULL ? 0 : target_entry->snap_seq;
+	uint32_t Pns = next_entry == NULL ? UINT32_MAX : next_entry->snap_seq;
+
+	assert(Pts <= Lts);
+	assert(Lts < Pns);
+	if( (Lps < Pps) /*A1*/ && (Pns <= Lns) /*B1*/) {
+
+		/*
+		 *
+		 * 	=case A1 B1=
+		 *                Lps                  Lts                Lns
+		 *                |                    |                  |
+		 *                |                    |                  |
+		 * Logical    ----Sp-------------------D------------------Sn------->
+		 *
+		 *
+		 *	     	         +--+      +--+            +--+
+		 * Physical   -------|Op|----- |Ot|------------|On|---------------->
+		 *                   +--+      +--+            +--+
+		 *                    ^         ^               ^
+		 *                    |         |               |
+		 *                    Pps       Pts             Pns
+		 */
+		S5LOG_WARN("del snapshot state A1-B1 is illegal, may be caused by previous error, and can be corrected by GC");
+		if(next_entry->status == EntryStatus::NORMAL)
+			delete_obj(&key, target_entry);
+		else
+			target_entry->status = EntryStatus::DELAY_DELETE_AFTER_COW;
+		//delete_obj(&key, prev_entry);// we can also delete Pps, since it's not needed
+	}
+	else if( (Lps < Pps) /*A1*/ && (Lns < Pns) /*B2*/) {
+		/**
+		 * 	=case A1 B2=
+	     *                Lps                  Lts                Lns
+	     *                |                    |                  |
+	     *                |                    |                  |
+	     * Logical    ----Sp-------------------D------------------Sn------------------------>
+	     *
+	     *
+	     *	     	         +--+      +--+                              +--+
+	     * Physical   -------|Op|----- |Ot|------------------------------|On|---------------->
+	     *                   +--+      +--+                              +--+
+	     *                    ^         ^                                 ^
+	     *                    |         |                                 |
+	     *                    Pps       Pts                               Pns
+	     */
+		S5LOG_WARN("del snapshot state A1-B2 is illegal, may be caused by previous error, and can be corrected by GC");
+		//keep Ot for used by Lns
+		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		target_entry->snap_seq = Lns;
+		//delete_obj(&key, prev_entry);// we can also delete Pps, since it's not needed
+	}
+	else if( (Lps < Pps) /*A1*/ && next_entry == NULL /*B3*/) {
+		/**
+		 * 	=case A1 B2=
+	     *                Lps                  Lts                Lns
+	     *                |                    |                  |
+	     *                |                    |                  |
+	     * Logical    ----Sp-------------------D------------------Sn------------------------>
+	     *
+	     *
+	     *	     	         +--+      +--+
+	     * Physical   -------|Op|----- |Ot|---------------------------------------------> ... Pns == UINT_MAX
+	     *                   +--+      +--+
+	     *                    ^         ^
+	     *                    |         |
+	     *                    Pps       Pts
+	     */
+	     //this condition has covered by A1-B2
+	     assert(0);
+	}
+	else if( (Pps <= Lps) /*A2*/  && (Pns <= Lns) /*B1*/) {
+		/*   A2: Pps <= Lps < Pts <= Lts,  B1: Pts <= Lts < Pns <= Lns
+		 * =case A2 B1=, also same as B2, Ot is needed by Lns and can't delete
+		 *
+		 * 	=case A2 B1=
+		 *                         Lps                  Lts                Lns
+		 *                         |                    |                  |
+		 *                         |                    |                  |
+		 * Logical    -------------Sp-------------------D------------------Sn------->
+		 *
+		 *
+		 *	     	       +--+          +--+                    +--+
+		 * Physical   -----|Op|--  ----- |Ot|--------------------|On|------------->
+		 *                 +--+          +--+                    +--+
+		 *                  ^             ^                       ^
+		 *                  |             |                       |
+		 *                  Pps           Pts                     Pns
+		 */
+		S5LOG_INFO("del snapshot state A2-B1");
+		if(next_entry->status == EntryStatus::NORMAL)
+			delete_obj(&key, target_entry);
+		else
+			target_entry->status = EntryStatus::DELAY_DELETE_AFTER_COW;
+	}
+	else if( (Pps <= Lps) /*A2*/  && (Lns < Pns) /*B2*/) {
+		/*
+		 * 	=case A2 B2=
+		 *                         Lps                  Lts           Lns
+		 *                         |                    |             |
+		 *                         |                    |             |
+		 * Logical    -------------Sp-------------------D-------------Sn------->
+		 *
+		 *
+		 *	     	         +--+        +--+                              +--+
+		 * Physical   -------|Op|------- |Ot|------------------------------|On|---------------->
+		 *                   +--+        +--+                              +--+
+		 *                    ^           ^                                 ^
+		 *                    |           |                                 |
+		 *                    Pps         Pts                               Pns
+		 *
+		 */
+
+		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		target_entry->snap_seq = Lns;
+	}
+	else if( (Pps <= Lps) /*A2*/  && next_entry == NULL /*B3*/) {
+		/* 	=case A2 B3=
+	   *                         Lps                  Lts           Lns
+	   *                         |                    |             |
+	   *                         |                    |             |
+	   * Logical    -------------Sp-------------------D-------------Sn------->
+	   *
+	   *
+	   *	     	        +--+        +--+
+	   * Physical   -------|Op|------- |Ot|---------------------------------> ... Pns == UINT_MAX
+	   *                   +--+        +--+
+	   *                    ^           ^
+	   *                    |           |
+	   *                    Pps         Pts
+	   */
+		//this condition has covered by A2-B2
+		assert(0);
+	}
+	else if( (Pts < Lps) /*A3*/) {
+
+     /*
+     *
+     *  =case A3 B1=
+     *                                      Lps                  Lts                Lns
+     *                                      |                    |                  |
+     *                                      |                    |                  |
+     * Logical    --------------------------Sp-------------------D------------------Sn------->
+     *
+     *
+     *	     	         +--+        +--+                             +--+
+     * Physical   -------|Op|------- |Ot|-----------------------------|On|---------------->
+     *                   +--+        +--+                             +--+
+     *                    ^           ^                                ^
+     *                    |           |                                |
+     *                    Pps         Pts                              Pns
+     *
+     *  =case A3 B2=
+     *                                      Lps        Lts       Lns
+     *                                      |          |         |
+     *                                      |          |         |
+     * Logical    --------------------------Sp---------D---------Sn------->
+     *
+     *
+     *	     	         +--+        +--+                             +--+
+     * Physical   -------|Op|------- |Ot|-----------------------------|On|---------------->
+     *                   +--+        +--+                             +--+
+     *                    ^           ^                                ^
+     *                    |           |                                |
+     *                    Pps         Pts                              Pns
+     *
+     *
+     *  =case A3 B3=
+     *                                      Lps        Lts       Lns
+     *                                      |          |         |
+     *                                      |          |         |
+     * Logical    --------------------------Sp---------D---------Sn------->
+     *
+     *
+     *	     	         +--+        +--+
+     * Physical   -------|Op|------- |Ot|------------------------------------------->
+     *                   +--+        +--+
+     *                    ^           ^
+     *                    |           |
+     *                    Pps         Pts
+	 */
+		S5LOG_INFO("del snapshot state A3-B*");
+		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		target_entry->snap_seq = Lps;
+	}
+	else {
+		S5LOG_FATAL("del snapshot encounter unexpected state: vol_id:0x%llx slba:%lld Lps:%d Lts:%d Lns:%d Pps:%d Pts:%d Pns:%d",
+			  volume_id, slba, Lps, Lts, Lns, Pps, Pts, Pns);
+	}
+	return 0;
+}
+
+
+static void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
+		std::function<void(struct lmt_entry *)> free_func)
+{
+	// Store head node
+	struct lmt_entry* temp = *head_ref, *prev;
+
+	// If head node itself holds the key or multiple occurrences of key
+	while (temp != NULL && match(temp))
+	{
+		*head_ref = temp->prev_snap;   // Changed head
+		free_func(temp);    // free old head
+		temp = *head_ref;         // Change Temp
+	}
+
+	// Delete occurrences other than head
+	while (temp != NULL)
+	{
+		// Search for the key to be deleted, keep track of the
+		// previous node as we need to change 'prev->next'
+		while (temp != NULL && !match(temp))
+		{
+			prev = temp;
+			temp = temp->prev_snap;
+		}
+
+		// If key was not present in linked list
+		if (temp == NULL) return;
+
+		// Unlink the node from linked list
+		prev->prev_snap = temp->prev_snap;
+
+		free_func(temp);  // Free memory
+
+		//Update Temp for next iteration of outer loop
+		temp = prev->prev_snap;
+	}
+}
+int PfFlashStore::delete_obj(struct lmt_key* key, struct lmt_entry* entry)
+{
+	auto pos = obj_lmt.find(*key);
+	if(pos == obj_lmt.end())
+		return 0;
+	delete_matched_entry(&pos->second,
+	                     [entry](struct lmt_entry* _entry)->bool {
+		                     return _entry == entry;
+	                     },
+	                     [key, this](struct lmt_entry* _entry)->void {
+		                     trim_obj_queue.enqueue((int)offset_to_obj_id(_entry->offset));
+		                     redolog->log_trim(key, _entry, trim_obj_queue.tail);
+	                     });
+	if(pos->second == NULL)
+		obj_lmt.erase(pos);
+	return 0;
 }
