@@ -48,7 +48,7 @@ void sigroutine(int dunno)
 
 static void printUsage()
 {
-	S5LOG_ERROR("Usage: s5afs -c <s5daemon_conf_file> \n");
+	S5LOG_ERROR("Usage: pfs -c <pfs_conf_file>");
 }
 
 
@@ -58,14 +58,12 @@ int main(int argc, char *argv[])
 	int rc = -1;
 	const char*	s5daemon_conf = NULL;
 
+	S5LOG_INFO("================================================");
+	S5LOG_INFO("====       ___               ___            ====");
+	S5LOG_INFO("====      (o o)             (o o)           ====");
+	S5LOG_INFO("====     (  V  ) PureFlash (  V  )          ====");
+	S5LOG_INFO("====     --m-m---------------m-m--          ====");
 	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
-	if (argc < 3)
-	{
-		printUsage();
-		rc = -EINVAL;
-		S5LOG_ERROR("Failed: param is not enough to start argc(%d).", argc);
-		return rc;
-	}
 	std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
@@ -106,7 +104,7 @@ int main(int argc, char *argv[])
 	const char *zk_ip = conf_get(fp, "zookeeper", "ip", NULL, true);
 	if(!zk_ip)
 	{
-		S5LOG_FATAL("Failed to find key(zookeeper:ip) in s5afs conf(%s).", s5daemon_conf);
+		S5LOG_FATAL("Failed to find key(zookeeper:ip) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
 
@@ -114,13 +112,13 @@ int main(int argc, char *argv[])
 	const char *this_mngt_ip = conf_get(fp, "afs", "mngt_ip", NULL, true);
 	if (!this_mngt_ip)
 	{
-		S5LOG_FATAL("Failed to find key(conductor:mngt_ip) in s5afs conf(%s).", s5daemon_conf);
+		S5LOG_FATAL("Failed to find key(afs:mngt_ip) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
 	const char *cluster_name = conf_get(fp, "cluster", "name", NULL, true);
 	if (!cluster_name)
 	{
-		S5LOG_FATAL("Failed to find key(conductor:mngt_ip) in s5afs conf(%s).", s5daemon_conf);
+		S5LOG_FATAL("Failed to find key(cluster:name) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
 	app_context.mngt_ip = this_mngt_ip;
@@ -234,7 +232,13 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to init tcp server:%d", rc);
 		return rc;
 	}
-	set_store_node_state(store_id, NS_OK, TRUE);
+	do {
+		rc = set_store_node_state(store_id, NS_OK, TRUE);
+		if(rc == ZNODEEXISTS) {
+			S5LOG_WARN("alive node already exists, may caused by duplicated pfs service or previous abnormal exit");
+			sleep(1);
+		}
+	}while(rc == ZNODEEXISTS);
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
 	init_restful_server(); //never return
@@ -258,7 +262,7 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 	return -1;
 }
 
-PfAfsAppContext::PfAfsAppContext()
+PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE)
 {
 	pthread_mutex_init(&lock, NULL);
 	error_handler = new PfErrorHandler();
@@ -280,14 +284,16 @@ PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) {
 
 void unexpected_exit_handler()
 {
-		try { throw; }
+/*		try { throw; }
 		catch(const std::exception& e) {
 			S5LOG_ERROR("Unhandled exception:%s", e.what());
 		}
 		catch(...) {
 			S5LOG_ERROR("Unexpected exception");
 		}
-/*
+		*/
+	S5LOG_ERROR("unexpected_exit_handler");
+
     void *trace_elems[20];
     int trace_elem_count(backtrace( trace_elems, 20 ));
     char **stack_syms(backtrace_symbols( trace_elems, trace_elem_count ));
@@ -298,7 +304,7 @@ void unexpected_exit_handler()
     free( stack_syms );
 
     exit(1);
-*/
+
 }   
 
 void stop_app()

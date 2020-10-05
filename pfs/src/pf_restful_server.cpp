@@ -25,7 +25,21 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 		//mg_send_head(nc, 200, hm->message.len, "Content-Type: text/plain");
 		//mg_printf(nc, "%.*s", (int)hm->message.len, hm->message.p);
 		//mg_printf(nc, "%.*s", (int)hm->body.len, hm->body.p);
-		handle_prepare_volume(nc, hm);
+		if(strcmp(opcode, "prepare_volume") == 0)
+			handle_prepare_volume(nc, hm);
+		else if(strcmp(opcode, "set_meta_ver") == 0)
+			handle_set_meta_ver(nc, hm);
+		else if(strcmp(opcode, "set_snap_seq") == 0)
+			handle_set_snap_seq(nc, hm);
+		else if(strcmp(opcode, "delete_snapshot") == 0)
+			handle_delete_snapshot(nc, hm);
+		else
+		{
+			S5LOG_ERROR("Unknown op:%s", opcode);
+			string cstr = format_string("Unknown op:%s", opcode);
+			mg_send_head(nc, 500, cstr.length(), "Content-Type: text/plain");
+			mg_printf(nc, "%s", cstr.c_str());
+		}
 	}
 
 }
@@ -37,6 +51,15 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 	case MG_EV_HTTP_REQUEST:
 		mg_get_http_var(&hm->query_string, "op", opcode, sizeof(opcode));
 		S5LOG_INFO("debug op:%s", opcode);
+		if(strcmp(opcode, "get_obj_count") == 0)
+			handle_get_obj_count(nc, hm);
+		else
+		{
+			S5LOG_ERROR("Unknown debug op:%s", opcode);
+			string cstr = format_string("Unknown debug op:%s", opcode);
+			mg_send_head(nc, 500, cstr.length(), "Content-Type: text/plain");
+			mg_printf(nc, "%s", cstr.c_str());
+		}
 	}
 
 }
@@ -100,3 +123,28 @@ std::string get_http_param_as_string(const struct mg_str *http_content, const ch
 	}
 }
 
+int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *name, int64_t def_val, bool mandatory)
+{
+	char varbuf[256];
+	char* endbuf;
+	int rc = mg_get_http_var(http_content, name, varbuf, sizeof(varbuf));
+	if (rc > 0) {
+		int64_t v = strtoll(varbuf, &endbuf,10);
+		if(*endbuf != '\0')
+			throw std::invalid_argument(format_string("parameter:%s=%s is not a valid number", name, varbuf));
+		return v;
+	}
+	else if(rc == 0)
+	{
+		if (mandatory)
+			throw std::invalid_argument(format_string("parameter:%s is missing", name));
+		else
+			return def_val;
+	}
+	else
+	{
+		S5LOG_ERROR("Internal error, buffer too small");
+		throw std::overflow_error("Internal error, buffer too small");
+	}
+	return 0;//never run here
+}

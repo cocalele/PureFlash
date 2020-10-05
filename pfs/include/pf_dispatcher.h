@@ -27,6 +27,7 @@ struct IoSubTask : public SubTask
 {
 	iocb aio_cb; //aio cb to perform io
 	IoSubTask* next;//used for chain waiting io
+	PfOpCode opcode;
     inline void complete_read_with_zero();
 };
 
@@ -92,6 +93,9 @@ public:
 	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
+
+	void set_snap_seq(int64_t volume_id, int snap_seq);
+	void set_meta_ver(int64_t volume_id, int meta_ver);
 };
 
 inline void PfServerIocb::dec_ref() {

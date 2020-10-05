@@ -185,7 +185,7 @@ static int64_t parseNumber(string str)
 int main(int argc, char* argv[])
 {
 	cxxopts::Options options(argv[0], " - PureFlash dd tool");
-	string rw, bs_str, ifname, ofname, vol_name, cfg_file;
+	string rw, bs_str, ifname, ofname, vol_name, cfg_file, snapshot_name;
 	int count;
 	off_t offset;
 
@@ -199,9 +199,10 @@ int main(int argc, char* argv[])
 					("bs", "Block size", cxxopts::value<string>(bs_str)->default_value("4k"))
 					("if", "Input file name", cxxopts::value<string>(ifname))
 					("of", "Output file name", cxxopts::value<string>(ofname))
-					("c", "Config file name", cxxopts::value<string>(cfg_file)->default_value("/etc/pureflash/s5.conf"))
+					("c", "Config file name", cxxopts::value<string>(cfg_file)->default_value("/etc/pureflash/pf.conf"))
 					("offset", "Offset in volume", cxxopts::value<off_t>(offset)->default_value("0"))
 					("v", "Volume name", cxxopts::value<string>(vol_name))
+					("snapshot", "Snapshot name to operate", cxxopts::value<string>(snapshot_name))
 					("h,help", "Print usage")
 					;
 	if(argc == 1) {
@@ -244,7 +245,7 @@ int main(int argc, char* argv[])
 	DeferCall _c3([fd](){close(fd);});
 	io_waiter arg;
 	sem_init(&arg.sem, 0, 0);
-	struct PfClientVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), NULL, S5_LIB_VER);
+	struct PfClientVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), snapshot_name.c_str(), S5_LIB_VER);
 	if(vol == NULL) {
 		S5LOG_FATAL("Failed open volume:%s", vol_name.c_str());
 	}

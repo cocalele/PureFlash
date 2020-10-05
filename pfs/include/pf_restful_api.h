@@ -62,7 +62,12 @@ public:
 struct mg_connection;
 struct http_message;
 
-std::string get_http_param_as_string(const struct mg_str *http_str, const char *name, const char* def_val, bool mandatory);
+std::string get_http_param_as_string(const struct mg_str *http_str, const char *name, const char* def_val, bool mandatory=false);
+int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *name, int64_t def_val, bool mandatory=false);
 
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm);
+void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm);
+void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm);
+void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm);
+void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm);
 #endif // pf_restful_api_h__

@@ -65,6 +65,18 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		reply_io_to_client(iocb);
 		return 0;
 	}
+	if(unlikely(cmd->meta_ver != vol->meta_ver))
+	{
+		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x meta_ver:%d diff than client:%d",
+			  PfOpCode2Str(cmd->opcode), cmd->vol_id, vol->meta_ver, cmd->meta_ver);
+		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
+		reply_io_to_client(iocb);
+		return 0;
+	}
+	S5LOG_DEBUG("dispatch_io, op:%s, volume:%s ", PfOpCode2Str(cmd->opcode), vol->name);
+	if(unlikely(cmd->snap_seq == SNAP_SEQ_HEAD))
+		cmd->snap_seq = vol->snap_seq;
+
 	uint32_t shard_index = (uint32_t)OFFSET_TO_SHARD_INDEX(cmd->offset);
 	if(unlikely(shard_index > vol->shard_count)) {
 		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x, offset:%lld exceeds volume size:%lld",
@@ -96,7 +108,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 
 int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
-	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+//	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
 	iocb->setup_subtask(s);
 	if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)){
@@ -122,7 +134,7 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 
 int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
-	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	//PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 
 	iocb->task_mask = 0;
 	int i = s->duty_rep_index;
@@ -143,7 +155,7 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 
 int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
-	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	//PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 
 	iocb->task_mask = 0;
 	int i = s->duty_rep_index;
@@ -166,8 +178,8 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 int PfDispatcher::dispatch_complete(SubTask* sub_task)
 {
 	PfServerIocb* iocb = sub_task->parent_iocb;
-//	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
-//			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
+	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
+			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
@@ -224,4 +236,22 @@ release2:
 	cmd_pool.destroy();
 release1:
 	return rc;
+}
+
+void PfDispatcher::set_snap_seq(int64_t volume_id, int snap_seq) {
+	auto pos = opened_volumes.find(volume_id);
+	if(pos == opened_volumes.end()){
+		S5LOG_ERROR("Volume:0x%llx not found in dispatcher:%s", volume_id, name);
+		return;
+	}
+	pos->second->snap_seq = snap_seq;
+}
+
+void PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
+	auto pos = opened_volumes.find(volume_id);
+	if(pos == opened_volumes.end()){
+		S5LOG_ERROR("Volume:0x%llx not found in dispatcher:%s", volume_id, name);
+		return;
+	}
+	pos->second->meta_ver = meta_ver;
 }

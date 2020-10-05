@@ -58,53 +58,40 @@ int set_store_node_state(int store_id, const char* state, BOOL alive)
 {
 	char zk_node_name[64];
 	int rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/state", store_id);
-	if ((rc = zk_update(zk_node_name, state, (int)strlen(state))) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/state", store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, state)) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/alive", store_id);
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/alive", store_id);
 	if(alive)
 	{
-		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
-		if (rc != ZOK && rc != ZNODEEXISTS)
-		{
-			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
-			return rc;
-		}
+		rc = app_context.zk_client.create_node(zk_node_name, true, NULL);
 	}
 	else
 	{
-		rc = zoo_delete(app_context.zk_client.zkhandle, zk_node_name, -1);
-		return rc;
+		rc = app_context.zk_client.delete_node(zk_node_name);
 	}
-	return ZOK;
+	return rc;
 
 }
 int register_store_node(int store_id, const char* mngt_ip)
 {
 	char zk_node_name[64];
 	int rc;
-	if ((rc = zk_update("/s5", NULL, 0)) != ZOK)
-		return rc;
-	if ((rc = zk_update("/s5/stores", NULL, 0)) != ZOK)
-		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d", store_id);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
-		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/mngt_ip", store_id);
-	if ((rc = zk_update(zk_node_name, mngt_ip, strlen(mngt_ip))) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/mngt_ip", store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, mngt_ip)) != ZOK)
 		return rc;
 
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays", store_id);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays", store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/ports", store_id);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/ports", store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/rep_ports", store_id);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/rep_ports", store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
 	return 0;
 }
@@ -115,13 +102,13 @@ int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL onli
 	char uuid_str[64];
 	int rc;
 	uuid_unparse(uuid, uuid_str);
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/state", store_id, uuid_str);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/state", store_id, uuid_str);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/online", store_id, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/online", store_id, uuid_str);
 	if (online)
 	{
-		rc = zoo_create(app_context.zk_client.zkhandle, zk_node_name, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
+		rc = app_context.zk_client.create_node(zk_node_name, true, NULL);
 		if (rc != ZOK && rc != ZNODEEXISTS)
 		{
 			S5LOG_ERROR("Failed to create zookeeper node %s rc:%d", zk_node_name, rc);
@@ -130,7 +117,7 @@ int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL onli
 	}
 	else
 	{
-		rc = zoo_delete(app_context.zk_client.zkhandle, zk_node_name, -1);
+		rc = app_context.zk_client.delete_node(zk_node_name);
 		return rc;
 	}
 	return ZOK;
@@ -143,18 +130,18 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	char uuid_str[64];
 	int rc;
 	uuid_unparse(uuid, uuid_str);
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s", store_id, uuid_str);
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s", store_id, uuid_str);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, NULL, 0)) != ZOK)
 		return rc;
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/devname", store_id, uuid_str);
-	if ((rc = zk_update(zk_node_name, devname, (int)strlen(devname))) != ZOK)
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/devname", store_id, uuid_str);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, devname)) != ZOK)
 		return rc;
 
 
-	snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/trays/%s/capacity", store_id, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/capacity", store_id, uuid_str);
 	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
-	if ((rc = zk_update(zk_node_name, value_buf, (int)len)) != ZOK)
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
 		return rc;
 	set_tray_state(store_id, uuid, "OK", true);
 	return 0;
@@ -163,15 +150,14 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 int register_port(int store_id, const char* ip, int purpose)
 {
 	char zk_node_name[128];
-	char value_buf[128];
 	int rc;
-	int n = snprintf(zk_node_name, sizeof(zk_node_name), "/s5/stores/%d/%s/%s", store_id, 
+	int n = snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/%s/%s", store_id,
 			purpose == DATA_PORT ? "ports" : "rep_ports", ip);
 	if(n >= sizeof(zk_node_name))
 	{	
 		return -ENAMETOOLONG;
 	}
-	if ((rc = zk_update(zk_node_name, NULL, 0)) != ZOK)
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
 
 	return 0;

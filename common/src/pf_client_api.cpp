@@ -158,7 +158,6 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 		Cleaner _clean;
 		ListVolumeReply reply;
 
-		int rc = 0;
 		conf_file_t cfg = conf_open(cfg_filename);
 		if(cfg == NULL)
 		{
@@ -273,7 +272,7 @@ int PfClientVolume::do_open()
 	}
 	DeferCall _2([esc_snap_name]() { curl_free(esc_snap_name); });
 
-	std::string query = format_string("op=open_volume&volume_name=%s&snap_name=%s", esc_vol_name, esc_snap_name);
+	std::string query = format_string("op=open_volume&volume_name=%s&snapshot_name=%s", esc_vol_name, esc_snap_name);
 	rc = query_conductor(cfg, query, *this);
 	if (rc != 0)
 		return rc;
@@ -534,7 +533,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			PfMessageStatus s = (PfMessageStatus)reply->status;
 			if (unlikely(s & (MSG_STATUS_REOPEN)))
 			{
-				S5LOG_WARN( "Get reopen from store %s status code:%x, req meta_ver:%d store meta_ver:%d",
+				S5LOG_WARN( "Get reopen from store, conn:%s status code:0x%x, req meta_ver:%d store meta_ver:%d",
 					conn->connection_info.c_str(), s, io->cmd_bd->cmd_bd->meta_ver, reply->meta_ver);
 				if (vol->meta_ver < reply->meta_ver)
 				{
@@ -754,7 +753,6 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 	}
 	case EVT_SEND_HEARTBEAT:
 	{
-		struct buf_desc *comp;
 		if (conn_pool->ip_id_map.size() == 0)
 		{
 			break;

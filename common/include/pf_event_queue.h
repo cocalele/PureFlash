@@ -26,6 +26,8 @@ enum S5EventType : int
 	EVT_THREAD_EXIT,
 	EVT_RECV_REQ,
 	EVT_SEND_REQ,
+	EVT_COW_READ,
+	EVT_COW_WRITE,
 };
 const char* EventTypeToStr(S5EventType t);
 

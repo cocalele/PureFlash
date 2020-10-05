@@ -9,13 +9,38 @@
 #include "basetype.h"
 #include "pf_fixed_size_queue.h"
 
+
+
 #define SHARD_ID(x)        ((x) & 0xffffffffffffff00LL)
 #define SHARD_INDEX(x)    (((x) & 0x0000000000ffff00LL) >> 8)
 #define REPLICA_INDEX(x)   ((x) & 0x00000000000000ffLL)
-
+#define VOLUME_ID(x)        ((x) & 0xffffffffff000000LL)
 class IoSubTask;
 class PfFlashStore;
 class BufferDescriptor;
+typedef struct {
+	uint64_t vol_id;
+
+	inline uint64_t val() { return vol_id; }
+}volume_id_t;
+#define int64_to_volume_id(x) ((volume_id_t) { x })
+
+typedef struct {
+	uint64_t shard_id;
+
+	inline uint64_t val() { return shard_id; }
+	inline volume_id_t to_volume_id() { return  (volume_id_t) { VOLUME_ID(shard_id)}; }
+}shard_id_t;
+#define int64_to_shard_id(x) ((shard_id_t) { x })
+
+typedef struct {
+	uint64_t rep_id;
+
+	inline uint64_t val() { return rep_id; }
+	inline shard_id_t to_shard_id() { return (shard_id_t){SHARD_ID(rep_id)}; }
+	inline volume_id_t to_volume_id() { return (volume_id_t) { VOLUME_ID(rep_id)}; }
+}replica_id_t;
+#define int64_to_replica_id(x) ((replica_id_t) { x })
 
 enum HealthStatus : int32_t {
 	HS_OK = 0,

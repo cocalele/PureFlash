@@ -1,6 +1,7 @@
 #ifndef pf_mempool_h__
 #define pf_mempool_h__
 #include <pthread.h>
+#include <malloc.h>
 
 #include "pf_fixed_size_queue.h"
 #include "pf_lock.h"
@@ -15,6 +16,7 @@ public:
 	int obj_count;
 
 public:
+	ObjectMemoryPool() :data(NULL), obj_count(0) {}
 	int init(int cap) {
 		int rc = 0;
 		obj_count = cap;
@@ -81,5 +83,14 @@ public:
 		AutoSpinLock _l(&lock);
 		return free_obj_queue.count();
 	}
+};
+
+class BigMemPool {
+public:
+	BigMemPool(size_t buf_size) { this->buf_size = buf_size; }
+	void* alloc(size_t s) { return memalign(4096, s);}
+	void free(void* p) { ::free(p); }
+private:
+	size_t buf_size;
 };
 #endif // pf_mempool_h__
