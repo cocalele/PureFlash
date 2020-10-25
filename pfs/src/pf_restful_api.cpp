@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include <pf_bgtask_manager.h>
 #include "pf_log.h"
 #include "pf_utils.h"
 #include "pf_restful_api.h"
@@ -16,6 +17,12 @@ RestfulReply::RestfulReply() : ret_code(0){}
 
 RestfulReply::RestfulReply(std::string _op, int _ret_code, const char* _reason) : reason(_reason) , op(_op), ret_code(_ret_code){}
 
+void from_json(const json& j, RestfulReply& p) {
+	j.at("op").get_to(p.op);
+	j.at("ret_code").get_to(p.ret_code);
+	if(p.ret_code != 0)
+		j.at("reason").get_to(p.reason);
+}
 
 void from_json(const json& j, ReplicaArg& p) {
 	j.at("index").get_to(p.index);
@@ -48,11 +55,28 @@ void from_json(const json& j, PrepareVolumeArg& p) {
 	j.at("shards").get_to(p.shards);
 }
 
+
+void from_json(const json& j, GetSnapListReply& p) {
+	from_json(j, *((RestfulReply*)&p));
+	j.at("snap_list").get_to(p.snap_list);
+}
+
+
 void to_json(json& j, const RestfulReply& r)
 {
 	j = json{ { "ret_code", r.ret_code },{ "reason", r.reason },{ "op", r.op } };
 
 }
+
+void to_json(json& j, const BackgroudTaskReply& r)
+{
+	j = json{ { "ret_code", r.ret_code },{ "reason", r.reason },{ "op", r.op },
+		   { "task_id", r.task_id},
+		   {"status", r.status},
+		   {"progress", r.progress}};
+}
+
+
 template <typename R>
 void send_reply_to_client(R r, struct mg_connection *nc) {
 
@@ -67,7 +91,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 {
 	Cleaner _c;
 	PfVolume *vol = new PfVolume();
-	_c.push_back([vol](){delete vol;});
+	_c.push_back([vol](){vol->dec_ref();});
 	vol->id = arg.volume_id;
 	strncpy(vol->name, arg.volume_name.c_str(), sizeof(vol->name));
 	vol->size = arg.volume_size;
@@ -189,7 +213,7 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 		mg_printf(nc, "%s", cstr);
 		return;
 	}
-
+	DeferCall([vol]{vol->dec_ref();});
 	int rc = 0;
 	for(auto d : app_context.disps)
 	{
@@ -205,7 +229,6 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	if(rc == -EALREADY)
 	{
 		S5LOG_ERROR("Volume already opened:%s, this is a bug", vol->name);
-		delete vol;
 	}
 	RestfulReply r(arg.op + "_reply");
 	send_reply_to_client(r, nc);
@@ -233,6 +256,7 @@ void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm) {
 	RestfulReply r("set_meta_ver_reply");
 	send_reply_to_client(r, nc);
 }
+
 void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) {
 	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "shard_id", 0, true);
 	int snap_seq = (int)get_http_param_as_int64(&hm->query_string, "snap_seq", 0, true);
@@ -255,6 +279,80 @@ void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) 
 	send_reply_to_client(r, nc);
 }
 
+void handle_begin_recovery(struct mg_connection *nc, struct http_message * hm) {
+	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+
+	RestfulReply r("begin_recovery_reply");
+	for(auto d : app_context.disps)
+	{
+		int rc = d->sync_invoke([d, rep_id]()->int {
+			replica_id_t  rid = int64_to_replica_id(rep_id);
+			auto pos = d->opened_volumes.find(rid.to_volume_id().vol_id);
+			if(pos == d->opened_volumes.end()) {
+				return RestfulReply::INVALID_STATE;
+			}
+			PfVolume* v = pos->second;
+			v->shards[rid.shard_index()]->replicas[rid.shard_index()]->status = HS_RECOVERYING;
+			return 0;
+		});
+		if(rc == RestfulReply::INVALID_STATE) {
+			r.ret_code = RestfulReply::INVALID_STATE;
+			r.reason = "Volume not opened";
+		}
+	}
+	send_reply_to_client(r, nc);
+}
+
+void handle_end_recovery(struct mg_connection *nc, struct http_message * hm) {
+	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	int64_t ok = get_http_param_as_int64(&hm->query_string, "ok", 0, true);
+	RestfulReply r("end_recovery_reply");
+	for(auto d : app_context.disps)
+	{
+		int rc = d->sync_invoke([d, rep_id, ok]()->int {
+			replica_id_t  rid = int64_to_replica_id(rep_id);
+			auto pos = d->opened_volumes.find(rid.to_volume_id().vol_id);
+			if(pos == d->opened_volumes.end()) {
+				return RestfulReply::INVALID_STATE;
+			}
+			PfVolume* v = pos->second;
+
+			v->shards[rid.shard_index()]->replicas[rid.shard_index()]->status = (ok ? HS_OK : HS_ERROR);
+			return 0;
+		});
+		if(rc == RestfulReply::INVALID_STATE) {
+			r.ret_code = RestfulReply::INVALID_STATE;
+			r.reason = "Volume not opened";
+		}
+	}
+	send_reply_to_client(r, nc);
+}
+
+void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm) {
+	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	int from = (int)get_http_param_as_int64(&hm->query_string, "from_store_id", 0, true);
+	string from_ip = get_http_param_as_string(&hm->query_string, "from_store_mngt_ip", "", true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int64_t obj_size = get_http_param_as_int64(&hm->query_string, "object_size", 0, true);
+	BackgroudTaskReply r;
+	r.op="recovery_replica_reply";
+	int i = app_context.get_ssd_index(ssd_uuid);
+	PfFlashStore* disk = app_context.trays[i];
+	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
+														   format_string("recovery 0x%llx", rep_id),
+														   [disk, rep_id, from_ip=std::move(from_ip), from, obj_size](void*)->RestfulReply*{
+		int rc = disk->recovery_replica(rep_id, from_ip, from ,obj_size);
+		RestfulReply *r = new RestfulReply();
+		if(rc != 0){
+			r->ret_code = rc;
+			r->reason = "Failed reocvery";
+		}
+		return r;
+	}, NULL);
+	r.task_id = t->id;
+
+	send_reply_to_client(r, nc);
+}
 void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
 	int cnt = 0;
 	for(auto disk : app_context.trays) {
@@ -264,4 +362,42 @@ void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
 	}
 	mg_send_head(nc, 200, 16, "Content-Type: text/plain");
 	mg_printf(nc, "%-16d", cnt);
+}
+
+void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
+	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
+	uint64_t offset = (uint64_t)get_http_param_as_int64(&hm->query_string, "offset", 0, true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int i = app_context.get_ssd_index(ssd_uuid);
+	GetSnapListReply reply;
+	reply.op = "get_snap_list_reply";
+	PfFlashStore* disk = app_context.trays[i];
+	int rc = disk->sync_invoke([disk, vol_id, offset, &reply]()->int{
+		return disk->get_snap_list(volume_id_t(vol_id), offset, reply.snap_list);
+	});
+	reply.ret_code = rc;
+	send_reply_to_client(reply, nc);
+}
+
+void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
+	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int i = app_context.get_ssd_index(ssd_uuid);
+	RestfulReply reply("delete_replica_reply");
+	PfFlashStore* disk = app_context.trays[i];
+	int rc = disk->sync_invoke([disk, rep_id]()->int{
+		return disk->delete_replica(replica_id_t(rep_id));
+	});
+	reply.ret_code = rc;
+	send_reply_to_client(reply, nc);
+}
+
+void handle_query_task(struct mg_connection *nc, struct http_message * hm) {
+	uint64_t task_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "task_id", 0, true);
+	BackgroundTask *t = app_context.bg_task_mgr.task_map[task_id];
+	BackgroudTaskReply r;
+	r.op="recovery_replica_reply";
+	r.task_id = t->id;
+	r.status = t->status;
+	send_reply_to_client(r, nc);
 }

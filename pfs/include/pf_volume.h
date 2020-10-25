@@ -18,29 +18,37 @@
 class IoSubTask;
 class PfFlashStore;
 class BufferDescriptor;
-typedef struct {
+struct volume_id_t{
 	uint64_t vol_id;
 
-	inline uint64_t val() { return vol_id; }
-}volume_id_t;
+	inline __attribute__((always_inline)) volume_id_t(uint64_t id) : vol_id(id){}
+	inline __attribute__((always_inline)) uint64_t val() const { return vol_id; }
+};
 #define int64_to_volume_id(x) ((volume_id_t) { x })
 
-typedef struct {
+struct shard_id_t {
 	uint64_t shard_id;
 
-	inline uint64_t val() { return shard_id; }
-	inline volume_id_t to_volume_id() { return  (volume_id_t) { VOLUME_ID(shard_id)}; }
-}shard_id_t;
+	inline __attribute__((always_inline)) shard_id_t(uint64_t id) : shard_id(id){}
+	inline __attribute__((always_inline)) uint64_t val() { return shard_id; }
+	inline __attribute__((always_inline)) volume_id_t to_volume_id() const { return  (volume_id_t) { VOLUME_ID(shard_id)}; }
+	inline __attribute__((always_inline)) uint32_t shard_index() const { return SHARD_INDEX(shard_id); }
+};
 #define int64_to_shard_id(x) ((shard_id_t) { x })
 
-typedef struct {
+struct replica_id_t {
 	uint64_t rep_id;
 
-	inline uint64_t val() { return rep_id; }
-	inline shard_id_t to_shard_id() { return (shard_id_t){SHARD_ID(rep_id)}; }
-	inline volume_id_t to_volume_id() { return (volume_id_t) { VOLUME_ID(rep_id)}; }
-}replica_id_t;
-#define int64_to_replica_id(x) ((replica_id_t) { x })
+	inline __attribute__((always_inline)) uint64_t val() { return rep_id; }
+	inline __attribute__((always_inline)) shard_id_t to_shard_id() const { return (shard_id_t){SHARD_ID(rep_id)}; }
+	inline __attribute__((always_inline)) volume_id_t to_volume_id() const { return (volume_id_t) { VOLUME_ID(rep_id)}; }
+	inline __attribute__((always_inline)) uint32_t shard_index() const { return SHARD_INDEX(rep_id); }
+	inline __attribute__((always_inline)) uint32_t replica_index() const { return REPLICA_INDEX(rep_id); }
+
+	inline __attribute__((always_inline))  replica_id_t(uint64_t id) : rep_id(id){}
+};
+#define int64_to_replica_id(x) ((replica_id_t) { (uint64_t)(x) })
+
 
 enum HealthStatus : int32_t {
 	HS_OK = 0,
@@ -98,7 +106,17 @@ struct PfVolume
 	uint64_t meta_ver;
 
 	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
+
+	PfVolume() : _ref_count(1) {/*other member will inited in convert_argument_to_volume*/}
+	inline void add_ref() { __sync_fetch_and_add(&_ref_count, 1); }
+	inline void dec_ref() {
+		__sync_fetch_and_sub(&_ref_count, 1);
+		if(_ref_count == 0)
+			delete this;
+	}
+private:
 	~PfVolume();
+	int _ref_count; //name similar with rep_count, so add prefix with _
 };
 
 #endif // afs_volume_h__

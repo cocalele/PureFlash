@@ -10,7 +10,7 @@
 int PfDispatcher::init(int disp_index)
 {
  /*
- * Why use IO_POOL_SIZE * 3 for even_thread queue size?
+ * Why use IO_POOL_SIZE * 4 for even_thread queue size?
  * a dispatcher may let max IO_POOL_SIZE  IOs in flying. For each IO, the following events will be posted to dispatcher:
  * 1. EVT_IO_REQ when a request was received complete (CMD for read, CMD + DATA for write op) from network
  * 2. EVT_IO_COMPLETE when a request was complete by each replica, there may be 3 data replica, and 1 remote replicating
@@ -24,11 +24,24 @@ int PfDispatcher::init(int disp_index)
 
 int PfDispatcher::prepare_volume(PfVolume* vol)
 {
-	if (opened_volumes.find(vol->id) != opened_volumes.end())
+	vol->add_ref();
+	auto pos = opened_volumes.find(vol->id);
+	if (pos != opened_volumes.end())
 	{
-		return -EALREADY;
+		PfVolume* old_v = pos->second;
+		for(int i=0;i<old_v->shard_count;i++){
+			PfShard *s=old_v->shards[i];
+			for(int j=0;j<s->rep_count; j++) {
+				if(s->replicas[i]->status == HealthStatus::HS_RECOVERYING && vol->shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
+					vol->shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep reocverying continue
+				}
+			}
+		}
+		pos->second = vol;
+		old_v->dec_ref();
+	} else {
+		opened_volumes[vol->id] = vol;
 	}
-	opened_volumes[vol->id] = vol;
 	return 0;
 }
 int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
@@ -108,23 +121,18 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 
 int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
-//	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
-	iocb->setup_subtask(s);
 	if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)){
 		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
 		            vol->id, vol->name, s->id, s->duty_rep_index);
-		iocb->add_ref();
-		app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[s->duty_rep_index], PfMessageStatus::MSG_STATUS_NOT_PRIMARY);
-		for (int i = 0; i < iocb->vol->rep_count; i++) {
-			if(s->replicas[i]->status == HS_OK) {
-				iocb->dec_ref();
-			}
-		}
+		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN;
+		reply_io_to_client(iocb);
 		return 1;
 	}
+	iocb->setup_subtask(s, cmd->opcode);
 	for (int i = 0; i < iocb->vol->rep_count; i++) {
-		if(s->replicas[i]->status == HS_OK) {
+		if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 			iocb->subtasks[i]->rep = s->replicas[i];
 			s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
 		}
@@ -134,12 +142,12 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 
 int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
-	//PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 
 	iocb->task_mask = 0;
 	int i = s->duty_rep_index;
 	if(s->replicas[i]->status == HS_OK) {
-		iocb->setup_one_subtask(s, i);
+		iocb->setup_one_subtask(s, i, cmd->opcode);
 		iocb->subtasks[i]->rep = s->replicas[i];
 		if(unlikely(!s->is_primary_node)) {
 			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
@@ -159,8 +167,8 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 
 	iocb->task_mask = 0;
 	int i = s->duty_rep_index;
-	if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
-		iocb->setup_one_subtask(s, i);
+	if(likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
+		iocb->setup_one_subtask(s, i, PfOpCode::S5_OP_REPLICATE_WRITE);
 		iocb->subtasks[i]->rep = s->replicas[i];
 		if(unlikely(s->is_primary_node)) {
 			S5LOG_ERROR("Repwrite on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
@@ -169,6 +177,8 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 			return 1;
 		}
 		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	} else {
+		S5LOG_FATAL("Unexpected replica status:%d on replicating write, rep:0x%llx" , s->replicas[i]->status, s->replicas[i]->id);
 	}
 
 	return 0;

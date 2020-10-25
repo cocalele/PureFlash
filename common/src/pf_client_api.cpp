@@ -443,27 +443,11 @@ static size_t write_mem_callback(void *contents, size_t size, size_t nmemb, void
 	return realsize;
 }
 
-template<typename ReplyT>
-static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply)
+void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 {
-
-	const char* zk_ip = conf_get(cfg, "zookeeper", "ip", "", TRUE);
-	if(zk_ip == NULL)
-    {
-		throw std::runtime_error("zookeeper ip not found in conf file");
-    }
-	const char* cluster_name = conf_get(cfg, "cluster", "name", "cluster1", FALSE);
-
 	CURLcode res;
 	CURL *curl = NULL;
 	curl_memory_t curl_buf;
-	curl_buf.memory = (char *)malloc(1 << 20);
-	if (curl_buf.memory == NULL)
-		throw std::runtime_error("Failed alloc curl buffer");
-	curl_buf.size = 0;
-	DeferCall _fb([&curl_buf]() {free(curl_buf.memory); });
-	int open_volume_timeout = conf_get_int(cfg, "client", "open_volume_timeout", 30, FALSE);
-
 	curl = curl_easy_init();
 	if (curl == NULL)
 	{
@@ -471,28 +455,60 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 	}
 	DeferCall _r_curl([curl]() { curl_easy_cleanup(curl); });
 
+	curl_buf.memory = (char *)malloc(1 << 20);
+	if (curl_buf.memory == NULL)
+		throw std::runtime_error("Failed alloc curl buffer");
+	curl_buf.size = 0;
+
+
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_mem_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&curl_buf);
 	//curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	// Set timeout.
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, open_volume_timeout);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
-	char url[MAX_URL_LEN] = { 0 };
 
+	for (int i = 0; i < retry_times; i++)
+	{
+		S5LOG_DEBUG("Query %s ...", url.c_str());
+		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+		res = curl_easy_perform((void*)url.c_str());
+		if (res == CURLE_OK)
+		{
+			curl_buf.memory[curl_buf.size] = 0;
+			return curl_buf.memory;
+		}
+		if (i < retry_times - 1)
+		{
+			S5LOG_ERROR("Failed query %s, will retry", url.c_str());
+			sleep(DEFAULT_TIME_INTERVAL);
+		}
+	}
+
+	free(curl_buf.memory);
+	return NULL;
+}
+
+template<typename ReplyT>
+static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply)
+{
+	const char* zk_ip = conf_get(cfg, "zookeeper", "ip", "", TRUE);
+	if(zk_ip == NULL)
+    {
+		throw std::runtime_error("zookeeper ip not found in conf file");
+    }
+	const char* cluster_name = conf_get(cfg, "cluster", "name", "cluster1", FALSE);
+	int open_volume_timeout = conf_get_int(cfg, "client", "open_volume_timeout", 30, FALSE);
 
 	int retry_times = 5;
 	for (int i = 0; i < retry_times; i++)
 	{
 		std::string conductor_ip = get_master_conductor_ip(zk_ip, cluster_name);
-
-		sprintf(url, "http://%s:49180/s5c/?%s", conductor_ip.c_str(), query_str.c_str());
-		S5LOG_DEBUG("Query %s ...", url);
-		curl_easy_setopt(curl, CURLOPT_URL, url);
-		res = curl_easy_perform(curl);
-		if (res == CURLE_OK)
-		{
-			curl_buf.memory[curl_buf.size] = 0;
-			auto j = json::parse(curl_buf.memory);
+		string url = format_string( "http://%s:49180/s5c/?%s", conductor_ip.c_str(), query_str.c_str());
+		void* reply_buf = pf_http_get(url, open_volume_timeout, 1);
+		if( reply_buf != NULL) {
+			DeferCall _rel([reply_buf]() { free(reply_buf); });
+			auto j = json::parse((char*)reply_buf);
 			if(j["ret_code"].get<int>() != 0) {
 				throw std::runtime_error(format_string("Failed %s, reason:%s", url, j["reason"].get<std::string>().c_str()));
 			}
@@ -508,6 +524,7 @@ static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& rep
 
 	return -1;
 }
+
 
 void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {

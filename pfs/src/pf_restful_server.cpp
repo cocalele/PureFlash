@@ -33,6 +33,18 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 			handle_set_snap_seq(nc, hm);
 		else if(strcmp(opcode, "delete_snapshot") == 0)
 			handle_delete_snapshot(nc, hm);
+		else if(strcmp(opcode, "begin_recovery") == 0)
+			handle_begin_recovery(nc, hm);
+		else if(strcmp(opcode, "end_recovery") == 0)
+			handle_end_recovery(nc, hm);
+		else if(strcmp(opcode, "recovery_replica") == 0)
+			handle_recovery_replica(nc, hm);
+		else if(strcmp(opcode, "get_snap_list") == 0)
+			handle_get_snap_list(nc, hm);
+		else if(strcmp(opcode, "delete_replica") == 0)
+			handle_delete_replica(nc, hm);
+		else if(strcmp(opcode, "query_task") == 0)
+			handle_query_task(nc, hm);
 		else
 		{
 			S5LOG_ERROR("Unknown op:%s", opcode);

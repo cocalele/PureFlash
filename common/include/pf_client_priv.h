@@ -145,5 +145,6 @@ public:
 
 #define SECT_SIZE_MASK (512-1) //sector size in linux is always 512 byte
 
+void* pf_http_get(std::string& url, int timeout_sec, int retry_times);
 #endif // pf_client_priv_h__
 

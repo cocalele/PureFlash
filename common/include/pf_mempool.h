@@ -38,6 +38,7 @@ public:
 		}
 		for(int i=0;i<cap;i++)
 		{
+			new (&data[i]) U(); //call constructor
 			free_obj_queue.enqueue(&data[i]);
 		}
 		return 0;

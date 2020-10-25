@@ -55,7 +55,7 @@ int init_cluster(const char* zk_ip_port, const char* cluster_name);
 int register_store_node(int store_id, const char* mngt_ip);
 
 /**
- * 向zookeeper注册一个tray，注册的过程就是在zookeeper的/s5/stores/<id>trays下对应存储系节点下面，建立如下的节点结构：
+ * 向zookeeper注册一个tray，注册的过程就是在zookeeper的/<cluster_name>/stores/<id>trays下对应存储系节点下面，建立如下的节点结构：
  * /s5/stores/<id>/trays
  *						|
  *						+ <UUID>  #tray 的UUID作为结点名字
@@ -63,6 +63,7 @@ int register_store_node(int store_id, const char* mngt_ip);
  *							+devname  #该tray的device name
  *							+capacity #容量
  *							+state    #该tray的状态, 内容为:ERROR, WARN, OK
+ *							+object_size # object size
  *							+online   # EPHEMERAL类型，该tray是否在线，online节点存在就表示在线,内容为空
  * 该函数可以调用多次，每次注册一个tray
  * register_tray不从创建sate和 online节点，需要在节点初始化完毕后，调用set_tray_state函数创建此二节点。
@@ -74,7 +75,7 @@ int register_store_node(int store_id, const char* mngt_ip);
  * @retval ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
-int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity);
+int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t object_size);
 
 /**
  * set store node's state. create `state` and `alive` node on zookeeper, if not exists.

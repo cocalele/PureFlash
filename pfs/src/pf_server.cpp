@@ -240,7 +240,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				struct PfServerIocb *iocb = bd->server_iocb;
 				iocb->vol = conn->srv_vol;
 				iocb->data_bd->data_len = bd->cmd_bd->length;
-				if (bd->cmd_bd->opcode == S5_OP_WRITE || bd->cmd_bd->opcode == S5_OP_REPLICATE_WRITE) {
+				if (IS_WRITE_OP(bd->cmd_bd->opcode)) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
 					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
@@ -257,18 +257,19 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){
 			//IO complete, start next
 			PfServerIocb *iocb = bd->server_iocb;
-			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
+			if(bd->data_len == sizeof(PfMessageReply) && IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)
+					&& iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS) {
 				//message head sent complete
 				conn->add_ref(); //data_bd reference to connection
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
 				iocb->dec_ref();
-				iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
-				iocb->conn = conn;
-				iocb->add_ref();
+				PfServerIocb *new_iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
+				new_iocb->conn = conn;
+				new_iocb->add_ref();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
-				conn->post_recv(iocb->cmd_bd);
+				conn->post_recv(new_iocb->cmd_bd);
 			}
 		}
 		else {

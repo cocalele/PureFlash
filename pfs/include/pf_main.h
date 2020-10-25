@@ -23,6 +23,7 @@
 #include "pf_replicator.h"
 #include "pf_dispatcher.h"
 #include "pf_error_handler.h"
+#include "pf_bgtask_manager.h"
 
 
 class PfTcpServer;
@@ -35,6 +36,9 @@ class PfTcpServer;
 #define REP_PORT 1
 
 #define COW_OBJ_SIZE (128<<10)
+#define RECOVERY_IO_SIZE (128<<10) //recovery read IO size
+#define DEFAULT_OBJ_SIZE (64<<20)
+#define DEFAULT_OBJ_SIZE_ORDER 26 // DEFAULT_OBJ_SIZE=1<<DEFAULT_OBJ_SIZE_ORDER
 
 class PfVolume;
 class PfAfsAppContext : public PfAppCtx
@@ -62,6 +66,10 @@ public:
 	PfDispatcher *get_dispatcher(uint64_t vol_id);
 
 	BigMemPool cow_buf_pool;
+	BigMemPool recovery_buf_pool;
+	BufferPool recovery_io_bd_pool;
+
+	BackgroundTaskManager bg_task_mgr;
 };
 extern PfAfsAppContext app_context;
 #endif

@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
 		{
 			app_context.trays.push_back(s);
 		}
-		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
+		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		s->start();
 	}
 	for (i = 0; i < MAX_PORT_COUNT; i++)
@@ -262,10 +262,19 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 	return -1;
 }
 
-PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE)
+PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE), recovery_buf_pool(RECOVERY_IO_SIZE)
 {
+	int rc;
 	pthread_mutex_init(&lock, NULL);
 	error_handler = new PfErrorHandler();
+	if(error_handler == NULL) {
+		S5LOG_FATAL("Failed to alloc error_handler");
+	}
+	rc = recovery_io_bd_pool.init(RECOVERY_IO_SIZE, 512);
+	if(rc) {
+		S5LOG_FATAL("Failed to init recovery_buf_pool");
+	}
+
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)

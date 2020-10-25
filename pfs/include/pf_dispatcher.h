@@ -11,26 +11,46 @@
 
 #define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
 struct PfServerIocb;
+class PfFlashStore;
+struct lmt_entry;
+struct lmt_key;
+
 struct SubTask
 {
+	PfOpCode opcode;
 	//NOTE: any added member should be initialized either in PfDispatcher::init_mempools, or in PfServerIocb::setup_subtask
 	PfServerIocb* parent_iocb;
 	PfReplica* rep;
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	PfMessageStatus complete_status;
-	inline void complete(PfMessageStatus comp_status);
+	virtual void complete(PfMessageStatus comp_status);
 
+	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), rep(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
 };
 
 struct IoSubTask : public SubTask
 {
 	iocb aio_cb; //aio cb to perform io
 	IoSubTask* next;//used for chain waiting io
-	PfOpCode opcode;
     inline void complete_read_with_zero();
+
+	IoSubTask():next(NULL) {}
 };
 
+
+struct RecoverySubTask : public SubTask
+{
+	BufferDescriptor *recovery_bd;
+	uint64_t volume_id;
+	int64_t offset;
+	int64_t length;
+	uint32_t  snap_seq;
+	sem_t* sem;
+
+	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){}
+	virtual void complete(PfMessageStatus comp_status);
+};
 struct PfServerIocb
 {
 public:
@@ -49,20 +69,21 @@ public:
 	IoSubTask io_subtasks[3];
 
 
-	void inline setup_subtask(PfShard* s)
+	void inline setup_subtask(PfShard* s, PfOpCode opcode)
 	{
 		for (int i = 0; i < s->rep_count; i++) {
-			if(s->replicas[i]->status == HS_OK) {
+			if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 				subtasks[i]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
+				subtasks[i]->opcode = opcode;  //subtask opcode will be OP_WRITE or OP_REPLICATE_WRITE
 				task_mask |= subtasks[i]->task_mask;
 				add_ref();
 			}
 		}
 	}
-	void inline setup_one_subtask(PfShard* s, int rep_index)
+	void inline setup_one_subtask(PfShard* s, int rep_index, PfOpCode opcode)
 	{
-
 		subtasks[rep_index]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
+		subtasks[rep_index]->opcode = opcode;
 		task_mask |= subtasks[rep_index]->task_mask;
 		add_ref();
 	}
