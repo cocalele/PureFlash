@@ -72,6 +72,9 @@ public:
 
 	BackgroudTaskReply():task_id(0), progress(0){ }
 };
+class ErrorHandleReply : public RestfulReply {
+
+};
 struct mg_connection;
 struct http_message;
 

@@ -70,97 +70,43 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	return rc;
 }
 
-int PfReplicator::process_io_complete(BufferDescriptor* bd, int complete_status)
+int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 {
-	if(unlikely(complete_status == WcStatus::TCP_WC_FLUSH_ERR))
+	(void)_complete_status;
+	PfConnection* conn = iocb->conn;
+	PfMessageReply *reply = iocb->reply_bd->reply_bd;
+	PfMessageHead* io_cmd = iocb->cmd_bd->cmd_bd;
+	uint64_t ms1 = 1000;
+
+	iocb->reply_time = now_time_usec();
+	uint64_t io_elapse_time = (iocb->reply_time - iocb->submit_time) / ms1;
+	if (unlikely(io_elapse_time > 2000))
 	{
-
-		S5LOG_ERROR("replicating connection closed, %s,  requeue IO", bd->conn->connection_info.c_str());
-		if(bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
-			reply_pool.free(bd);
-		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
-			auto io = bd->client_iocb;
-			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
-				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
-			else
-				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
-			io->data_bd = NULL;
-			iocb_pool.free(io);
-		} else { //error during send/recv data
-			//since data_bd is the same bd from PfServerIocb allocated when receiving from client.
-			PfClientIocb* io = (PfClientIocb*)bd->cbk_data;
-			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
-				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
-			else
-				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
-			io->data_bd->cbk_data = NULL;
-			io->data_bd = NULL;
-			iocb_pool.free(io);
-		}
-		return 0;
+		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, op:%s, since submit:%dms since send:%dms",
+				   io_cmd->offset >> SHARD_SIZE_ORDER,
+				   io_cmd->command_id,
+				   PfOpCode2Str(io_cmd->opcode),
+				   io_elapse_time,
+				   (iocb->reply_time-iocb->sent_time)/ms1
+		);
 	}
-	assert(complete_status == WcStatus::TCP_WC_SUCCESS);
-	if(bd->data_len == sizeof(PfMessageReply)) { //complete receive reply, must be end of replicate write
-		PfConnection* conn = bd->conn;
+	PfMessageStatus s = (PfMessageStatus)reply->status;
 
-		struct PfMessageReply *reply = bd->reply_bd;
-		PfClientIocb* io = pick_iocb(reply->command_id, reply->command_seq);
-		io->reply_bd = bd;
-		PfMessageHead* io_cmd = io->cmd_bd->cmd_bd;
-		uint64_t ms1 = 1000;
-		/*
-		 * In io timeout case, we just ignore this completion
-		 */
-		if (unlikely(io == NULL))
-		{
-			S5LOG_WARN("Previous replicating IO back but timeout!");
-			reply_pool.free(bd);
-			return 0;
-		}
-		io->reply_time = now_time_usec();
-		uint64_t io_elapse_time = (io->reply_time - io->submit_time) / ms1;
-		if (unlikely(io_elapse_time > 2000))
-		{
-			S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, op:%s, since submit:%dms since send:%dms",
-					   io_cmd->offset >> SHARD_SIZE_ORDER,
-					   io_cmd->command_id,
-					   PfOpCode2Str(io_cmd->opcode),
-					   io_elapse_time,
-					   (io->reply_time-io->sent_time)/ms1
-			);
-		}
-		PfMessageStatus s = (PfMessageStatus)reply->status;
-
-		//On client side, we rely on the io timeout mechnism to release time connection
-		//Here we just release the io task
-		if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
-		{
-			__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
-			reply_pool.free(io->reply_bd);
-			io->reply_bd = NULL;
-			iocb_pool.free(io);
-			return 0;
-		}
-
-		SubTask* t = (SubTask*)io->ulp_arg;
+	//On client side, we rely on the io timeout mechanism to release time connection
+	//Here we just release the io task
+	if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
+	{
+		__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
+	} else {
+		SubTask *t = (SubTask *) iocb->ulp_arg;
 		t->complete(s);
-		reply_pool.free(io->reply_bd);
-		io->reply_bd = NULL;
-		io->data_bd = NULL;
-		iocb_pool.free(io);
-	} else if(bd->data_len == sizeof(PfMessageHead)) {
-
-	} else { //complete of receiving data, must be end of recovery read
-		assert(bd->client_iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_RECOVERY_READ);
-		RecoverySubTask* t= (RecoverySubTask*)bd->client_iocb->ulp_arg;
-		assert(t->opcode == PfOpCode::S5_OP_RECOVERY_READ);
-		t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
-		PfClientIocb* io = bd->client_iocb;
-		reply_pool.free(io->reply_bd);
-		io->reply_bd = NULL;
-		io->data_bd = NULL;
-		iocb_pool.free(io);
 	}
+
+	reply_pool.free(iocb->reply_bd);
+	iocb->reply_bd = NULL;
+	iocb->data_bd = NULL; //replicator has no data bd pool, data_bd comes from up layer
+	iocb_pool.free(iocb);
+
 	return 0;
 }
 
@@ -230,7 +176,7 @@ int PfReplicator::process_event(int event_type, int arg_i, void *arg_p)
 			return begin_replicate_io((IoSubTask*)arg_p);
 			break;
 		case EVT_IO_COMPLETE:
-			return process_io_complete((BufferDescriptor*)arg_p, arg_i);
+			return process_io_complete((PfClientIocb*)arg_p, arg_i);
 			break;
 		case EVT_RECOVERY_READ_IO:
 			return begin_recovery_read_io((RecoverySubTask*) arg_p);
@@ -274,28 +220,66 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
-
+		PfClientIocb *iocb = bd->client_iocb;
 		if(bd->data_len == sizeof(PfMessageHead)) {
-			if(bd->cmd_bd->opcode == PfOpCode::S5_OP_REPLICATE_WRITE) {
+			if(IS_WRITE_OP(bd->cmd_bd->opcode)) {
 				//message head sent complete
-				PfClientIocb *iocb = bd->client_iocb;
 				conn->add_ref(); //for start send data
 				IoSubTask* t = (IoSubTask*)iocb->ulp_arg;
 				conn->start_send(t->parent_iocb->data_bd);
 				return 1;
 			}
-			assert(bd->cmd_bd->opcode == PfOpCode::S5_OP_HEARTBEAT);
+
 		} else if(bd->data_len == sizeof(PfMessageReply)) {
-			PfClientIocb *iocb = bd->client_iocb;
-			if(iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_RECOVERY_READ) {
+			struct PfMessageReply *reply = bd->reply_bd;
+			iocb = conn->replicator->pick_iocb(reply->command_id, reply->command_seq);
+			if (unlikely(iocb == NULL))
+			{
+				S5LOG_WARN("Previous replicating IO back but timeout!");
+				conn->replicator->reply_pool.free(bd);
+				return 0;
+			}
+			iocb->reply_bd = bd;
+			if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) {
 				conn->add_ref(); //for start receive data
 				conn->start_recv(iocb->data_bd);
 				return 1;
 			}
+			//receive reply means IO completed for write
+			return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
+		} else if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) { //complete of receive data payload
+			return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
 		}
+		//for other status, like data write completion, lets continue wait for reply receive
+		return 0;
+	} else if(unlikely(complete_status == WcStatus::TCP_WC_FLUSH_ERR)) {
+		S5LOG_ERROR("replicating connection closed, %s,  requeue IO", bd->conn->connection_info.c_str());
+		if(bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
+			conn->replicator->reply_pool.free(bd);
+		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
+			auto io = bd->client_iocb;
+			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
+				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+			else
+				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+			io->data_bd = NULL;
+			conn->replicator->iocb_pool.free(io);
+		} else { //error during send/recv data
+			//since data_bd is the same bd from PfServerIocb allocated when receiving from client.
+			PfClientIocb* io = (PfClientIocb*)bd->cbk_data;
+			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
+				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+			else
+				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+			io->data_bd->cbk_data = NULL;
+			io->data_bd = NULL;
+			conn->replicator->iocb_pool.free(io);
+		}
+		return 0;
 	}
+	S5LOG_FATAL("replicator bd complete in unknown status:%d, conn:%s", complete_status, conn->connection_info.c_str());
+	return 0;
 
-	return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, complete_status, bd);
 }
 
 int PfReplicator::init(int index)

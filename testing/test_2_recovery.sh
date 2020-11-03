@@ -11,11 +11,16 @@ export DB_IP DB_NAME DB_USER DB_PASS
 assert pfcli delete_volume  -v $VOL_NAME
 assert pfcli create_volume  -v $VOL_NAME -s $VOL_SIZE -r 3
 assert "fio --enghelp | grep pfbd "
-fio -name=test -engine=pfbd -volume=$VOL_NAME -iodepth=1  -rw=randwrite -size=$VOL_SIZE -bs=4k -direct=1 &
+fio -name=test -ioengine=pfbd -volume=$VOL_NAME -iodepth=1  -rw=randwrite -size=$VOL_SIZE -bs=4k -direct=1 &
 FIO_PID=$!
 sleep 10 #wait fio to start
 
-STORE_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where volume_name='$VOL_NAME') limit 1")
+PRIMARY_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where is_primary=1 and volume_name='$VOL_NAME') limit 1")
+info "Primary node is:$PRIMARY_IP"
+
+STORE_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where is_primary=0 and volume_name='$VOL_NAME') limit 1")
+info "stop slave node $STORE_IP"
+
 ssh root@$STORE_IP supervisorctl stop pfs #stop pfs
 sleep 3
 

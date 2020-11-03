@@ -76,7 +76,6 @@ template<typename ReplyT>
 static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply);
 
 #define MAX_URL_LEN 2048
-#define DEFAULT_TIME_INTERVAL 3
 
 #define VOLUME_MONITOR_INTERVAL 30 //seconds
 
@@ -363,7 +362,7 @@ static inline int cmp(const void *a, const void *b)
 	return strcmp(*(char * const *)a, *(char * const *)b);
 }
 
-static string get_master_conductor_ip(const char *zk_host, const char* cluster_name)
+string get_master_conductor_ip(const char *zk_host, const char* cluster_name)
 {
     struct String_vector condutors = {0};
     char **str = NULL;
@@ -472,7 +471,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 	{
 		S5LOG_DEBUG("Query %s ...", url.c_str());
 		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-		res = curl_easy_perform((void*)url.c_str());
+		res = curl_easy_perform(curl);
 		if (res == CURLE_OK)
 		{
 			curl_buf.memory[curl_buf.size] = 0;
@@ -481,7 +480,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 		if (i < retry_times - 1)
 		{
 			S5LOG_ERROR("Failed query %s, will retry", url.c_str());
-			sleep(DEFAULT_TIME_INTERVAL);
+			sleep(DEFAULT_HTTP_QUERY_INTERVAL);
 		}
 	}
 
@@ -489,41 +488,6 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 	return NULL;
 }
 
-template<typename ReplyT>
-static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply)
-{
-	const char* zk_ip = conf_get(cfg, "zookeeper", "ip", "", TRUE);
-	if(zk_ip == NULL)
-    {
-		throw std::runtime_error("zookeeper ip not found in conf file");
-    }
-	const char* cluster_name = conf_get(cfg, "cluster", "name", "cluster1", FALSE);
-	int open_volume_timeout = conf_get_int(cfg, "client", "open_volume_timeout", 30, FALSE);
-
-	int retry_times = 5;
-	for (int i = 0; i < retry_times; i++)
-	{
-		std::string conductor_ip = get_master_conductor_ip(zk_ip, cluster_name);
-		string url = format_string( "http://%s:49180/s5c/?%s", conductor_ip.c_str(), query_str.c_str());
-		void* reply_buf = pf_http_get(url, open_volume_timeout, 1);
-		if( reply_buf != NULL) {
-			DeferCall _rel([reply_buf]() { free(reply_buf); });
-			auto j = json::parse((char*)reply_buf);
-			if(j["ret_code"].get<int>() != 0) {
-				throw std::runtime_error(format_string("Failed %s, reason:%s", url, j["reason"].get<std::string>().c_str()));
-			}
-			j.get_to<ReplyT>(reply);
-			return 0;
-		}
-		if (i < retry_times - 1)
-		{
-			S5LOG_ERROR("Failed query %s, will retry", url);
-			sleep(DEFAULT_TIME_INTERVAL);
-		}
-	}
-
-	return -1;
-}
 
 
 void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)

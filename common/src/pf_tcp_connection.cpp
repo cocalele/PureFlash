@@ -557,7 +557,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	int error = 0;
 	socklen_t length = sizeof(error);
 	if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &error, &length) < 0) {
-		throw runtime_error(format_string("getsockopt fail. erno:%d", errno));
+		throw runtime_error(format_string("getsockopt fail. errno:%d", errno));
 	}
 	if (error != 0)	{
 		throw runtime_error(format_string("socket in error state:%d", error));

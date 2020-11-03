@@ -785,7 +785,7 @@ int PfFlashStore::read_store_head()
 		S5LOG_ERROR("Failed to alloc memory in read_store_head");
 		return -ENOMEM;
 	}
-	DeferCall([buf]() {
+	DeferCall _rel([buf]() {
 		free(buf);
 	});
 	if (-1 == pread(fd, buf, LBA_LENGTH, 0))
@@ -1483,7 +1483,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		return -ENOMEM;
 	}
 	_clean.push_back([pendding_buf]{app_context.recovery_buf_pool.free(pendding_buf); });
-	PfBitmap recov_bmp(head.objsize/SECTOR_SIZE);
+	PfBitmap recov_bmp(int(head.objsize/SECTOR_SIZE));
 	int64_t read_bs = RECOVERY_IO_SIZE;
 
 	if(head.objsize != recov_object_size) {

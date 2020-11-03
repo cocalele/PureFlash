@@ -36,7 +36,7 @@ public:
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}
-	int process_io_complete(BufferDescriptor* bd, int complete_status);
+	int process_io_complete(PfClientIocb* io, int complete_status);
 
 	int rep_index;
 

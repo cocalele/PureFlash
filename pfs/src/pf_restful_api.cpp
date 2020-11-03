@@ -213,7 +213,7 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 		mg_printf(nc, "%s", cstr);
 		return;
 	}
-	DeferCall([vol]{vol->dec_ref();});
+	DeferCall _rel([vol]{vol->dec_ref();});
 	int rc = 0;
 	for(auto d : app_context.disps)
 	{
