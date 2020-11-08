@@ -44,7 +44,7 @@ using namespace std;
 using nlohmann::json;
 
 #define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
-#define vol_offset_to_block_slba(offset, obj_size_order) ((offset) >> (obj_size_order - LBA_LENGTH_ORDER))
+#define vol_offset_to_block_slba(offset, obj_size_order) (((offset) >> (obj_size_order)) << (obj_size_order - LBA_LENGTH_ORDER))
 #define offset_in_block(offset, in_obj_offset_mask) ((offset) & (in_obj_offset_mask))
 
 #define OFFSET_HEAD 0
@@ -143,8 +143,8 @@ int PfFlashStore::init(const char* tray_name)
 			return ret;
 		}
 		save_meta_data();
-		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d", obj_lmt.size(),
-		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count());
+		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->start();
 	}
@@ -189,18 +189,22 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("trim_obj_queue initialize failed ret(%d)", ret);
 			return ret;
 		}
+		ret = lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
+		if (ret) {
+			S5LOG_ERROR("Failed to init lmt_entry_pool, disk:%s rc:%d", tray_name, ret);
+			return ret;
+		}
 
 		obj_lmt.reserve(obj_count * 2);
 		redolog = new PfRedoLog();
 		ret = redolog->init(this);
-		if (ret)
-		{
+		if (ret) {
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 			return ret;
 		}
 		redolog->start();
 		save_meta_data();
-		S5LOG_INFO("Init new disk (%s) complete.", tray_name);
+		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
 	}
 	else
 		return ret;
@@ -270,10 +274,11 @@ int PfFlashStore::do_write(IoSubTask* io)
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 
-	if (block_pos == obj_lmt.end())
+	if (unlikely(block_pos == obj_lmt.end()))
 	{
-		if (free_obj_queue.is_empty())
-		{
+		S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep->id, key.slba, cmd->offset);
+		if (free_obj_queue.is_empty())	{
+			S5LOG_ERROR("Disk:%s is full!", tray_name);
 			app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
 			return 0;
 		}
@@ -302,7 +307,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			memcpy((char*)entry->recovery_buf + offset_in_block(cmd->offset, in_obj_offset_mask),
 				data_bd->buf,  cmd->length);
 			for(int i=0;i<cmd->length/SECTOR_SIZE;i++) {
-				entry->recovery_bmp->set_bit(offset_in_block(cmd->offset, in_obj_offset_mask)/SECTOR_SIZE + i);
+				entry->recovery_bmp->set_bit(int(offset_in_block(cmd->offset, in_obj_offset_mask)/SECTOR_SIZE) + i);
 			}
 			io->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
 			return 0;

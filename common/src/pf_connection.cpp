@@ -24,7 +24,7 @@ int PfConnection::close()
 		return 0;//connection already closed
 	}
 
-	//S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
+	S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
 	do_close();
 	if(on_close)
 		on_close(this);

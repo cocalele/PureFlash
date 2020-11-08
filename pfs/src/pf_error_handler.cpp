@@ -3,17 +3,53 @@
 //
 #include "pf_main.h"
 #include "pf_restful_api.h"
+#include "pf_client_priv.h"
 #include "pf_error_handler.h"
 
-//defined in pf_client_api.cpp
-template<typename ReplyT>
-int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply);
+int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,RestfulReply& reply)
+{
 
+
+	int retry_times = 5;
+	for (int i = 0; i < retry_times; i++)
+	{
+		if(conductor_ip.empty()) {
+			conductor_ip = get_master_conductor_ip(zk_ip.c_str(), cluster_name.c_str());
+		}
+		std::string query = format_string("http://%s:49180/s5c/?op=handle_error&rep_id=%lld&sc=%d",
+		                                  conductor_ip.c_str(), rep_id, sc);
+		void* reply_buf = pf_http_get(query, http_timeout, 1);
+		if( reply_buf != NULL) {
+			DeferCall _rel([reply_buf]() { free(reply_buf); });
+			auto j = nlohmann::json::parse((char*)reply_buf);
+			if(j["ret_code"].get<int>() != 0) {
+				throw std::runtime_error(format_string("Failed %s, reason:%s", query.c_str(), j["reason"].get<std::string>().c_str()));
+			}
+			j.get_to(reply);
+			return 0;
+		}
+		if (i < retry_times - 1)
+		{
+			conductor_ip.clear();
+			S5LOG_ERROR("Failed query %s, will retry", query.c_str());
+			::sleep(DEFAULT_HTTP_QUERY_INTERVAL);
+		}
+	}
+
+	return -1;
+}
+
+//submit_error should work in asynchronous mode, though now it in synchronized mode
 int PfErrorHandler::submit_error(IoSubTask* t, PfMessageStatus sc)
 {
-	std::string query = format_string("op=handle_error&rep_id=%lld&sc=%d", t->rep->id, sc);
 	RestfulReply r;
-	int rc = query_conductor(app_context.conf, query, r);
+	int rc = report_error_to_conductor(t->rep->id, sc, r);
 
     t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+}
+PfErrorHandler::PfErrorHandler()
+{
+	this->zk_ip = conf_get(app_context.conf, "zookeeper", "ip", "", TRUE);;
+	cluster_name = conf_get(app_context.conf, "cluster", "name", "cluster1", FALSE);
+	http_timeout = conf_get_int(app_context.conf, "client", "handle_error_timeout", 30, FALSE);
 }

@@ -313,7 +313,6 @@ int PfTcpConnection::do_receive()
 		}
 	} while (readable);
 	return 0;
-
 }
 
 int PfTcpConnection::send_with_error_handle()

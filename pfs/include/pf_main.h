@@ -39,6 +39,7 @@ class PfTcpServer;
 #define RECOVERY_IO_SIZE (128<<10) //recovery read IO size
 #define DEFAULT_OBJ_SIZE (64<<20)
 #define DEFAULT_OBJ_SIZE_ORDER 26 // DEFAULT_OBJ_SIZE=1<<DEFAULT_OBJ_SIZE_ORDER
+//STATIC_ASSERT(DEFAULT_OBJ_SIZE == (1<<DEFAULT_OBJ_SIZE_ORDER));
 
 class PfVolume;
 class PfAfsAppContext : public PfAppCtx

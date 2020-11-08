@@ -225,6 +225,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	app_context.error_handler = new PfErrorHandler();
+	if(app_context.error_handler == NULL) {
+		S5LOG_FATAL("Failed to alloc error_handler");
+	}
+
 	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)
@@ -266,10 +271,6 @@ PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE), recovery_buf_po
 {
 	int rc;
 	pthread_mutex_init(&lock, NULL);
-	error_handler = new PfErrorHandler();
-	if(error_handler == NULL) {
-		S5LOG_FATAL("Failed to alloc error_handler");
-	}
 	rc = recovery_io_bd_pool.init(RECOVERY_IO_SIZE, 512);
 	if(rc) {
 		S5LOG_FATAL("Failed to init recovery_buf_pool");

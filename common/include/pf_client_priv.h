@@ -58,7 +58,39 @@ public:
 	uint64_t sent_time; //time the io sent to server
 	uint64_t submit_time;//time the io was submitted by up layer
 	uint64_t reply_time; // the time get reply from server
+
+	PfClientIocb* list_next;
+	PfClientIocb* list_prev;
 };
+template<typename T>
+class PfDoublyList{
+public:
+	T head;
+	PfDoublyList() {
+		head->list_next = &head;
+		head->list_prev = &head;
+	}
+	inline __attribute__((always_inline)) void append(T* element) {
+		element->list_next = head->list_next;
+		element->list_prev = head;
+		head->list_next->prev = element;
+		head->list_next = element;
+	}
+
+	inline __attribute__((always_inline)) void remove(T* element) {
+		element->list_next->list_prev = element->list_prev;
+		element->list_prev->list_next = element->list_next;
+	}
+
+	inline __attribute__((always_inline)) T* pop() {
+		T* e = head->list_next;
+		if(e == &head)
+			return NULL;
+		remove(e);
+		return e;
+	}
+};
+
 
 class PfClientShardInfo
 {

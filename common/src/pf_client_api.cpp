@@ -72,8 +72,6 @@ void from_json(const json&j, ListVolumeReply &reply)
 	if(reply.ret_code != 0)
 		j.at("reason").get_to(reply.reason);
 }
-template<typename ReplyT>
-static int query_conductor(conf_file_t cfg, const string& query_str, ReplyT& reply);
 
 #define MAX_URL_LEN 2048
 
@@ -298,7 +296,7 @@ int PfClientVolume::do_open()
 		return -ENOMEM;
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done);
+	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done, client_on_tcp_closed);
 	rc = data_pool.init(S5_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
@@ -521,6 +519,8 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
 					vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()));
 				}
+				io->conn->dec_ref();
+				io->conn=NULL;
 				vol->event_queue->post_event(EVT_IO_REQ, 0, io);
 				reply_pool.free(wr_bd);
 				return;
@@ -557,6 +557,8 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 
 	        reply_pool.free(io->reply_bd);
 	        io->reply_bd = NULL;
+	        io->conn->dec_ref();
+	        io->conn=NULL;
 			free_iocb(io);
 
 			h(s, arg);
@@ -655,6 +657,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		}
 		io->is_timeout = FALSE;
 		io->conn = conn;
+		conn->add_ref();
 		io->sent_time = now_time_usec();
 		int rc = conn->post_recv(rbd);
 		if (rc)
@@ -693,19 +696,19 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		 */
 		if (io->sent_time != 0 && now_time_usec() > io->sent_time + io_timeout)
 		{
-			string conn_str = std::move(io->conn->connection_info);
-			io->conn->close();
-			io->sent_time = 0;
-			io->conn = NULL;
 			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
-				S5LOG_ERROR("heartbeat timeout for conn:%p", conn_str.c_str());
+				S5LOG_ERROR("heartbeat timeout for conn:%p", io->conn->connection_info.c_str());
 				iocb_pool.free(io);
 				break;
 			}
 			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
-				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, conn_str.c_str());
+				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
+			io->conn->close();
+			io->conn->dec_ref();
+			io->sent_time = 0;
+			io->conn = NULL;
 			int rc = resend_io(io);
 			if(rc) {
 				iocb_pool.free(io);

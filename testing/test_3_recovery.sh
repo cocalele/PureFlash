@@ -2,13 +2,13 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source $DIR/utils.sh
 
-VOL_NAME=test_2
+VOL_NAME=test_3
 VOL_SIZE=$((5<<30)) #5G on my testing platform
 COND_IP=$(pfcli get_pfc)
 read DB_IP DB_NAME DB_USER DB_PASS <<< $(assert pfcli get_conn_str)
 export DB_IP DB_NAME DB_USER DB_PASS
 
-assert pfcli delete_volume  -v $VOL_NAME
+pfcli delete_volume  -v $VOL_NAME
 assert pfcli create_volume  -v $VOL_NAME -s $VOL_SIZE -r 3
 assert "fio --enghelp | grep pfbd "
 fio -name=test -ioengine=pfbd -volume=$VOL_NAME -iodepth=1  -rw=randwrite -size=$VOL_SIZE -bs=4k -direct=1 &

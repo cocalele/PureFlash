@@ -58,10 +58,13 @@ public:
 	void (*on_close)(PfConnection*);
 	void (*on_destroy)(PfConnection*);
 
-	inline void add_ref() {__sync_fetch_and_add(&ref_count, 1);}
+	inline void add_ref() {__sync_fetch_and_add(&ref_count, 1);
+	//S5LOG_INFO("add_ref conn:0x%x ref_cnt:%d", this, ref_count);
+	}
 	inline void dec_ref() {
 		if (__sync_sub_and_fetch(&ref_count, 1) == 0)
 		{
+			//S5LOG_INFO("dec_ref conn:0x%x ref_cnt:%d", this, ref_count);
 			if (state == CONN_OK)
 			{
 				close();
@@ -70,12 +73,10 @@ public:
 				on_destroy(this);
 			delete this;
 		}
-
 	}
 
 	int init_mempools();
 };
 
 int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr);
-
 #endif // pf_connection_h__

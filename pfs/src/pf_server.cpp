@@ -220,12 +220,13 @@ void server_on_conn_close(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%p, %s closed!", conn, conn->connection_info.c_str());
 	conn->dec_ref();
+	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
+	//app_context.ingoing_connections.remove(conn);
+
 }
 void server_on_conn_destroy(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%p, %s destroyed!", conn, conn->connection_info.c_str());
-	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
-	//app_context.ingoing_connections.remove(conn);
 }
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)

@@ -57,3 +57,16 @@ add_custom_target(scripts ALL
 #    COMMAND cp -rpfu ${ZOOKEEPER_SOURCE}/.libs/libzookeeper_mt.a ${CMAKE_BINARY_DIR}
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..
 )
+
+if (DEFINED FIO_DIR)
+    execute_process(COMMAND ./configure --pfbd-include=${CMAKE_CURRENT_SOURCE_DIR}/common/include --pfbd-lib=${CMAKE_BINARY_DIR}
+            WORKING_DIRECTORY ${FIO_DIR})
+    add_custom_target(fio
+        COMMAND make
+        DEPENDS ${CMAKE_BINARY_DIR}/libs5common.a
+        WORKING_DIRECTORY ${FIO_DIR}
+    )
+    add_dependencies(fio s5common)
+else()
+    message("Fio not defined and will not build. You can specify fio dir by -DFIO_DIR=<fio_source_dir>")
+endif()
