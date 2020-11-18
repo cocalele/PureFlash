@@ -29,6 +29,7 @@ enum S5EventType : int
 	EVT_COW_READ,
 	EVT_COW_WRITE,
 	EVT_RECOVERY_READ_IO,
+	EVT_CONN_CLOSED,
 };
 const char* EventTypeToStr(S5EventType t);
 

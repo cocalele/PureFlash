@@ -61,12 +61,21 @@ add_custom_target(scripts ALL
 if (DEFINED FIO_DIR)
     execute_process(COMMAND ./configure --pfbd-include=${CMAKE_CURRENT_SOURCE_DIR}/common/include --pfbd-lib=${CMAKE_BINARY_DIR}
             WORKING_DIRECTORY ${FIO_DIR})
-    add_custom_target(fio
+#    add_custom_target(fio
+#        COMMAND rm -f ./fio
+#        COMMAND make
+#        DEPENDS ${CMAKE_BINARY_DIR}/libs5common.a
+#        WORKING_DIRECTORY ${FIO_DIR}
+#    )
+#    add_dependencies(fio s5common)
+    add_custom_command(OUTPUT ${FIO_DIR}/fio
+        COMMAND rm -f ./fio
         COMMAND make
         DEPENDS ${CMAKE_BINARY_DIR}/libs5common.a
         WORKING_DIRECTORY ${FIO_DIR}
     )
-    add_dependencies(fio s5common)
+    add_custom_target(fio DEPENDS ${FIO_DIR}/fio)
+
 else()
     message("Fio not defined and will not build. You can specify fio dir by -DFIO_DIR=<fio_source_dir>")
 endif()

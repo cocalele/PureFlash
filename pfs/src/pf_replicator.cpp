@@ -23,7 +23,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	memcpy(io->cmd_bd->cmd_bd, t->parent_iocb->cmd_bd->cmd_bd, sizeof(PfMessageHead));
 	io->cmd_bd->cmd_bd->command_id = old_cid;
 	assert(io->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE);
-	assert(t->opcode == PfOpCode::S5_OP_WRITE);
+	assert(t->opcode == PfOpCode::S5_OP_WRITE || t->opcode == PfOpCode::S5_OP_REPLICATE_WRITE);
 	t->opcode = PfOpCode::S5_OP_REPLICATE_WRITE; //setup_task has set opcode to OP_WRITE
 	struct PfMessageHead *cmd = io->cmd_bd->cmd_bd;
 
@@ -37,15 +37,18 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	PfConnection* c = conn_pool->get_conn((int)t->rep->store_id);
 	if(c == NULL) {
 		S5LOG_ERROR("Failed get connection to store:%d", t->rep->store_id);
+		iocb_pool.free(io);
 		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}
+	io->conn = c;
 	BufferDescriptor* rbd = reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, requeue IO", rep_index);
 		usleep(100);
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -55,6 +58,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		usleep(100);
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
 		reply_pool.free(rbd);
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -65,6 +69,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		usleep(100);
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
 		//cann't free reply bd, since it was post into connection
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -106,6 +111,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 	reply_pool.free(iocb->reply_bd);
 	iocb->reply_bd = NULL;
 	iocb->data_bd = NULL; //replicator has no data bd pool, data_bd comes from up layer
+	iocb->conn = NULL;
 	iocb_pool.free(iocb);
 
 	return 0;
@@ -143,11 +149,13 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		iocb_pool.free(io);
 		return -EINVAL;
 	}
+	io->conn = c;
 	BufferDescriptor* rbd = reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, abort recovery read.", rep_index);
 		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -156,6 +164,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);
 		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		reply_pool.free(rbd);
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -164,6 +173,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		S5LOG_ERROR("Failed to post_send in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);
 		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		//cann't free reply bd, since it was post into connection
+		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
@@ -181,6 +191,9 @@ int PfReplicator::process_event(int event_type, int arg_i, void *arg_p)
 			break;
 		case EVT_RECOVERY_READ_IO:
 			return begin_recovery_read_io((RecoverySubTask*) arg_p);
+			break;
+		case EVT_CONN_CLOSED:
+			return handle_conn_close((PfConnection*) arg_p);
 			break;
 		default:
 			S5LOG_FATAL("Unknown event_type:%d in replicator", event_type);
@@ -258,36 +271,51 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 		//for other status, like data write completion, lets continue wait for reply receive
 		return 0;
 	} else if(unlikely(complete_status == WcStatus::TCP_WC_FLUSH_ERR)) {
+		conn->unclean_closed = true;
+		/**
+		 * for replicator, FLUSH_ERR may happen in
+		 *    1) REPLICATE_WRITE   send head
+		 *    2)                   send data
+		 *    3)                   recv reply
+		 *    4) RECOVERY_READ     send head
+		 *    5)                   recv data
+		 *    6)                   recv reply
+		 *
+		 *    In any case, IO should be retried on backup connection, for multi-path may exists.
+		 *    so, in `replicator_on_conn_close` , it will retry IO
+		 */
 		S5LOG_ERROR("replicating connection closed, %s", bd->conn->connection_info.c_str());
 		if(bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
-			S5LOG_WARN("Connection:%p error during receive reply, but don't know which IO to abort", conn);
+			S5LOG_WARN("Connection:%p error during receive reply, will resend IO", conn);
 			conn->replicator->reply_pool.free(bd);
 		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
 			auto io = bd->client_iocb;
-			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
-				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
-			else
-				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
-			io->data_bd = NULL;
-			conn->replicator->iocb_pool.free(io);
+			S5LOG_WARN("Connection:%p error during send head of:%s, will resend IO", conn, PfOpCode2Str(((SubTask*)io->ulp_arg)->opcode));
+//			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
+//				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+//			else
+//				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+//			io->data_bd = NULL;
+//			conn->replicator->iocb_pool.free(io);
 		} else { //error during send/recv data
 			//since data_bd is the same bd from PfServerIocb allocated when receiving from client.
 			PfClientIocb* io = (PfClientIocb*)bd->cbk_data;
-			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
-				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
-			else
-				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
-
-
-			bellow code should execute only on RECOVERY_READ ?
-			io->data_bd->cbk_data = NULL;
-			io->data_bd = NULL;
-			if(IS_READ_OP(io->cmd_bd->cmd_bd->offset)) {
-				conn->replicator->reply_pool.free(io->reply_bd);
-				io->reply_bd = NULL;
-			}
-
-			conn->replicator->iocb_pool.free(io);
+			S5LOG_WARN("Connection:%p error during send/recv data of:%s, will resend IO", conn, PfOpCode2Str(((SubTask*)io->ulp_arg)->opcode));
+//			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
+//				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+//			else
+//				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+//
+//
+//			bellow code should execute only on RECOVERY_READ ?
+//			io->data_bd->cbk_data = NULL;
+//			io->data_bd = NULL;
+//			if(IS_READ_OP(io->cmd_bd->cmd_bd->offset)) {
+//				conn->replicator->reply_pool.free(io->reply_bd);
+//				io->reply_bd = NULL;
+//			}
+//
+//			conn->replicator->iocb_pool.free(io);
 		}
 		return 0;
 	}
@@ -297,9 +325,50 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 }
 void replicator_on_conn_close(PfConnection* conn)
 {
-	//conn->replicator
-	send message to replicator main loop, handle each IO correctly,
+	if(conn->unclean_closed) {
+		conn->add_ref();//keep conn alive during process, dec_ref in handle_conn_close
+		//send a event cause Replicator::handle_conn_close call in replicator thread
+		conn->replicator->event_queue.post_event(EVT_CONN_CLOSED, 0, conn);
+	}
+}
 
+int PfReplicator::handle_conn_close(PfConnection *c)
+{
+	assert(c->unclean_closed);
+	for(int i=0;i<iocb_pool.obj_count;i++) {
+		PfClientIocb* io = &iocb_pool.data[i];
+		if(io->conn == c) {
+			PfOpCode op = io->cmd_bd->cmd_bd->opcode;
+			S5LOG_WARN("IO:%p %s depends on unclean closed conn:%p, will resend", io, PfOpCode2Str(op), c);
+
+			if(op == PfOpCode::S5_OP_REPLICATE_WRITE){
+				//free resource allocated during begin_replicate_io
+				IoSubTask* t = (IoSubTask*)io->ulp_arg;
+				io->reply_bd = NULL;
+				io->data_bd = NULL;
+				io->conn = NULL;
+				iocb_pool.free(io);
+				event_queue.post_event(EVT_IO_REQ, 0, t);
+			} else if(op == PfOpCode::S5_OP_RECOVERY_READ) {
+				RecoverySubTask* t = (RecoverySubTask*)io->ulp_arg;
+				io->reply_bd = NULL;
+				io->data_bd = NULL;
+				io->conn = NULL;
+				iocb_pool.free(io);
+				event_queue.post_event(EVT_RECOVERY_READ_IO, 0, t);
+			} else if(op == PfOpCode::S5_OP_HEARTBEAT) {
+				io->reply_bd = NULL;
+				io->data_bd = NULL;
+				io->conn = NULL;
+				iocb_pool.free(io);
+			} else {
+				S5LOG_FATAL("Unexpected op:%s in handle_conn_close",  PfOpCode2Str(op));
+			}
+
+		}
+	}
+	c->dec_ref(); //added in replicator_on_conn_close
+	return 0;
 }
 
 int PfReplicator::init(int index)

@@ -25,6 +25,13 @@ class PfConnection
 public:
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
+
+	union {
+		PfClientVolume* volume; //used in client side
+		PfVolume* srv_vol; //used in server side
+		PfReplicator* replicator;
+		void* master;
+	};
     PfDispatcher* dispatcher;
 	int state;
 	int transport;
@@ -34,17 +41,8 @@ public:
 	std::string peer_ip;
 	int peer_port;
 	int inflying_heartbeat;
+	bool unclean_closed = false;
 
-	BufferPool cmd_pool;
-	BufferPool data_pool;
-	BufferPool reply_pool;
-
-	union {
-		PfClientVolume* volume; //used in client side
-		PfVolume* srv_vol; //used in server side
-		PfReplicator* replicator;
-		void* master;
-	};
 	PfConnection();
 	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
@@ -74,8 +72,6 @@ public:
 			delete this;
 		}
 	}
-
-	int init_mempools();
 };
 
 int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr);

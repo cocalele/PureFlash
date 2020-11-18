@@ -105,7 +105,7 @@ struct PfVolume
 	enum HealthStatus status;
 	uint64_t meta_ver;
 
-	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
+//	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
 
 	PfVolume() : _ref_count(1) {/*other member will inited in convert_argument_to_volume*/}
 	inline void add_ref() { __sync_fetch_and_add(&_ref_count, 1); }

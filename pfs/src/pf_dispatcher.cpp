@@ -15,6 +15,7 @@ int PfDispatcher::init(int disp_index)
  * 1. EVT_IO_REQ when a request was received complete (CMD for read, CMD + DATA for write op) from network
  * 2. EVT_IO_COMPLETE when a request was complete by each replica, there may be 3 data replica, and 1 remote replicating
  */
+    this->disp_index = disp_index;
 	int rc = PfEventThread::init(format_string("disp_%d", disp_index).c_str(), IO_POOL_SIZE * 4);
 	if(rc)
 		return rc;
@@ -24,11 +25,22 @@ int PfDispatcher::init(int disp_index)
 
 int PfDispatcher::prepare_volume(PfVolume* vol)
 {
-	vol->add_ref();
+
 	auto pos = opened_volumes.find(vol->id);
 	if (pos != opened_volumes.end())
 	{
 		PfVolume* old_v = pos->second;
+		if(old_v->meta_ver >= vol->meta_ver) {
+			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+			  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
+			return 0;
+		}
+
+		old_v->meta_ver = vol->meta_ver;
+		old_v->shard_count = vol->shard_count;
+		old_v->size = vol->size;
+		old_v->snap_seq = vol->snap_seq;
+		old_v->status = vol->status;
 		for(int i=0;i<old_v->shard_count;i++){
 			PfShard *s=old_v->shards[i];
 			for(int j=0;j<s->rep_count; j++) {
@@ -36,10 +48,16 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 					vol->shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep reocverying continue
 				}
 			}
+			old_v->shards[i] = vol->shards[i];
+			vol->shards[i] = NULL;
+			delete s;
 		}
-		pos->second = vol;
-		old_v->dec_ref();
+		for(int i=old_v->shard_count; i<vol->shards.size(); i++) { //enlarged shard
+			old_v->shards.push_back(vol->shards[i]);
+			vol->shards[i] = NULL;
+		}
 	} else {
+		vol->add_ref();
 		opened_volumes[vol->id] = vol;
 	}
 	return 0;
@@ -61,10 +79,17 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 }
 static inline void reply_io_to_client(PfServerIocb *iocb)
 {
+	if(unlikely(iocb->conn->state != CONN_OK)) {
+		S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
+			 iocb->conn, iocb->conn->connection_info.c_str(), ConnState2Str(iocb->conn->state));
+		iocb->dec_ref();
+		return;
+	}
 	PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
 	PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
 	reply_bd->command_id = cmd_bd->command_id;
 	reply_bd->status = iocb->complete_status;
+	reply_bd->meta_ver = iocb->complete_meta_ver;
 	reply_bd->command_seq = cmd_bd->command_seq;
 	iocb->conn->post_send(iocb->reply_bd);
 }

@@ -6,7 +6,7 @@
 #include "pf_client_priv.h"
 #include "pf_error_handler.h"
 
-int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,RestfulReply& reply)
+int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,ErrorReportReply& reply)
 {
 
 
@@ -25,7 +25,7 @@ int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,RestfulRep
 			if(j["ret_code"].get<int>() != 0) {
 				throw std::runtime_error(format_string("Failed %s, reason:%s", query.c_str(), j["reason"].get<std::string>().c_str()));
 			}
-			j.get_to(reply);
+			j.get_to<ErrorReportReply>(reply);
 			return 0;
 		}
 		if (i < retry_times - 1)
@@ -42,10 +42,15 @@ int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,RestfulRep
 //submit_error should work in asynchronous mode, though now it in synchronized mode
 int PfErrorHandler::submit_error(IoSubTask* t, PfMessageStatus sc)
 {
-	RestfulReply r;
+	ErrorReportReply r;
 	int rc = report_error_to_conductor(t->rep->id, sc, r);
-
-    t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+	if(rc) {
+		S5LOG_ERROR("Failed report error to conductor, rc:%d", rc);
+	} else {
+		S5LOG_INFO("Error report get sc:%s, meta_ver:%d", PfMessageStatus2Str(r.action_code), r.meta_ver);
+	}
+    t->complete(r.action_code, r.meta_ver);
+    return 0;
 }
 PfErrorHandler::PfErrorHandler()
 {

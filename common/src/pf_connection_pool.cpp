@@ -18,11 +18,6 @@ int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vo
 	return 0;
 }
 
-void client_on_tcp_close(PfConnection* c)
-{
-	//c->dec_ref(); //Don't dec_ref here, only dec_ref when connection removed from pool
-
-}
 
 PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
 {

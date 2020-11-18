@@ -37,6 +37,7 @@ public:
 		return &iocb_pool.data[cid];
 	}
 	int process_io_complete(PfClientIocb* io, int complete_status);
+	int handle_conn_close(PfConnection* c);
 
 	int rep_index;
 

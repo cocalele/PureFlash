@@ -189,6 +189,10 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 			return rc;
 		}
 
+		if(reply.volumes.size() < 1) {
+			S5LOG_ERROR("Volume:%s not exists or can't be open", volume_name);
+			return -ENOENT;
+		}
 		*volume = reply.volumes[0];
 		S5LOG_INFO("Succeeded query volume %s@%s(0x%lx), meta_ver=%d", volume->volume_name,
 		           snap_name == NULL ? "HEAD" : volume->snap_name, volume->volume_id, volume->meta_ver);
@@ -240,8 +244,13 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd);
 }
 
+static void client_on_tcp_close(PfConnection* c)
+{
+	//c->dec_ref(); //Don't dec_ref here, only dec_ref when connection removed from pool
 
-int PfClientVolume::do_open()
+}
+
+int PfClientVolume::do_open(bool reopen)
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_file.c_str());
@@ -277,6 +286,11 @@ int PfClientVolume::do_open()
 	for(int i=0;i<shards.size();i++){
 		shards[i].parsed_store_ips = split_string(shards[i].store_ips, ',');
 	}
+	if(reopen) {
+		state = VOLUME_OPENED;
+		open_time = now_time_usec();
+		return 0;
+	}
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -296,7 +310,7 @@ int PfClientVolume::do_open()
 		return -ENOMEM;
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done, client_on_tcp_closed);
+	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done, client_on_tcp_close);
 	rc = data_pool.init(S5_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
@@ -533,6 +547,8 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
 				__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
+				io->conn->dec_ref();
+				io->conn = NULL;
 				free_iocb(io);
 				reply_pool.free(wr_bd);
 				return;
@@ -584,10 +600,7 @@ static int reopen_volume(PfClientVolume* volume)
 		volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->meta_ver);
 
 	volume->status = VOLUME_DISCONNECTED;
-	volume->close();
-
-	rc = volume->do_open();
-
+	rc = volume->do_open(true);
 	if (unlikely(rc))
 	{
 		S5LOG_ERROR("Failed reopen volume!");
@@ -606,10 +619,11 @@ static int reopen_volume(PfClientVolume* volume)
 int PfClientVolume::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
+	io->cmd_bd->cmd_bd->command_seq ++;
 	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
 	int rc = event_queue->post_event(EVT_IO_REQ, 0, io);
 	if (rc)
-	S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
+		S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
 	return rc;
 }
 
@@ -769,7 +783,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		}
 		break;
 	}
-	case EVT_THREAD_EXIT:
+	case EVT_THREAD_EXIT://dead code, event already handled in parent class
 	{
 		S5LOG_INFO("EVT_THREAD_EXIT received, exit now...");
 		pthread_exit(0);

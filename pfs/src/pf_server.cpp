@@ -142,6 +142,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 				goto release0;
 			}
 			io->add_ref();
+			conn->add_ref();
 			io->conn = conn;
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
@@ -267,6 +268,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			} else {
 				iocb->dec_ref();
 				PfServerIocb *new_iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
+				conn->add_ref();
 				new_iocb->conn = conn;
 				new_iocb->add_ref();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);

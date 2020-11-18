@@ -153,7 +153,7 @@ public:
 	PfPoller* tcp_poller;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
-	int do_open();
+	int do_open(bool reopen=false);
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(PfClientIocb* io);

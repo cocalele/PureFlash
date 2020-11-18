@@ -76,6 +76,11 @@ void to_json(json& j, const BackgroudTaskReply& r)
 		   {"progress", r.progress}};
 }
 
+void from_json(const json& j, ErrorReportReply& p) {
+	from_json(j, *((RestfulReply*)&p));
+	j.at("action_code").get_to(p.action_code);
+	j.at("meta_ver").get_to(p.meta_ver);
+}
 
 template <typename R>
 void send_reply_to_client(R r, struct mg_connection *nc) {

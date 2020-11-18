@@ -25,6 +25,7 @@ struct SubTask
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	PfMessageStatus complete_status;
 	virtual void complete(PfMessageStatus comp_status);
+	void complete(PfMessageStatus comp_status, int16_t meta_ver);
 
 	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), rep(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
 };
@@ -61,6 +62,7 @@ public:
 	PfConnection *conn;
 	PfVolume* vol;
 	PfMessageStatus complete_status;
+	uint16_t  complete_meta_ver;
 	uint32_t task_mask;
 	uint32_t ref_count;
 	BOOL is_timeout;
@@ -101,6 +103,7 @@ public:
 	BufferPool data_pool;
 	BufferPool reply_pool;
 	std::map<uint64_t, PfVolume*> opened_volumes;
+	int disp_index;
 
 	//PfDispatcher(const std::string &name);
 	int prepare_volume(PfVolume* vol);
@@ -123,11 +126,16 @@ inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
 //    	S5LOG_DEBUG("Iocb released:%p", this);
         conn->dispatcher->iocb_pool.free(this);
+	    conn->dec_ref();
     }
 }
 inline void SubTask::complete(PfMessageStatus comp_status){
     complete_status = comp_status;
     parent_iocb->conn->dispatcher->event_queue.post_event(EVT_IO_COMPLETE, 0, this);
+}
+inline void SubTask::complete(PfMessageStatus comp_status, int16_t meta_ver){
+	parent_iocb->complete_meta_ver = meta_ver;
+	complete(comp_status);
 }
 inline void IoSubTask::complete_read_with_zero() {
 //    PfMessageHead* cmd = parent_iocb->cmd_bd->cmd_bd;

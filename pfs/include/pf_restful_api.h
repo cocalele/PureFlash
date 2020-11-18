@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdint.h>
 #include <nlohmann/json.hpp>
+#include <pf_message.h>
 
 class ReplicaArg
 {
@@ -72,9 +73,22 @@ public:
 
 	BackgroudTaskReply():task_id(0), progress(0){ }
 };
-class ErrorHandleReply : public RestfulReply {
-
+class ErrorReportReply : public RestfulReply {
+public:
+	PfMessageStatus action_code;
+	uint16_t meta_ver;
 };
+
+
+void from_json(const nlohmann::json& j, RestfulReply& p) ;
+void from_json(const nlohmann::json& j, ReplicaArg& p);
+void from_json(const nlohmann::json& j, ShardArg& p);
+void from_json(const nlohmann::json& j, PrepareVolumeArg& p);
+void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
+void to_json(nlohmann::json& j, const RestfulReply& r);
+void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
+void from_json(const nlohmann::json& j, ErrorReportReply& p);
+
 struct mg_connection;
 struct http_message;
 
