@@ -43,7 +43,7 @@ int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,ErrorRepor
 int PfErrorHandler::submit_error(IoSubTask* t, PfMessageStatus sc)
 {
 	ErrorReportReply r;
-	int rc = report_error_to_conductor(t->rep->id, sc, r);
+	int rc = report_error_to_conductor(t->rep_id, sc, r);
 	if(rc) {
 		S5LOG_ERROR("Failed report error to conductor, rc:%d", rc);
 	} else {

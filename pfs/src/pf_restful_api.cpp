@@ -229,7 +229,10 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	{
 		S5LOG_INFO("Succeeded prepare volume:%s", vol->name);
 		AutoMutexLock _l(&app_context.lock);
-		app_context.opened_volumes[vol->id] = vol;
+		if(app_context.opened_volumes.find(vol->id) == app_context.opened_volumes.end()){
+			vol->add_ref();
+			app_context.opened_volumes[vol->id] = vol;
+		}
 	}//these code in separate code block, so lock can be released quickly
 	if(rc == -EALREADY)
 	{

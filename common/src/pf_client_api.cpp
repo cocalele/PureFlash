@@ -575,6 +575,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 	        io->reply_bd = NULL;
 	        io->conn->dec_ref();
 	        io->conn=NULL;
+	        io->sent_time=0;
 			free_iocb(io);
 
 			h(s, arg);

@@ -79,11 +79,24 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 }
 static inline void reply_io_to_client(PfServerIocb *iocb)
 {
+	const static int ms1 = 1000;
 	if(unlikely(iocb->conn->state != CONN_OK)) {
 		S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
 			 iocb->conn, iocb->conn->connection_info.c_str(), ConnState2Str(iocb->conn->state));
 		iocb->dec_ref();
 		return;
+	}
+	uint64_t io_end_time = now_time_usec();
+	uint64_t io_elapse_time = (io_end_time - iocb->received_time) / ms1;
+
+	if (io_elapse_time > 2000)
+	{
+		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, vol:%s, since received:%dms",
+		           iocb->cmd_bd->cmd_bd->offset >> SHARD_SIZE_ORDER,
+		           iocb->cmd_bd->cmd_bd->command_id,
+		           iocb->vol->name,
+		           io_elapse_time
+		);
 	}
 	PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
 	PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
@@ -158,7 +171,8 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	iocb->setup_subtask(s, cmd->opcode);
 	for (int i = 0; i < iocb->vol->rep_count; i++) {
 		if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
-			iocb->subtasks[i]->rep = s->replicas[i];
+			iocb->subtasks[i]->rep_id = s->replicas[i]->id;
+			iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 			s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
 		}
 	}
@@ -173,7 +187,9 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	int i = s->duty_rep_index;
 	if(s->replicas[i]->status == HS_OK) {
 		iocb->setup_one_subtask(s, i, cmd->opcode);
-		iocb->subtasks[i]->rep = s->replicas[i];
+
+		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
+		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 		if(unlikely(!s->is_primary_node)) {
 			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
 			            vol->id, vol->name, s->id, s->duty_rep_index);
@@ -194,7 +210,8 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 	int i = s->duty_rep_index;
 	if(likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
 		iocb->setup_one_subtask(s, i, PfOpCode::S5_OP_REPLICATE_WRITE);
-		iocb->subtasks[i]->rep = s->replicas[i];
+		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
+		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 		if(unlikely(s->is_primary_node)) {
 			S5LOG_ERROR("Repwrite on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
 			            vol->id, vol->name, s->id, s->duty_rep_index);

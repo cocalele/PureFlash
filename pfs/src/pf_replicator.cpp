@@ -34,9 +34,9 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	cmd->opcode = t->opcode;
 	cmd->buf_addr = (__le64) io->data_bd->buf;
 
-	PfConnection* c = conn_pool->get_conn((int)t->rep->store_id);
+	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
-		S5LOG_ERROR("Failed get connection to store:%d", t->rep->store_id);
+		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
 		iocb_pool.free(io);
 		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
@@ -142,9 +142,9 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	cmd->length = (uint32_t)t->length;
 	cmd->snap_seq = t->snap_seq;
 
-	PfConnection* c = conn_pool->get_conn((int)t->rep->store_id);
+	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
-		S5LOG_ERROR("Failed get connection to store:%d for  recovery read ", t->rep->store_id);
+		S5LOG_ERROR("Failed get connection to store:%d for  recovery read ", t->store_id);
 		t->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
 		iocb_pool.free(io);
 		return -EINVAL;

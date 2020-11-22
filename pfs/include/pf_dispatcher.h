@@ -20,14 +20,15 @@ struct SubTask
 	PfOpCode opcode;
 	//NOTE: any added member should be initialized either in PfDispatcher::init_mempools, or in PfServerIocb::setup_subtask
 	PfServerIocb* parent_iocb;
-	PfReplica* rep;
+	uint64_t rep_id;
+	uint64_t store_id;
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	PfMessageStatus complete_status;
 	virtual void complete(PfMessageStatus comp_status);
 	void complete(PfMessageStatus comp_status, int16_t meta_ver);
 
-	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), rep(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
+	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
 };
 
 struct IoSubTask : public SubTask
@@ -69,7 +70,7 @@ public:
 
 	SubTask* subtasks[PF_MAX_SUBTASK_CNT];
 	IoSubTask io_subtasks[3];
-
+	uint64_t received_time;
 
 	void inline setup_subtask(PfShard* s, PfOpCode opcode)
 	{

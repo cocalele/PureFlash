@@ -228,7 +228,7 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 
-	lmt_key key = {VOLUME_ID(io->rep->id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
+	lmt_key key = {VOLUME_ID(io->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 	if (block_pos != obj_lmt.end())
@@ -270,13 +270,13 @@ int PfFlashStore::do_write(IoSubTask* io)
 	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 	io->opcode = cmd->opcode;
-	lmt_key key = {VOLUME_ID(io->rep->id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0};
+	lmt_key key = {VOLUME_ID(io->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0};
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 
 	if (unlikely(block_pos == obj_lmt.end()))
 	{
-		S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep->id, key.slba, cmd->offset);
+		S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
 		if (free_obj_queue.is_empty())	{
 			S5LOG_ERROR("Disk:%s is full!", tray_name);
 			app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
@@ -1611,6 +1611,8 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 
 				t->length = read_bs;
 				t->snap_seq = *snap_it;
+				t->store_id = from_store_id;
+				t->rep_id = 0;//
 				t->sem = &recov_sem;
 				app_context.replicators[0]->event_queue.post_event(EVT_RECOVERY_READ_IO, 0, t);
 			}

@@ -247,12 +247,15 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
 					return 1;
-				} else
+				} else {
+					iocb->received_time = now_time_usec();
 					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+				}
 			}
 			else {
 				//data received
 				PfServerIocb *iocb = bd->server_iocb;
+				iocb->received_time = now_time_usec();
 				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
@@ -316,6 +319,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 
 int PfTcpServer::accept_connection()
 {
+	int const1 = 1;
 	sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
 	int rc = 0;
@@ -341,6 +345,11 @@ int PfTcpServer::accept_connection()
 		goto release2;
 	}
 
+	rc = setsockopt(connfd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to setsockopt TCP_NODELAY, rc:%d", rc);
+	}
 	conn->state = CONN_INIT;
 
 	bd = new BufferDescriptor();
