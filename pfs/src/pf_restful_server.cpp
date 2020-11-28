@@ -65,6 +65,9 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 		S5LOG_INFO("debug op:%s", opcode);
 		if(strcmp(opcode, "get_obj_count") == 0)
 			handle_get_obj_count(nc, hm);
+		else if(strcmp(opcode, "clean_disk") == 0){
+			handle_clean_disk(nc, hm);
+		}
 		else
 		{
 			S5LOG_ERROR("Unknown debug op:%s", opcode);

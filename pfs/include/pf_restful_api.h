@@ -106,4 +106,5 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
 void handle_query_task(struct mg_connection *nc, struct http_message * hm);
+void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 #endif // pf_restful_api_h__

@@ -372,6 +372,28 @@ void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
 	mg_printf(nc, "%-16d", cnt);
 }
 
+void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int i = app_context.get_ssd_index(ssd_uuid);
+	PfFlashStore* disk = app_context.trays[i];
+	S5LOG_WARN("Clean disk:%s", disk->name);
+	disk->sync_invoke([disk]()->int{
+		for(auto it = disk->obj_lmt.begin();it!=disk->obj_lmt.end();++it) {
+			lmt_key k= it->first;
+			lmt_entry *head = it->second;
+			while (head) {
+				lmt_entry *p = head;
+				head = head->prev_snap;
+				disk->delete_obj(&k, p);
+			}
+			return 0;
+		}
+	});
+	mg_send_head(nc, 200, 2, "Content-Type: text/plain");
+	mg_printf(nc, "OK");
+}
+
+
 void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
 	uint64_t offset = (uint64_t)get_http_param_as_int64(&hm->query_string, "offset", 0, true);
@@ -396,6 +418,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 	int rc = disk->sync_invoke([disk, rep_id]()->int{
 		return disk->delete_replica(replica_id_t(rep_id));
 	});
+	S5LOG_INFO("Delete replica 0x:%x from disk:%s, rc:%d", rep_id, disk->name, rc);
 	reply.ret_code = rc;
 	send_reply_to_client(reply, nc);
 }

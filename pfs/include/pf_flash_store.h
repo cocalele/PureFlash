@@ -170,6 +170,7 @@ public:
 	int delete_replica(replica_id_t rep_id);
 
 	int get_snap_list(volume_id_t volume_id, int64_t offset, std::vector<int>& snap_list);
+	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 private:
 	ThreadPool cow_thread_pool;
 
@@ -183,13 +184,10 @@ private:
 	 */
 	inline int64_t obj_id_to_offset(int64_t obj_id) { return (obj_id << head.objsize_order) + head.meta_size; }
 	inline int64_t offset_to_obj_id(int64_t offset) { return (offset - head.meta_size) >> head.objsize_order; }
-
 	void begin_cow(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
 	void do_cow_entry(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
 	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
-	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 	int recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset);
 	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
 };
-
 #endif // flash_store_h__

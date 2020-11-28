@@ -547,6 +547,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
 				__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
+				io->sent_time = 0;
 				io->conn->dec_ref();
 				io->conn = NULL;
 				free_iocb(io);
@@ -573,11 +574,10 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 
 	        reply_pool.free(io->reply_bd);
 	        io->reply_bd = NULL;
+	        io->sent_time=0;
 	        io->conn->dec_ref();
 	        io->conn=NULL;
-	        io->sent_time=0;
 			free_iocb(io);
-
 			h(s, arg);
 
     }
@@ -705,7 +705,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			break;
 		}
 		PfClientIocb* io = (PfClientIocb*)arg_p;
-		S5LOG_WARN("volume_proc timeout, cid:%d, store:%s", io->cmd_bd->cmd_bd->command_id, io->conn->peer_ip.c_str());
+		S5LOG_WARN("volume_proc timeout, cid:%d, conn:%s", io->cmd_bd->cmd_bd->command_id, io->conn);
 		/*
 		 * If time_recv is 0, io task:1)does not begin, 2)has finished.
 		 */
@@ -720,9 +720,9 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			}
 			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
 				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
+			io->sent_time = 0;
 			io->conn->close();
 			io->conn->dec_ref();
-			io->sent_time = 0;
 			io->conn = NULL;
 			int rc = resend_io(io);
 			if(rc) {
