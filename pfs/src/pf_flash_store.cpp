@@ -211,6 +211,8 @@ int PfFlashStore::init(const char* tray_name)
 
 	in_obj_offset_mask = head.objsize - 1;
 	init_aio();
+	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
+
 	err_clean.cancel_all();
 	return ret;
 }
@@ -585,7 +587,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	if (rc != 0)
 		return rc;
 	int* buf_as_int = (int*)buf;
-	rc = q->init(buf_as_int[0]);
+	rc = q->init(buf_as_int[0]-1);
 	if (rc)
 		return rc;
 
@@ -1252,7 +1254,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 }
 
 
-static void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
+void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
 		std::function<void(struct lmt_entry *)> free_func)
 {
 	// Store head node
@@ -1683,4 +1685,33 @@ int PfFlashStore::delete_replica(replica_id_t rep_id)
 		}
 	}
 	return 0;
+}
+
+void PfFlashStore::trimming_proc()
+{
+	char tname[32];
+	snprintf(tname, sizeof(tname), "trim_%s", tray_name);
+	prctl(PR_SET_NAME, tname);
+
+	while(1) {
+		int total_cnt = 0;
+		int MAX_CNT = 10;
+
+		//TODO: implement trim logic
+		for(total_cnt = 0; total_cnt < MAX_CNT; total_cnt ++) {
+			int rc = event_queue.sync_invoke([this]() -> int {
+				if (trim_obj_queue.is_empty())
+					return -ENOENT;
+				int id = trim_obj_queue.dequeue();
+				free_obj_queue.enqueue(id);
+				return redolog->log_free(id, trim_obj_queue.head, free_obj_queue.tail);
+			});
+			if(rc == -ENOENT)
+				break;
+		}
+		if(total_cnt > 0){
+			S5LOG_WARN("%d objects should be trimmed, but feature not implemented", total_cnt);
+		}
+		sleep(1);
+	}
 }

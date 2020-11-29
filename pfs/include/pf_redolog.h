@@ -22,17 +22,17 @@ class PfRedoLog
 			struct {
 				struct lmt_key bkey;
 				struct lmt_entry bentry;
-				int free_list_head;
+				int free_queue_head;
 			} allocation;
 			struct {
 				struct lmt_key bkey;
 				struct lmt_entry bentry;
-				int trim_list_tail;
+				int trim_queue_tail;
 			}trim;
 			struct {
 				int obj_id;
-				int trim_list_head;
-				int free_list_tail;
+				int trim_queue_head;
+				int free_queue_tail;
 			}free;
 			struct {
 				struct lmt_key bkey;

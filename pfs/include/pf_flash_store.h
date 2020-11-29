@@ -146,6 +146,10 @@ public:
 	void aio_polling_proc();
 	std::thread aio_poller;
 	void init_aio();
+
+	void trimming_proc();
+	std::thread trimming_thread;
+
 	/**
 	 * read data to buffer.
 	 * a LBA is a block of data 4096 bytes.
@@ -189,5 +193,10 @@ private:
 	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 	int recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset);
 	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
+
+	friend class PfRedoLog;
 };
+
+void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
+                          std::function<void(struct lmt_entry *)> free_func);
 #endif // flash_store_h__

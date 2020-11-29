@@ -113,6 +113,12 @@ int PfRedoLog::replay()
 			case ItemType::FREE_OBJ:
 				rc = redo_free(item);
 				break;
+			case ItemType::TRIM_OBJ:
+				rc = redo_trim(item);
+				break;
+			case ItemType::SNAP_SEQ_CHANGE:
+				rc=redo_snap_seq_change(item);
+				break;
 			default:
 				S5LOG_FATAL("Unknown redo log type:%d", item->type);
 				rc = -1;
@@ -150,15 +156,20 @@ int PfRedoLog::log_allocation(const struct lmt_key* key, const struct lmt_entry*
 	*item = PfRedoLog::Item{phase:phase, type:ItemType::ALLOCATE_OBJ, {*key, *entry, free_list_head } };
 	return write_entry();
 }
-int PfRedoLog::log_free(int block_id, int trim_list_head, int free_list_tail)
+int PfRedoLog::log_free(int block_id, int trim_queue_head, int free_queue_tail)
 {
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
-	return 0;
+	PfRedoLog::Item *item = (PfRedoLog::Item*)entry_buff;
+	*item = PfRedoLog::Item{phase:phase, type:ItemType::FREE_OBJ };
+	item->free.obj_id = block_id;
+	item->free.trim_queue_head = trim_queue_head;
+	item->free.free_queue_tail = free_queue_tail;
+	return write_entry();
 }
 int PfRedoLog::log_trim(const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail)
 {
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
-	return 0;
+	PfRedoLog::Item *item = (PfRedoLog::Item*)entry_buff;
+	*item = PfRedoLog::Item{phase:phase, type:ItemType::TRIM_OBJ, {*key, *entry, trim_list_tail } };
+	return write_entry();
 }
 int PfRedoLog::redo_allocation(Item* e)
 {
@@ -175,17 +186,42 @@ int PfRedoLog::redo_allocation(Item* e)
 	} else {
 		store->lmt_entry_pool.free(entry);
 	}
-	store->free_obj_queue.head = e->allocation.free_list_head;
+	store->free_obj_queue.head = e->allocation.free_queue_head;
 	return 0;
 }
 int PfRedoLog::redo_trim(Item* e)
 {
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	store->trim_obj_queue.tail = e->trim.trim_queue_tail;
+	int tail = e->trim.trim_queue_tail - 1;
+	if (tail < 0)
+		tail = store->trim_obj_queue.queue_depth - 1;
+	store->trim_obj_queue.data[tail] = (int32_t)store->offset_to_obj_id(e->trim.bentry.offset);
+
+	auto pos = store->obj_lmt.find(e->trim.bkey);
+	if(pos == store->obj_lmt.end())
+		return 0;
+	delete_matched_entry(&pos->second,
+	                     [e](struct lmt_entry* _entry)->bool {
+		                     return _entry->offset == e->trim.bentry.offset;
+	                     },
+	                     [this](struct lmt_entry* _entry)->void {
+		                     store->lmt_entry_pool.free(_entry);
+	                     });
+	if(pos->second == NULL)
+		store->obj_lmt.erase(pos);
 	return 0;
+
 }
 int PfRedoLog::redo_free(Item* e)
 {
-	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	store->free_obj_queue.tail = e->free.free_queue_tail;
+	int tail = e->free.free_queue_tail - 1;
+	if (tail < 0)
+		tail = store->free_obj_queue.queue_depth - 1;
+	store->free_obj_queue.data[tail] = e->free.obj_id;
+
+	store->trim_obj_queue.head = e->free.trim_queue_head;
+
 	return 0;
 }
 

@@ -376,7 +376,7 @@ void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
 	int i = app_context.get_ssd_index(ssd_uuid);
 	PfFlashStore* disk = app_context.trays[i];
-	S5LOG_WARN("Clean disk:%s", disk->name);
+	S5LOG_WARN("Clean disk:%s", disk->tray_name);
 	disk->sync_invoke([disk]()->int{
 		for(auto it = disk->obj_lmt.begin();it!=disk->obj_lmt.end();++it) {
 			lmt_key k= it->first;
@@ -418,7 +418,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 	int rc = disk->sync_invoke([disk, rep_id]()->int{
 		return disk->delete_replica(replica_id_t(rep_id));
 	});
-	S5LOG_INFO("Delete replica 0x:%x from disk:%s, rc:%d", rep_id, disk->name, rc);
+	S5LOG_INFO("Delete replica 0x:%x from disk:%s, rc:%d", rep_id, disk->tray_name, rc);
 	reply.ret_code = rc;
 	send_reply_to_client(reply, nc);
 }
