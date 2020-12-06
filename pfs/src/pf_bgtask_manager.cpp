@@ -2,6 +2,7 @@
 // Created by liu_l on 10/25/2020.
 //
 
+#include <pf_log.h>
 #include "pf_bgtask_manager.h"
 const char* TaskStatusToStr(TaskStatus s)
 {
@@ -28,6 +29,7 @@ BackgroundTask* BackgroundTaskManager::initiate_task(TaskType type, std::string 
 	t->exec = exe;
 	t->status = TaskStatus::WAITING;
 
+	S5LOG_INFO("Initiate background task id:%d", t->id);
 	task_map[t->id] = t;
 	recovery_thread_pool.commit([t]()->int {
 		t->status = TaskStatus::RUNNING;

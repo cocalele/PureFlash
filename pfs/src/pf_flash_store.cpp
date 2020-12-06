@@ -757,6 +757,8 @@ int PfFlashStore::load_meta_data()
 			S5LOG_ERROR("Failed to read entry.");
 			return rc;
 		}
+		if(head_entry->status == EntryStatus::RECOVERYING)
+			head_entry->status = EntryStatus::UNINIT;
 		lmt_entry *tail = head_entry;
 		while (tail->prev_snap != NULL)
 		{
@@ -769,6 +771,8 @@ int PfFlashStore::load_meta_data()
 				S5LOG_ERROR("Failed to read entry.");
 				return rc;
 			}
+			if(b->status == EntryStatus::RECOVERYING)
+				b->status = EntryStatus::UNINIT;
 			tail = tail->prev_snap;
 		}
 		obj_lmt[k] = head_entry;
@@ -1001,6 +1005,7 @@ void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del
 
 int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq)
 {
+	S5LOG_DEBUG("delete obj vol:0x%llx slba:%lld, snap_seq:%d prev_seq:%d next_seq:%d", volume_id, slba, snap_seq, prev_snap_seq, next_snap_seq);
 	lmt_key key={.vol_id=volume_id, .slba = slba};
 	auto pos = obj_lmt.find(key);
 	if(pos == obj_lmt.end())
@@ -1027,6 +1032,13 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 	if( (prev_entry != NULL && prev_entry->status != EntryStatus::NORMAL)
 		|| (target_entry != NULL && target_entry->status != EntryStatus::NORMAL)
 		|| (next_entry != NULL && next_entry->status != EntryStatus::NORMAL)) {
+		if(prev_entry != NULL && prev_entry->status != EntryStatus::NORMAL) {
+			S5LOG_DEBUG("Cond1, prev status:%d", prev_entry->status);
+		} else if(target_entry != NULL && target_entry->status != EntryStatus::NORMAL) {
+			S5LOG_DEBUG("Cond2, target status:%d", target_entry->status);
+		} else if(next_entry != NULL && next_entry->status != EntryStatus::NORMAL){
+			S5LOG_DEBUG("Cond3, next status:%d", next_entry->status);
+		}
 		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%llx slba:%lld", volume_id, slba);
 		return -EAGAIN;
 	}
@@ -1336,6 +1348,8 @@ static int query_store(const char* ip, ReplyT& reply, const char* format, ...)
 
 void RecoverySubTask::complete(PfMessageStatus comp_status)
 {
+	complete_status = comp_status;
+	S5LOG_INFO("RecoverySubTask::complete, status:%s", PfMessageStatus2Str(comp_status));
 	sem_post(sem);
 }
 
@@ -1478,12 +1492,15 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 	return rc;
 }
 
-int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id, int64_t recov_object_size)
+int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
+								   const string& from_ssd_uuid, int64_t recov_object_size)
 {
 	int rc;
 	assert(pthread_self () != this->tid); //this function must run in different thread than this disk's proc thread
 	Cleaner _clean;
 
+	S5LOG_INFO("Begin recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+			this->tray_name, recov_object_size);
 	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize);
 	if(pendding_buf == NULL) {
 		S5LOG_ERROR("Failed to alloc pending buffer for recovery");
@@ -1518,6 +1535,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		//set local object to recovery state
 		int64_t obj_slba = vol_offset_to_block_slba(offset, head.objsize_order);
 		lmt_key key = {.vol_id = rep_id.to_volume_id().vol_id, .slba = obj_slba, 0, 0};
+		S5LOG_DEBUG("recovery i:%d key:{.vol_id:0x%x, .slba:0x%x}", i, key.vol_id, key.slba);
 		auto block_pos = obj_lmt.find(key);
 		if (block_pos == obj_lmt.end()) {
 			obj_lmt[key] = recovery_head_entry;
@@ -1532,7 +1550,8 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 
 		GetSnapListReply primary_snap_list_reply;
 
-		rc = query_store(from_store_ip.c_str(), primary_snap_list_reply , "get_snap_seq_list?volume_id=%lld&offset=%lld", rep_id.to_volume_id().vol_id, offset);
+		rc = query_store<GetSnapListReply>(from_store_ip.c_str(), primary_snap_list_reply , "op=get_snap_list&volume_id=%lld&offset=%lld&ssd_uuid=%s",
+				   rep_id.to_volume_id().vol_id, offset, from_ssd_uuid.c_str());
 		if(rc) {
 			S5LOG_ERROR("Failed to query remote snap list from store:%s, rep_id:0x%llx, offset:%lld, reason:%s",
 			   from_store_ip.c_str(), rep_id.val(), offset, primary_snap_list_reply.reason.c_str());
@@ -1548,7 +1567,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			            rep_id.val(), offset, rc);
 			break;
 		}
-
+		S5LOG_INFO("%d snaps on primary and %d on local", primary_snap_list.size(), local_snap_list.size());
 		for(auto it = local_snap_list.begin();it != local_snap_list.end(); ) {
 			int snap = *it;
 			int prev = -1;
@@ -1556,7 +1575,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			for(auto primary_it = primary_snap_list.rbegin(); primary_it != primary_snap_list.rend(); prev = *primary_it, ++primary_it) {
 				if(snap > prev && snap < *primary_it) {
 					//this snap not exists on primary
-					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap %s) because it's not exists on primary", rep_id.val(), offset, snap);
+					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", rep_id.val(), offset, snap);
 					delete_obj_snapshot(rep_id.to_shard_id().shard_id, offset >> LBA_LENGTH_ORDER, snap, prev, *primary_it);
 					local_snap_list.erase(it++);
 					deleted = true;
@@ -1579,7 +1598,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		for(auto snap_it = first_snap; snap_it != primary_snap_list.rend() && !failed; ++ snap_it) {
 			sem_t recov_sem;
 			sem_init(&recov_sem, 0, iodepth);
-			S5LOG_INFO("recoverying object (rep_id:0x%llx offset:%lld snap %s) ", rep_id.val(), offset, *snap_it);
+			S5LOG_INFO("recoverying object (rep_id:0x%llx offset:%lld snap: %d) ", rep_id.val(), offset, *snap_it);
 			for(int j=0;j<recov_object_size/read_bs && !failed;j++) {
 				sem_wait(&recov_sem);
 				RecoverySubTask *t = task_queue.alloc();
@@ -1641,20 +1660,31 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			sem_destroy(&recov_sem);
 		}
 		rc = finish_recovery_object(&key, recovery_head_entry, recov_object_size, offset, failed);
-		if(failed || rc)
+		if(failed || rc) {
+			S5LOG_ERROR("Failed recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+			           this->tray_name, recov_object_size);
 			return -1;
+		}
 	}
+	S5LOG_INFO("Finish recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+	           this->tray_name, recov_object_size);
+
 	return 0;
 }
-
 
 int PfFlashStore::get_snap_list(volume_id_t volume_id, int64_t offset, vector<int>& snap_list)
 {
 	lmt_key key = {volume_id.vol_id, (int64_t)vol_offset_to_block_slba(offset, head.objsize_order), 0, 0};
 	auto block_pos = obj_lmt.find(key);
-	assert(block_pos != obj_lmt.end());
-	for(lmt_entry* p = block_pos->second; p != NULL; p=p->prev_snap){
-		snap_list.push_back(p->snap_seq);
+	if(block_pos != obj_lmt.end()){
+		lmt_entry* p = block_pos->second;
+		if(p->status == EntryStatus::RECOVERYING && p->snap_seq == 0) {
+			//this is recovery head entry, skip it
+			p =  p->prev_snap;
+		}
+		for(; p != NULL; p=p->prev_snap){
+			snap_list.push_back(p->snap_seq);
+		}
 	}
 	return 0;
 }

@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 	S5LOG_INFO("====     (  V  ) PureFlash (  V  )          ====");
 	S5LOG_INFO("====     --m-m---------------m-m--          ====");
 	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
-	std::set_terminate(unexpected_exit_handler);
+	//std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
 	while(opt_error_code() == 0 && opt_has_next())

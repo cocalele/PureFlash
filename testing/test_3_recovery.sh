@@ -26,7 +26,7 @@ sleep 3
 
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "DEGRADED"
 
-curlex "http://$COND_IP:49180/s5c/?op=recovery_volume&name=$VOL_NAME"
+curlex "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
 
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "OK"
 

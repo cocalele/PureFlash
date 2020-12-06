@@ -60,7 +60,9 @@ void from_json(const json& j, GetSnapListReply& p) {
 	from_json(j, *((RestfulReply*)&p));
 	j.at("snap_list").get_to(p.snap_list);
 }
-
+void to_json(json& j, GetSnapListReply& r) {
+	j = json{{ "ret_code", r.ret_code },{ "reason", r.reason },{ "op", r.op }, {"snap_list", r.snap_list}};
+}
 
 void to_json(json& j, const RestfulReply& r)
 {
@@ -83,7 +85,7 @@ void from_json(const json& j, ErrorReportReply& p) {
 }
 
 template <typename R>
-void send_reply_to_client(R r, struct mg_connection *nc) {
+void send_reply_to_client(R& r, struct mg_connection *nc) {
 
 	json jr = r;
 	string jstr = jr.dump();
@@ -342,14 +344,15 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 	string from_ip = get_http_param_as_string(&hm->query_string, "from_store_mngt_ip", "", true);
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
 	int64_t obj_size = get_http_param_as_int64(&hm->query_string, "object_size", 0, true);
+	string from_ssd_uuid = get_http_param_as_string(&hm->query_string, "from_ssd_uuid", "", true);
 	BackgroudTaskReply r;
 	r.op="recovery_replica_reply";
 	int i = app_context.get_ssd_index(ssd_uuid);
 	PfFlashStore* disk = app_context.trays[i];
 	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
-														   format_string("recovery 0x%llx", rep_id),
-														   [disk, rep_id, from_ip=std::move(from_ip), from, obj_size](void*)->RestfulReply*{
-		int rc = disk->recovery_replica(rep_id, from_ip, from ,obj_size);
+								   format_string("recovery 0x%llx", rep_id),
+								   [disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size](void*)->RestfulReply*{
+		int rc = disk->recovery_replica(rep_id, from_ip, from , from_ssd_uuid, obj_size);
 		RestfulReply *r = new RestfulReply();
 		if(rc != 0){
 			r->ret_code = rc;
@@ -358,7 +361,7 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 		return r;
 	}, NULL);
 	r.task_id = t->id;
-
+	r.status = TaskStatusToStr(t->status);
 	send_reply_to_client(r, nc);
 }
 void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
@@ -388,6 +391,7 @@ void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
 			}
 			return 0;
 		}
+		return 0;
 	});
 	mg_send_head(nc, 200, 2, "Content-Type: text/plain");
 	mg_printf(nc, "OK");
@@ -424,11 +428,19 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 }
 
 void handle_query_task(struct mg_connection *nc, struct http_message * hm) {
+	S5LOG_DEBUG("call in handle_query_task");
 	uint64_t task_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "task_id", 0, true);
 	BackgroundTask *t = app_context.bg_task_mgr.task_map[task_id];
 	BackgroudTaskReply r;
-	r.op="recovery_replica_reply";
-	r.task_id = t->id;
-	r.status = t->status;
+	r.op="query_task_reply";
+	if(t==NULL){
+		S5LOG_ERROR("No task id:%d", task_id);
+		r.task_id = 0;
+		r.ret_code = -ENOENT;
+		r.reason = "No such task";
+	} else {
+		r.task_id = t->id;
+		r.status = TaskStatusToStr(t->status);
+	}
 	send_reply_to_client(r, nc);
 }

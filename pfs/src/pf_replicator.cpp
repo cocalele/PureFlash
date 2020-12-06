@@ -104,6 +104,9 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 	{
 		__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
 	} else {
+		if(io_cmd->opcode == S5_OP_RECOVERY_READ) {
+			S5LOG_INFO("Recovery cid:%d complete", io_cmd->command_id);
+		}
 		SubTask *t = (SubTask *) iocb->ulp_arg;
 		t->complete(s);
 	}
@@ -177,6 +180,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
+	S5LOG_DEBUG("Send replicating read request, cid:%d", io->cmd_bd->cmd_bd->command_id);
 	return rc;
 }
 

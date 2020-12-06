@@ -53,3 +53,39 @@ function get_obj_count() {
     done
     echo $total
 }
+
+async_curl() {
+	echo "curl $@"
+    rsp=$(curl --write-out '\n%{http_code}\n'  "$@" 2>/dev/null)
+	code=$(echo "$rsp" | tail -n 1)
+	ret=$(echo "$rsp" | head -n 1 | jq -r ".ret_code")
+	echo "$rsp, $ret"
+	if [ ! $ret ];then
+		ret=0
+	fi
+	if (( $code >= 400 )); then
+		return 22
+	fi
+	if (( $ret != 0 )); then
+		return 22
+	fi
+	task_id=$(echo "$rsp" | head -n 1 | jq -r ".task_id")
+	echo "task_id:$task_id"
+	echo "queue_name:$queue_name"
+	while sleep 5 ; do
+		rsp=$(curl --write-out '\n%{http_code}\n'  "http://$(pfcip):49180/pfapi?op=list_job&id=$task_id&queue_name=$queue_name" 2>/dev/null)
+		echo $rsp
+		status=$(echo "$rsp" | head -n 1 | jq -r ".jobs[0].status")
+		echo $status
+		if [ "$status" == "pending" ] ; then
+			continue
+		elif [ "$status" == "processing" ] ; then
+			continue
+		elif [ "$status" == "failed" ] ; then
+			return -2
+		elif [ "$status" == "succeeded" ] ; then
+			return 0
+		fi
+	done
+	return -1
+}

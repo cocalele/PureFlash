@@ -25,33 +25,41 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 		//mg_send_head(nc, 200, hm->message.len, "Content-Type: text/plain");
 		//mg_printf(nc, "%.*s", (int)hm->message.len, hm->message.p);
 		//mg_printf(nc, "%.*s", (int)hm->body.len, hm->body.p);
-		if(strcmp(opcode, "prepare_volume") == 0)
-			handle_prepare_volume(nc, hm);
-		else if(strcmp(opcode, "set_meta_ver") == 0)
-			handle_set_meta_ver(nc, hm);
-		else if(strcmp(opcode, "set_snap_seq") == 0)
-			handle_set_snap_seq(nc, hm);
-		else if(strcmp(opcode, "delete_snapshot") == 0)
-			handle_delete_snapshot(nc, hm);
-		else if(strcmp(opcode, "begin_recovery") == 0)
-			handle_begin_recovery(nc, hm);
-		else if(strcmp(opcode, "end_recovery") == 0)
-			handle_end_recovery(nc, hm);
-		else if(strcmp(opcode, "recovery_replica") == 0)
-			handle_recovery_replica(nc, hm);
-		else if(strcmp(opcode, "get_snap_list") == 0)
-			handle_get_snap_list(nc, hm);
-		else if(strcmp(opcode, "delete_replica") == 0)
-			handle_delete_replica(nc, hm);
-		else if(strcmp(opcode, "query_task") == 0)
-			handle_query_task(nc, hm);
-		else
-		{
-			S5LOG_ERROR("Unknown op:%s", opcode);
-			string cstr = format_string("Unknown op:%s", opcode);
+		try {
+			if (strcmp(opcode, "prepare_volume") == 0)
+				handle_prepare_volume(nc, hm);
+			else if (strcmp(opcode, "set_meta_ver") == 0)
+				handle_set_meta_ver(nc, hm);
+			else if (strcmp(opcode, "set_snap_seq") == 0)
+				handle_set_snap_seq(nc, hm);
+			else if (strcmp(opcode, "delete_snapshot") == 0)
+				handle_delete_snapshot(nc, hm);
+			else if (strcmp(opcode, "begin_recovery") == 0)
+				handle_begin_recovery(nc, hm);
+			else if (strcmp(opcode, "end_recovery") == 0)
+				handle_end_recovery(nc, hm);
+			else if (strcmp(opcode, "recovery_replica") == 0)
+				handle_recovery_replica(nc, hm);
+			else if (strcmp(opcode, "get_snap_list") == 0)
+				handle_get_snap_list(nc, hm);
+			else if (strcmp(opcode, "delete_replica") == 0)
+				handle_delete_replica(nc, hm);
+			else if (strcmp(opcode, "query_task") == 0)
+				handle_query_task(nc, hm);
+			else {
+				S5LOG_ERROR("Unknown op:%s", opcode);
+				string cstr = format_string("Unknown op:%s", opcode);
+				mg_send_head(nc, 500, cstr.length(), "Content-Type: text/plain");
+				mg_printf(nc, "%s", cstr.c_str());
+			}
+		}
+		catch(std::exception& e) {
+			S5LOG_ERROR("Error during handle op:%s, exception:%s", opcode, e.what());
+			string cstr = format_string("Error during handle op:%s, exception:%s", opcode, e.what());
 			mg_send_head(nc, 500, cstr.length(), "Content-Type: text/plain");
 			mg_printf(nc, "%s", cstr.c_str());
 		}
+
 	}
 
 }
@@ -133,7 +141,7 @@ std::string get_http_param_as_string(const struct mg_str *http_content, const ch
 	}
 	else
 	{
-		S5LOG_ERROR("Internal error, buffer too small");
+		S5LOG_ERROR("Internal error, buffer too small for param:%s", name);
 		throw std::overflow_error("Internal error, buffer too small");
 	}
 }
@@ -158,7 +166,7 @@ int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *n
 	}
 	else
 	{
-		S5LOG_ERROR("Internal error, buffer too small");
+		S5LOG_ERROR("Internal error, buffer too small to get param:%s", name);
 		throw std::overflow_error("Internal error, buffer too small");
 	}
 	return 0;//never run here
