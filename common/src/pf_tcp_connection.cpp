@@ -7,6 +7,7 @@
 #include <exception>
 #include <fcntl.h>
 #include <pf_app_ctx.h>
+#include <poll.h>
 
 #include "pf_tcp_connection.h"
 #include "pf_utils.h"
@@ -528,30 +529,29 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	else if (errno == EINPROGRESS)
 	{
 		S5LOG_INFO("waiting connect to %s:%d", ip.c_str(), port);
-		fd_set wset, eset;
-		FD_ZERO(&wset);
-		FD_ZERO(&eset);
-		FD_SET(socket_fd, &wset);
-
-		struct timeval t_out;
-		t_out.tv_sec = timeout_sec;
-		t_out.tv_usec = 0;
-		// check if the socket is ready
-		int res = select(socket_fd + 1, NULL, &wset, &eset, &t_out);
-		if (res <= 0)
+		struct pollfd poll_fd;
+		memset(&poll_fd, 0, sizeof(poll_fd));
+		poll_fd.fd = socket_fd;
+		poll_fd.events = POLLOUT;
+		int res = poll(&poll_fd, 1, timeout_sec * 1000);
+		if (res > 0)
 		{
-			throw runtime_error(format_string("TCP connect timeout. peer:%s.", inet_ntoa(addr.sin_addr)));
-		}
-		else if (res == 1)
-		{
-			if (FD_ISSET(socket_fd, &wset))
+			if (poll_fd.revents & POLLOUT)
 			{
-				S5LOG_INFO("TCP connect success:%s:%d.", inet_ntoa(addr.sin_addr), port);
+				S5LOG_INFO("TCP connect success:%s", ip.c_str());
 			}
 			else
 			{
-				throw runtime_error("no events on sockfd found.");
+				throw runtime_error(format_string("unexpected events:%d", poll_fd.revents));
 			}
+		}
+		else if (res == 0)
+		{
+			throw runtime_error(format_string("TCP connect timeout and no events, peer:%s", ip.c_str()));
+		}
+		else if (res == -1)
+		{
+			throw runtime_error(format_string("TCP connect error, errno:%d", errno));
 		}
 	}
 	int error = 0;
