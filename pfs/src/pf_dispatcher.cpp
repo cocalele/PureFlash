@@ -118,8 +118,8 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	}
 	if(unlikely(cmd->meta_ver != vol->meta_ver))
 	{
-		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x meta_ver:%d diff than client:%d",
-			  PfOpCode2Str(cmd->opcode), cmd->vol_id, vol->meta_ver, cmd->meta_ver);
+		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%x meta_ver:%d diff than client:%d",
+			  PfOpCode2Str(cmd->opcode), cmd->opcode,  cmd->vol_id, vol->meta_ver, cmd->meta_ver);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
 		reply_io_to_client(iocb);
 		return 0;
@@ -143,14 +143,14 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 			return dispatch_write(iocb, vol, s);
 			break;
 		case S5_OP_READ:
-
+		case S5_OP_RECOVERY_READ:
 			return dispatch_read(iocb, vol, s);
 			break;
 		case S5_OP_REPLICATE_WRITE:
 			return dispatch_rep_write(iocb, vol, s);
 			break;
 		default:
-			S5LOG_FATAL("Unknown opcode:%d", cmd->opcode);
+			S5LOG_FATAL("Unknown opcode:%s(%d)", PfOpCode2Str(cmd->opcode), cmd->opcode);
 
 	}
 	return 1;
@@ -197,6 +197,8 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 			return 1;
 		}
 		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	} else {
+		S5LOG_ERROR("replica:0x%x status:%s not readable", s->replicas[i]->id, HealthStatus2Str(s->replicas[i]->status));
 	}
 
 	return 0;

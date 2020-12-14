@@ -287,8 +287,19 @@ int PfTcpConnection::do_receive()
 	int rc = 0;
 
 	do {
-		if (recv_bd == NULL)
-			return 0;
+		if (recv_bd == NULL){
+			if (recv_q.is_empty()) {
+				return 0;
+			}
+			S5Event evt;
+			rc = recv_q.get_event(&evt);
+			if (unlikely(rc)) {
+				S5LOG_ERROR("Get event from recv_q failed");
+			} else {
+				start_recv((BufferDescriptor *) evt.arg_p);
+				continue;
+			}
+		}
 		rc = rcv_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{

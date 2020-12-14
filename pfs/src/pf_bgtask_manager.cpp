@@ -4,6 +4,8 @@
 
 #include <pf_log.h>
 #include "pf_bgtask_manager.h"
+#include "pf_restful_api.h"
+
 const char* TaskStatusToStr(TaskStatus s)
 {
 #define C_NAME(x) case x: return #x;
@@ -33,9 +35,11 @@ BackgroundTask* BackgroundTaskManager::initiate_task(TaskType type, std::string 
 	task_map[t->id] = t;
 	recovery_thread_pool.commit([t]()->int {
 		t->status = TaskStatus::RUNNING;
+		S5LOG_DEBUG("Begin background task id:%d, %s", t->id, t->desc.c_str());
 		t->result = t->exec(t->arg);
+		S5LOG_DEBUG("Finish background task id:%d, ret_code:%d", t->id, t->result->ret_code);
 		t->finish_time = std::time(nullptr);
-		t->status =TaskStatus::SUCCEEDED;
+		t->status = (t->result->ret_code == 0 ? TaskStatus::SUCCEEDED : TaskStatus::FAILED);
 		return 0;
 	});
 	return t;

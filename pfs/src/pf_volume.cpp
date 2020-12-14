@@ -12,6 +12,22 @@ HealthStatus health_status_from_str(const std::string&  status_str)
 	return (HealthStatus)-1;
 }
 
+const char* HealthStatus2Str(HealthStatus code)
+{
+#define C_NAME(x) case x: return #x;
+
+	static __thread char buf[64];
+	switch(code){
+		C_NAME(HS_OK)
+		C_NAME(HS_ERROR)
+		C_NAME(HS_DEGRADED)
+		C_NAME(HS_RECOVERYING)
+		default:
+			sprintf(buf, "%d", code);
+			return buf;
+	}
+}
+
 PfVolume::~PfVolume()
 {
 	for(int i=0;i<shards.size();i++)

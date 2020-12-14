@@ -142,6 +142,8 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
 			return ret;
 		}
+		post_load_fix();
+		post_load_check();
 		save_meta_data();
 		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
@@ -775,7 +777,19 @@ int PfFlashStore::load_meta_data()
 				b->status = EntryStatus::UNINIT;
 			tail = tail->prev_snap;
 		}
-		obj_lmt[k] = head_entry;
+
+		//remove UNINITed entry
+		delete_matched_entry(&head_entry,
+		                     [](struct lmt_entry* _entry)->bool {
+			                     return _entry->status == EntryStatus::UNINIT;
+		                     },
+		                     [this](struct lmt_entry* _entry)->void {
+			                     lmt_entry_pool.free(_entry);
+		                     });
+		if(head_entry)
+			obj_lmt[k] = head_entry;
+
+
 	}
 	/*just for update md5*/
 	if (key_count == 0)
@@ -820,6 +834,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
 	    PfOpCode op = ((IoSubTask*)arg_p)->parent_iocb->cmd_bd->cmd_bd->opcode;
         switch(op){
             case PfOpCode::S5_OP_READ:
+            case PfOpCode::S5_OP_RECOVERY_READ:
                 do_read((IoSubTask*)arg_p);
                 break;
             case PfOpCode::S5_OP_WRITE:
@@ -1039,7 +1054,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		} else if(next_entry != NULL && next_entry->status != EntryStatus::NORMAL){
 			S5LOG_DEBUG("Cond3, next status:%d", next_entry->status);
 		}
-		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%llx slba:%lld", volume_id, slba);
+		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%llx slba:%lld)", volume_id, slba);
 		return -EAGAIN;
 	}
 
@@ -1350,6 +1365,7 @@ void RecoverySubTask::complete(PfMessageStatus comp_status)
 {
 	complete_status = comp_status;
 	S5LOG_INFO("RecoverySubTask::complete, status:%s", PfMessageStatus2Str(comp_status));
+	owner_queue->free(this);
 	sem_post(sem);
 }
 
@@ -1493,7 +1509,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 }
 
 int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
-								   const string& from_ssd_uuid, int64_t recov_object_size)
+								   const string& from_ssd_uuid, int64_t recov_object_size, uint16_t meta_ver)
 {
 	int rc;
 	assert(pthread_self () != this->tid); //this function must run in different thread than this disk's proc thread
@@ -1602,19 +1618,25 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			for(int j=0;j<recov_object_size/read_bs && !failed;j++) {
 				sem_wait(&recov_sem);
 				RecoverySubTask *t = task_queue.alloc();
+				if(unlikely(t == NULL)) {
+					S5LOG_FATAL("Unexpected error, can't alloc RecoverySubTask");
+				}
 				if(t->recovery_bd != NULL) {
 					if(t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
 						failed=1;
 					} else {
-						sync_invoke([this, &key, recovery_head_entry, t]()->int {
+						int rc2 = sync_invoke([this, &key, recovery_head_entry, t]()->int {
 							return recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
 						});
+						if(rc2)
+							failed = 1;
 					}
 					app_context.recovery_io_bd_pool.free(t->recovery_bd);
 					t->recovery_bd = NULL;
 				}
 				if(failed) {
+					task_queue.free(t);
 					sem_post(&recov_sem);
 					break;
 				}
@@ -1623,9 +1645,11 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				if (bd == NULL) {
 					S5LOG_ERROR("Failed to alloc recovery data bd");
 					failed = 1;
+					task_queue.free(t);
 					sem_post(&recov_sem);
 					break;
 				}
+				bd->data_len = read_bs;
 				t->recovery_bd = bd;
 				t->volume_id = rep_id.to_volume_id().vol_id;
 				t->offset = offset;
@@ -1635,11 +1659,17 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				t->store_id = from_store_id;
 				t->rep_id = 0;//
 				t->sem = &recov_sem;
+				t->meta_ver = meta_ver;
+				t->opcode = PfOpCode::S5_OP_RECOVERY_READ;
+				t->owner_queue = &task_queue;
 				app_context.replicators[0]->event_queue.post_event(EVT_RECOVERY_READ_IO, 0, t);
 			}
 			for(int i=0;i<iodepth; i++) {
 				sem_wait(&recov_sem);
 				RecoverySubTask *t = task_queue.alloc();
+				if(t==NULL) {
+					S5LOG_FATAL("Unexpected error, no RecoverySubTask in queue");
+				}
 				if(t->recovery_bd != NULL) {
 					if (t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
@@ -1744,4 +1774,14 @@ void PfFlashStore::trimming_proc()
 		}
 		sleep(1);
 	}
+}
+
+void PfFlashStore::post_load_fix()
+{
+	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
+}
+
+void PfFlashStore::post_load_check()
+{
+	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
 }

@@ -171,7 +171,7 @@ public:
 	int save_meta_data();
 	void delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 	int recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
-					  const std::string& from_ssd_uuid, int64_t object_size);
+					  const std::string& from_ssd_uuid, int64_t object_size, uint16_t meta_ver);
 	int delete_replica(replica_id_t rep_id);
 
 	int get_snap_list(volume_id_t volume_id, int64_t offset, std::vector<int>& snap_list);
@@ -194,6 +194,8 @@ private:
 	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 	int recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset);
 	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
+	void post_load_fix();
+	void post_load_check();
 
 	friend class PfRedoLog;
 };

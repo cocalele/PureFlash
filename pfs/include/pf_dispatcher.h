@@ -48,7 +48,9 @@ struct RecoverySubTask : public SubTask
 	int64_t offset;
 	int64_t length;
 	uint32_t  snap_seq;
+	uint16_t meta_ver;
 	sem_t* sem;
+	ObjectMemoryPool<RecoverySubTask>* owner_queue;
 
 	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){}
 	virtual void complete(PfMessageStatus comp_status);

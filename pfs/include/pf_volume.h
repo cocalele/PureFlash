@@ -58,6 +58,7 @@ enum HealthStatus : int32_t {
 };
 #define MAX_REP_COUNT 5 //3 for normal replica, 1 for remote replicating, 1 for recoverying
 HealthStatus health_status_from_str(const std::string&  status_str);
+const char* HealthStatus2Str(HealthStatus code);
 
 //Replica represent a replica of shard
 class PfReplica

@@ -302,7 +302,7 @@ void handle_begin_recovery(struct mg_connection *nc, struct http_message * hm) {
 				return RestfulReply::INVALID_STATE;
 			}
 			PfVolume* v = pos->second;
-			v->shards[rid.shard_index()]->replicas[rid.shard_index()]->status = HS_RECOVERYING;
+			v->shards[rid.shard_index()]->replicas[rid.replica_index()]->status = HS_RECOVERYING;
 			return 0;
 		});
 		if(rc == RestfulReply::INVALID_STATE) {
@@ -327,7 +327,7 @@ void handle_end_recovery(struct mg_connection *nc, struct http_message * hm) {
 			}
 			PfVolume* v = pos->second;
 
-			v->shards[rid.shard_index()]->replicas[rid.shard_index()]->status = (ok ? HS_OK : HS_ERROR);
+			v->shards[rid.shard_index()]->replicas[rid.replica_index()]->status = (ok ? HS_OK : HS_ERROR);
 			return 0;
 		});
 		if(rc == RestfulReply::INVALID_STATE) {
@@ -345,14 +345,15 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
 	int64_t obj_size = get_http_param_as_int64(&hm->query_string, "object_size", 0, true);
 	string from_ssd_uuid = get_http_param_as_string(&hm->query_string, "from_ssd_uuid", "", true);
+	int64_t meta_ver = get_http_param_as_int64(&hm->query_string, "meta_ver", 0, true);
 	BackgroudTaskReply r;
 	r.op="recovery_replica_reply";
 	int i = app_context.get_ssd_index(ssd_uuid);
 	PfFlashStore* disk = app_context.trays[i];
 	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
 								   format_string("recovery 0x%llx", rep_id),
-								   [disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size](void*)->RestfulReply*{
-		int rc = disk->recovery_replica(rep_id, from_ip, from , from_ssd_uuid, obj_size);
+								   [disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size, meta_ver](void*)->RestfulReply*{
+		int rc = disk->recovery_replica(rep_id, from_ip, from , from_ssd_uuid, obj_size, (uint16_t)meta_ver);
 		RestfulReply *r = new RestfulReply();
 		if(rc != 0){
 			r->ret_code = rc;

@@ -144,6 +144,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	cmd->offset = t->offset;
 	cmd->length = (uint32_t)t->length;
 	cmd->snap_seq = t->snap_seq;
+	cmd->meta_ver = t->meta_ver;
 
 	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
@@ -220,8 +221,10 @@ void PfReplicator::PfRepConnectionPool::connect_peer(int store_id)
 PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 {
 	auto pos = peers.find(store_id);
-	if(pos == peers.end())
+	if(unlikely(pos == peers.end())) {
+		S5LOG_ERROR("Peer IP for store_id:%d not found", store_id);
 		return NULL;
+	}
 	PeerAddr& addr = pos->second;
 	if(addr.conn != NULL && addr.conn->state == CONN_OK)
 		return addr.conn;
@@ -264,6 +267,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 			iocb->reply_bd = bd;
 			if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) {
 				conn->add_ref(); //for start receive data
+				S5LOG_DEBUG("replicator receive reply ok, to read data %d bytes", iocb->data_bd->data_len);
 				conn->start_recv(iocb->data_bd);
 				return 1;
 			}

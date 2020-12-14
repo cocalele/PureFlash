@@ -34,7 +34,7 @@ int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct socka
 	int rc = getaddrinfo(ipv4, NULL, NULL, &addr);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to getaddrinfo: %s, %s\n", ipv4, gai_strerror(rc));
+		S5LOG_ERROR("Failed to getaddrinfo: %s, %s", ipv4, gai_strerror(rc));
 		return -1;
 	}
 	*ipaddr = *(struct sockaddr_in*)addr->ai_addr;
