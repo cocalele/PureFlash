@@ -122,7 +122,7 @@ public:
 	int dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 
 	void set_snap_seq(int64_t volume_id, int snap_seq);
-	void set_meta_ver(int64_t volume_id, int meta_ver);
+	int set_meta_ver(int64_t volume_id, int meta_ver);
 };
 
 inline void PfServerIocb::dec_ref() {

@@ -104,9 +104,9 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 	{
 		__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
 	} else {
-		if(io_cmd->opcode == S5_OP_RECOVERY_READ) {
-			S5LOG_INFO("Recovery cid:%d complete", io_cmd->command_id);
-		}
+		//if(io_cmd->opcode == S5_OP_RECOVERY_READ) {
+		//	S5LOG_INFO("Recovery cid:%d complete", io_cmd->command_id);
+		//}
 		SubTask *t = (SubTask *) iocb->ulp_arg;
 		t->complete(s);
 	}
@@ -181,7 +181,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
-	S5LOG_DEBUG("Send replicating read request, cid:%d", io->cmd_bd->cmd_bd->command_id);
+	//S5LOG_DEBUG("Send replicating read request, cid:%d", io->cmd_bd->cmd_bd->command_id);
 	return rc;
 }
 
@@ -267,7 +267,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 			iocb->reply_bd = bd;
 			if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) {
 				conn->add_ref(); //for start receive data
-				S5LOG_DEBUG("replicator receive reply ok, to read data %d bytes", iocb->data_bd->data_len);
+				//S5LOG_DEBUG("replicator receive reply ok, to read data %d bytes", iocb->data_bd->data_len);
 				conn->start_recv(iocb->data_bd);
 				return 1;
 			}

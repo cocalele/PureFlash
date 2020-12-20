@@ -124,7 +124,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		reply_io_to_client(iocb);
 		return 0;
 	}
-	S5LOG_DEBUG("dispatch_io, op:%s, volume:%s ", PfOpCode2Str(cmd->opcode), vol->name);
+	//S5LOG_DEBUG("dispatch_io, op:%s, volume:%s ", PfOpCode2Str(cmd->opcode), vol->name);
 	if(unlikely(cmd->snap_seq == SNAP_SEQ_HEAD))
 		cmd->snap_seq = vol->snap_seq;
 
@@ -232,8 +232,8 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 int PfDispatcher::dispatch_complete(SubTask* sub_task)
 {
 	PfServerIocb* iocb = sub_task->parent_iocb;
-	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
-			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
+//	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
+//			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
@@ -301,11 +301,16 @@ void PfDispatcher::set_snap_seq(int64_t volume_id, int snap_seq) {
 	pos->second->snap_seq = snap_seq;
 }
 
-void PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
+int PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
 	auto pos = opened_volumes.find(volume_id);
 	if(pos == opened_volumes.end()){
 		S5LOG_ERROR("Volume:0x%llx not found in dispatcher:%s", volume_id, name);
-		return;
+		return -ENOENT;
+	}
+	if(meta_ver < pos->second->meta_ver){
+		S5LOG_ERROR("Refuse to update voluem:%s meta_ver from:%d to %d", pos->second->name, pos->second->meta_ver, meta_ver);
+		return -EINVAL;
 	}
 	pos->second->meta_ver = meta_ver;
+	return 0;
 }

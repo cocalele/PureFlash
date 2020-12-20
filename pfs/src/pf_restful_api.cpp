@@ -258,12 +258,16 @@ void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm) {
 void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm) {
 	int64_t vol_id = get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
 	int meta_ver = (int)get_http_param_as_int64(&hm->query_string, "meta_ver", 0, true);
+	int failed = 0;
 
 	for(auto d : app_context.disps)
 	{
-		d->sync_invoke([d, vol_id, meta_ver]()->int {d->set_meta_ver(vol_id, meta_ver); return 0;});
+		int rc = d->sync_invoke([d, vol_id, meta_ver]()->int { return d->set_meta_ver(vol_id, meta_ver); });
+		if(rc != 0)
+			failed = rc;
 	}
 	RestfulReply r("set_meta_ver_reply");
+	r.ret_code = failed;
 	send_reply_to_client(r, nc);
 }
 
@@ -429,7 +433,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 }
 
 void handle_query_task(struct mg_connection *nc, struct http_message * hm) {
-	S5LOG_DEBUG("call in handle_query_task");
+	//S5LOG_DEBUG("call in handle_query_task");
 	uint64_t task_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "task_id", 0, true);
 	BackgroundTask *t = app_context.bg_task_mgr.task_map[task_id];
 	BackgroudTaskReply r;

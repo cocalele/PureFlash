@@ -20,7 +20,7 @@ function assert()
 function assert_equal()
 {
     if [ "$1" != "$2" ]; then
-        fatal "Assert fail, $1 != $2"
+        fatal "Assert fail, $1 != $2, $3"
     fi
 }
 function curlex () {
@@ -58,7 +58,7 @@ async_curl() {
 	echo "curl $@"
     rsp=$(curl --write-out '\n%{http_code}\n'  "$@" 2>/dev/null)
 	code=$(echo "$rsp" | tail -n 1)
-	ret=$(echo "$rsp" | head -n 1 | jq -r ".ret_code")
+	ret=$(echo "$rsp" | head -n -1 | jq -r ".ret_code")
 	echo "$rsp, $ret"
 	if [ ! $ret ];then
 		ret=0
@@ -69,21 +69,22 @@ async_curl() {
 	if (( $ret != 0 )); then
 		return 22
 	fi
-	task_id=$(echo "$rsp" | head -n 1 | jq -r ".task_id")
+	task_id=$(echo "$rsp" | head -n -1 | jq -r ".task_id")
 	echo "task_id:$task_id"
-	echo "queue_name:$queue_name"
+
 	while sleep 5 ; do
-		rsp=$(curl --write-out '\n%{http_code}\n'  "http://$(pfcip):49180/pfapi?op=list_job&id=$task_id&queue_name=$queue_name" 2>/dev/null)
+		rsp=$(curl --write-out '\n%{http_code}\n'  "http://$(pfcli get_pfc):49180/s5c/?op=query_task&task_id=$task_id" 2>/dev/null)
 		echo $rsp
-		status=$(echo "$rsp" | head -n 1 | jq -r ".jobs[0].status")
+		status=$(echo "$rsp" | head -n -1 | jq -r ".task.status")
 		echo $status
-		if [ "$status" == "pending" ] ; then
+		if [ "$status" == "WAITING" ] ; then
 			continue
-		elif [ "$status" == "processing" ] ; then
+		elif [ "$status" == "RUNNING" ] ; then
 			continue
-		elif [ "$status" == "failed" ] ; then
+		elif [ "$status" == "FAILED" ] ; then
+		    echo "$rsp" | head -n -1 | jq -r ".reason"
 			return -2
-		elif [ "$status" == "succeeded" ] ; then
+		elif [ "$status" == "SUCCEEDED" ] ; then
 			return 0
 		fi
 	done

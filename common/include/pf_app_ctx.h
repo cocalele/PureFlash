@@ -6,7 +6,7 @@
 #include "pf_mempool.h"
 
 #define MAX_IO_DEPTH 128
-#define MAX_IO_SIZE (64<<10) //max IO
+#define MAX_IO_SIZE (128<<10) //max IO
 
 class BufferDescriptor;
 class PfIoDesc
