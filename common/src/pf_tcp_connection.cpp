@@ -296,7 +296,14 @@ int PfTcpConnection::do_receive()
 			if (unlikely(rc)) {
 				S5LOG_ERROR("Get event from recv_q failed");
 			} else {
-				start_recv((BufferDescriptor *) evt.arg_p);
+				BufferDescriptor* bd = (BufferDescriptor *) evt.arg_p;
+				bd->wr_op = WrOpcode::TCP_WR_RECV;
+				recv_bd = bd;
+				recv_buf = bd->buf;
+				wanted_recv_len = bd->data_len;
+				recved_len = 0;
+
+				//start_recv((BufferDescriptor *) evt.arg_p);
 				continue;
 			}
 		}

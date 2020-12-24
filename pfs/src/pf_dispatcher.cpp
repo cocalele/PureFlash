@@ -25,7 +25,7 @@ int PfDispatcher::init(int disp_index)
 
 int PfDispatcher::prepare_volume(PfVolume* vol)
 {
-
+	assert(vol);
 	auto pos = opened_volumes.find(vol->id);
 	if (pos != opened_volumes.end())
 	{
@@ -45,7 +45,7 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 			PfShard *s=old_v->shards[i];
 			for(int j=0;j<s->rep_count; j++) {
 				if(s->replicas[i]->status == HealthStatus::HS_RECOVERYING && vol->shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
-					vol->shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep reocverying continue
+					vol->shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep recoverying continue
 				}
 			}
 			old_v->shards[i] = vol->shards[i];
@@ -109,18 +109,22 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 {
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
-	PfVolume* vol = opened_volumes[cmd->vol_id];
-	if(unlikely(vol == NULL)){
+	auto pos = opened_volumes.find(cmd->vol_id);
+
+	if(unlikely(pos == opened_volumes.end())){
 		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x not opened", PfOpCode2Str(cmd->opcode), cmd->vol_id);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_STATE;
+		iocb->complete_meta_ver = -1;
 		reply_io_to_client(iocb);
 		return 0;
 	}
+	PfVolume* vol = pos->second;
 	if(unlikely(cmd->meta_ver != vol->meta_ver))
 	{
 		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%x meta_ver:%d diff than client:%d",
 			  PfOpCode2Str(cmd->opcode), cmd->opcode,  cmd->vol_id, vol->meta_ver, cmd->meta_ver);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
+		iocb->complete_meta_ver = vol->meta_ver;
 		reply_io_to_client(iocb);
 		return 0;
 	}
@@ -133,6 +137,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x, offset:%lld exceeds volume size:%lld",
 		            PfOpCode2Str(cmd->opcode), cmd->vol_id, cmd->offset, vol->size);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_FIELD;
+		iocb->complete_meta_ver = vol->meta_ver;
 		reply_io_to_client(iocb);
 		return 0;
 	}

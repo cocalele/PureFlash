@@ -26,7 +26,7 @@ struct SubTask
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	PfMessageStatus complete_status;
 	virtual void complete(PfMessageStatus comp_status);
-	void complete(PfMessageStatus comp_status, int16_t meta_ver);
+	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
 
 	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
 };
@@ -54,6 +54,7 @@ struct RecoverySubTask : public SubTask
 
 	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){}
 	virtual void complete(PfMessageStatus comp_status);
+	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
 };
 struct PfServerIocb
 {
@@ -128,16 +129,24 @@ public:
 inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
 //    	S5LOG_DEBUG("Iocb released:%p", this);
+	    complete_meta_ver=0;
+	    complete_status = MSG_STATUS_SUCCESS;
+	    vol = NULL;
+	    is_timeout = FALSE;
+	    task_mask = 0;
         conn->dispatcher->iocb_pool.free(this);
 	    conn->dec_ref();
+	    conn = NULL;
     }
 }
+
 inline void SubTask::complete(PfMessageStatus comp_status){
     complete_status = comp_status;
     parent_iocb->conn->dispatcher->event_queue.post_event(EVT_IO_COMPLETE, 0, this);
 }
-inline void SubTask::complete(PfMessageStatus comp_status, int16_t meta_ver){
-	parent_iocb->complete_meta_ver = meta_ver;
+inline void SubTask::complete(PfMessageStatus comp_status, uint16_t meta_ver){
+	if(meta_ver > parent_iocb->complete_meta_ver)
+		parent_iocb->complete_meta_ver = meta_ver;
 	complete(comp_status);
 }
 inline void IoSubTask::complete_read_with_zero() {

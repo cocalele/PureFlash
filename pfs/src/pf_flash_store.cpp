@@ -25,6 +25,7 @@
 #include <sys/prctl.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <algorithm>
 
 #include "pf_flash_store.h"
 #include "pf_utils.h"
@@ -770,12 +771,13 @@ int PfFlashStore::load_meta_data()
 			lmt_entry * b = lmt_entry_pool.alloc();
 			b->prev_snap = NULL;
 			b->waiting_io = NULL;
-			tail->prev_snap = b;
-			rc = reader.read_entry(tail->prev_snap);
+			rc = reader.read_entry(b);
 			if (rc) {
 				S5LOG_ERROR("Failed to read entry.");
 				return rc;
 			}
+			tail->prev_snap = b;
+			S5LOG_DEBUG("read entry key:{rep_id:0x%x, slba:%d}, snap:%d phy_off:0x%llx", k.vol_id, k.slba, b->snap_seq, b->offset);
 			if(b->status == EntryStatus::RECOVERYING)
 				b->status = EntryStatus::UNINIT;
 			tail = tail->prev_snap;
@@ -969,12 +971,14 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 	event_queue.post_event(EVT_COW_READ, 0, &r);
 	sem_wait(&r.sem);
 	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
+		S5LOG_ERROR("COW read failed, status:%d", r.complete_status);
 		goto cowfail;
 	}
 
 	event_queue.post_event(EVT_COW_WRITE, 0, &r);
 	sem_wait(&r.sem);
 	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
+		S5LOG_ERROR("COW write failed, status:%d", r.complete_status);
 		goto cowfail;
 	}
 	sync_invoke([key, srcEntry, dstEntry, this]()->int {
@@ -1002,6 +1006,7 @@ cowfail:
 		IoSubTask* t = dstEntry->waiting_io;
 		dstEntry->waiting_io = NULL;
 		while (t) {
+			S5LOG_ERROR("return REOPEN for cowfail, cid:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id);
 			t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
 			t=t->next;
 		}
@@ -1373,6 +1378,10 @@ void RecoverySubTask::complete(PfMessageStatus comp_status)
 	owner_queue->free(this);
 	sem_post(sem);
 }
+void RecoverySubTask::complete(PfMessageStatus comp_status, uint16_t meta_ver)
+{
+	complete(comp_status);
+}
 
 int PfFlashStore::recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset)
 {
@@ -1492,7 +1501,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 		return rc;
 
 	//overwrite pending buffer's content to object
-	rc = this->sync_invoke([this, head, offset]()->int {
+	rc = this->sync_invoke([this, key, head, offset]()->int {
 		lmt_entry* data_entry = head->prev_snap;
 		off_t base_offset = data_entry->offset + offset_in_block(offset, in_obj_offset_mask);
 		for (int i = 0; i < head->recovery_bmp->bit_count; i++) {
@@ -1507,6 +1516,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 			}
 		}
 		data_entry->status  = EntryStatus::NORMAL;
+		obj_lmt[*key] = data_entry;
 		return 0;
 	});
 	return rc;
@@ -1521,6 +1531,14 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 
 	S5LOG_INFO("Begin recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
 			this->tray_name, recov_object_size);
+
+	auto pos = app_context.opened_volumes.find(rep_id.to_volume_id().vol_id);
+	if(pos == app_context.opened_volumes.end()) {
+		S5LOG_ERROR("volume 0x:%llx not opened", rep_id.to_volume_id().vol_id);
+		return -EINVAL;
+	}
+	PfVolume* vol = pos->second;
+
 	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize);
 	if(pendding_buf == NULL) {
 		S5LOG_ERROR("Failed to alloc pending buffer for recovery");
@@ -1549,7 +1567,8 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	ObjectMemoryPool<RecoverySubTask> task_queue;
 	task_queue.init(iodepth);
 
-	int64_t obj_cnt = SHARD_SIZE/recov_object_size;
+	int64_t shard_size = std::min<int64_t>(SHARD_SIZE, vol->size - rep_id.shard_index()*SHARD_SIZE);
+	int64_t obj_cnt = shard_size/recov_object_size;
 	for(int64_t i=0;i<obj_cnt;i++) {//recovery each object (in recov_object_size, not native object size)
 		int64_t offset = ((int64_t)rep_id.shard_index() << SHARD_SIZE_ORDER) + recov_object_size * i;
 		//set local object to recovery state
@@ -1559,6 +1578,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		recovery_head_entry->recovery_bmp->clear();
 		recovery_head_entry->snap_seq=0;
 		recovery_head_entry->status = EntryStatus::RECOVERYING;
+		recovery_head_entry->prev_snap = NULL;
 		this->sync_invoke([this, &key, recovery_head_entry]()->int {
 			auto block_pos = obj_lmt.find(key);
 			if (block_pos == obj_lmt.end()) {
@@ -1794,5 +1814,11 @@ void PfFlashStore::post_load_fix()
 
 void PfFlashStore::post_load_check()
 {
+	//TODO: check duplicate object id
+	//an object should be referenced only once
+	//all entry should in NORMAL or ERROR state, not COW, RECOVERYING
+	//no duplicate snap_seq
+	//snap seq not 0
+	//used obj count + free + trim= total. any object should in one of three state: {used, free, trim}
 	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
 }
