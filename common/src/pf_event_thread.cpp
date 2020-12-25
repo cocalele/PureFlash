@@ -41,7 +41,10 @@ int PfEventThread::start()
 void PfEventThread::stop()
 {
 	event_queue.post_event(EVT_THREAD_EXIT, 0, NULL);
-	pthread_join(tid, NULL);
+	int rc = pthread_join(tid, NULL);
+	if(rc) {
+		S5LOG_ERROR("Failed call pthread_join on thread:%s, rc:%d", name, rc);
+	}
 	tid=0;
 
 }

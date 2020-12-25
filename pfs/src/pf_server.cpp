@@ -142,6 +142,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 				goto release0;
 			}
 			io->add_ref();
+			conn->add_ref();
 			io->conn = conn;
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
@@ -220,12 +221,13 @@ void server_on_conn_close(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%p, %s closed!", conn, conn->connection_info.c_str());
 	conn->dec_ref();
+	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
+	//app_context.ingoing_connections.remove(conn);
+
 }
 void server_on_conn_destroy(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%p, %s destroyed!", conn, conn->connection_info.c_str());
-	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
-	//app_context.ingoing_connections.remove(conn);
 }
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
@@ -240,35 +242,40 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				struct PfServerIocb *iocb = bd->server_iocb;
 				iocb->vol = conn->srv_vol;
 				iocb->data_bd->data_len = bd->cmd_bd->length;
-				if (bd->cmd_bd->opcode == S5_OP_WRITE || bd->cmd_bd->opcode == S5_OP_REPLICATE_WRITE) {
+				if (IS_WRITE_OP(bd->cmd_bd->opcode)) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
 					conn->add_ref();
 					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
 					return 1;
-				} else
+				} else {
+					iocb->received_time = now_time_usec();
 					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+				}
 			}
 			else {
 				//data received
 				PfServerIocb *iocb = bd->server_iocb;
+				iocb->received_time = now_time_usec();
 				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
 		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){
 			//IO complete, start next
 			PfServerIocb *iocb = bd->server_iocb;
-			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
+			if(bd->data_len == sizeof(PfMessageReply) && IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)
+					&& iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS) {
 				//message head sent complete
 				conn->add_ref(); //data_bd reference to connection
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
 				iocb->dec_ref();
-				iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
-				iocb->conn = conn;
-				iocb->add_ref();
+				PfServerIocb *new_iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
+				conn->add_ref();
+				new_iocb->conn = conn;
+				new_iocb->add_ref();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
-				conn->post_recv(iocb->cmd_bd);
+				conn->post_recv(new_iocb->cmd_bd);
 			}
 		}
 		else {
@@ -312,6 +319,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 
 int PfTcpServer::accept_connection()
 {
+	int const1 = 1;
 	sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
 	int rc = 0;
@@ -337,6 +345,11 @@ int PfTcpServer::accept_connection()
 		goto release2;
 	}
 
+	rc = setsockopt(connfd, IPPROTO_TCP, TCP_NODELAY, (char*)&const1, sizeof(int));
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to setsockopt TCP_NODELAY, rc:%d", rc);
+	}
 	conn->state = CONN_INIT;
 
 	bd = new BufferDescriptor();

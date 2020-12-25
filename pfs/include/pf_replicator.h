@@ -6,6 +6,8 @@
 #include "pf_connection_pool.h"
 #include "pf_client_priv.h"
 
+class RecoverySubTask;
+
 class PfReplicator : public PfEventThread
 {
 	class PeerAddr
@@ -28,12 +30,14 @@ class PfReplicator : public PfEventThread
 public:
 	int init(int index);
 	int process_event(int event_type, int arg_i, void* arg_p);
-	int replicate_io(IoSubTask* t);
+	int begin_replicate_io(IoSubTask* t);
+	int begin_recovery_read_io(RecoverySubTask* t);
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}
-	int process_io_complete(BufferDescriptor* bd, int complete_status);
+	int process_io_complete(PfClientIocb* io, int complete_status);
+	int handle_conn_close(PfConnection* c);
 
 	int rep_index;
 

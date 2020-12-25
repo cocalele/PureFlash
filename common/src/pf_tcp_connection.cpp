@@ -288,8 +288,26 @@ int PfTcpConnection::do_receive()
 	int rc = 0;
 
 	do {
-		if (recv_bd == NULL)
-			return 0;
+		if (recv_bd == NULL){
+			if (recv_q.is_empty()) {
+				return 0;
+			}
+			S5Event evt;
+			rc = recv_q.get_event(&evt);
+			if (unlikely(rc)) {
+				S5LOG_ERROR("Get event from recv_q failed");
+			} else {
+				BufferDescriptor* bd = (BufferDescriptor *) evt.arg_p;
+				bd->wr_op = WrOpcode::TCP_WR_RECV;
+				recv_bd = bd;
+				recv_buf = bd->buf;
+				wanted_recv_len = bd->data_len;
+				recved_len = 0;
+
+				//start_recv((BufferDescriptor *) evt.arg_p);
+				continue;
+			}
+		}
 		rc = rcv_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
@@ -314,7 +332,6 @@ int PfTcpConnection::do_receive()
 		}
 	} while (readable);
 	return 0;
-
 }
 
 int PfTcpConnection::send_with_error_handle()
@@ -557,7 +574,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	int error = 0;
 	socklen_t length = sizeof(error);
 	if (getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &error, &length) < 0) {
-		throw runtime_error(format_string("getsockopt fail. erno:%d", errno));
+		throw runtime_error(format_string("getsockopt fail. errno:%d", errno));
 	}
 	if (error != 0)	{
 		throw runtime_error(format_string("socket in error state:%d", error));

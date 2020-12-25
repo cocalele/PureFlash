@@ -15,13 +15,12 @@
 #include "pf_tray.h"
 #include "pf_threadpool.h"
 #include "pf_volume.h"
-
+#include "pf_bitmap.h"
 
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
 #define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
 
-#define OBJ_SIZE_ORDER 24
-#define OBJ_SIZE (1<<OBJ_SIZE_ORDER)
+
 #define S5_VERSION 0x00020000
 #define MAX_AIO_DEPTH 4096
 
@@ -33,7 +32,7 @@ class IoSubTask;
 struct lmt_key
 {
 	uint64_t vol_id;
-	int64_t slba; //align on 4M block
+	int64_t slba; //a lba is 4K. slba should align on block
 	int64_t rsv1;
 	int64_t rsv2;
 };
@@ -43,25 +42,31 @@ enum EntryStatus: uint32_t {
 	NORMAL = 1,
 	COPYING = 2, //COW on going
 	DELAY_DELETE_AFTER_COW = 3,
+	RECOVERYING = 4,
 };
 /**
  * represent a 4M block entry
  */
 struct lmt_entry
 {
-	int64_t offset; //offset of this 4M block in device. in bytes
+	int64_t offset; //offset of this block in device. in bytes
 	uint32_t snap_seq;
 	EntryStatus status; // type EntryStatus
 	lmt_entry* prev_snap;
 	IoSubTask* waiting_io;
 
+	PfBitmap * recovery_bmp;
+	void* recovery_buf;
+
 	void init_for_redo() {
 		//all other variable got value from redo log
 		prev_snap = NULL;
 		waiting_io = NULL;
+		recovery_bmp = NULL;
+		recovery_buf = NULL;
 	}
 };
-static_assert(sizeof(lmt_entry) == 32, "unexpected lmt_entry size");
+static_assert(sizeof(lmt_entry) == 48, "unexpected lmt_entry size");
 
 inline bool operator == (const lmt_key &k1, const lmt_key &k2) { return k1.vol_id == k2.vol_id && k1.slba == k2.slba; }
 
@@ -141,6 +146,10 @@ public:
 	void aio_polling_proc();
 	std::thread aio_poller;
 	void init_aio();
+
+	void trimming_proc();
+	std::thread trimming_thread;
+
 	/**
 	 * read data to buffer.
 	 * a LBA is a block of data 4096 bytes.
@@ -160,7 +169,13 @@ public:
 	int do_write(IoSubTask* io);
 
 	int save_meta_data();
-	void delete_snapshot(shard_id_t replica_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
+	void delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
+	int recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
+					  const std::string& from_ssd_uuid, int64_t object_size, uint16_t meta_ver);
+	int delete_replica(replica_id_t rep_id);
+
+	int get_snap_list(volume_id_t volume_id, int64_t offset, std::vector<int>& snap_list);
+	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 private:
 	ThreadPool cow_thread_pool;
 
@@ -174,11 +189,17 @@ private:
 	 */
 	inline int64_t obj_id_to_offset(int64_t obj_id) { return (obj_id << head.objsize_order) + head.meta_size; }
 	inline int64_t offset_to_obj_id(int64_t offset) { return (offset - head.meta_size) >> head.objsize_order; }
-
 	void begin_cow(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
 	void do_cow_entry(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry);
 	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
-	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
+	int recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset);
+	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
+	void post_load_fix();
+	void post_load_check();
+
+	friend class PfRedoLog;
 };
 
+void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
+                          std::function<void(struct lmt_entry *)> free_func);
 #endif // flash_store_h__

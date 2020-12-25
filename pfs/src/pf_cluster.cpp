@@ -123,7 +123,7 @@ int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL onli
 	return ZOK;
 }
 
-int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity)
+int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t obj_size)
 {
 	char zk_node_name[128];
 	char value_buf[128];
@@ -140,7 +140,11 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 
 
 	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/capacity", store_id, uuid_str);
-	int len = snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
+	snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
+		return rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/object_size", store_id, uuid_str);
+	snprintf(value_buf, sizeof(value_buf), "%ld", obj_size);
 	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
 		return rc;
 	set_tray_state(store_id, uuid, "OK", true);

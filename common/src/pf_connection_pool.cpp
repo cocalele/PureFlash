@@ -5,22 +5,19 @@
 
 using namespace  std;
 
-int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vol_id, int io_depth, work_complete_handler _handler)
+int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vol_id, int io_depth,
+						   work_complete_handler _handler, conn_close_handler close_handler)
 {
 	pool_size = size;
 	this->poller = poller;
 	this->owner = owner;
 	this->io_depth = io_depth;
 	on_work_complete = _handler;
+	on_conn_closed = close_handler;
 	this->vol_id = vol_id;
 	return 0;
 }
 
-void client_on_tcp_close(PfConnection* c)
-{
-	//c->dec_ref(); //will not dec_ref for client connection. only dec_ref when connection removed from pool
-
-}
 
 PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
 {
@@ -42,7 +39,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
 		                                                        4/*connection timeout*/);
 		c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
 		c->on_work_complete = on_work_complete;
-		c->on_close = client_on_tcp_close;
+		c->on_close = on_conn_closed;
 		c->master = this->owner;
 		ip_id_map[ip] = c;
 		return c;

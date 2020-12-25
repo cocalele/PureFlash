@@ -25,6 +25,13 @@ class PfConnection
 public:
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
+
+	union {
+		PfClientVolume* volume; //used in client side
+		PfVolume* srv_vol; //used in server side
+		PfReplicator* replicator;
+		void* master;
+	};
     PfDispatcher* dispatcher;
 	int state;
 	int transport;
@@ -34,17 +41,8 @@ public:
 	std::string peer_ip;
 	int peer_port;
 	int inflying_heartbeat;
+	bool unclean_closed = false;
 
-	BufferPool cmd_pool;
-	BufferPool data_pool;
-	BufferPool reply_pool;
-
-	union {
-		PfClientVolume* volume; //used in client side
-		PfVolume* srv_vol; //used in server side
-		PfReplicator* replicator;
-		void* master;
-	};
 	PfConnection();
 	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
@@ -58,10 +56,13 @@ public:
 	void (*on_close)(PfConnection*);
 	void (*on_destroy)(PfConnection*);
 
-	inline void add_ref() {__sync_fetch_and_add(&ref_count, 1);}
+	inline void add_ref() {__sync_fetch_and_add(&ref_count, 1);
+	//S5LOG_INFO("add_ref conn:0x%x ref_cnt:%d", this, ref_count);
+	}
 	inline void dec_ref() {
 		if (__sync_sub_and_fetch(&ref_count, 1) == 0)
 		{
+			//S5LOG_INFO("dec_ref conn:0x%x ref_cnt:%d", this, ref_count);
 			if (state == CONN_OK)
 			{
 				close();
@@ -70,12 +71,8 @@ public:
 				on_destroy(this);
 			delete this;
 		}
-
 	}
-
-	int init_mempools();
 };
 
 int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr);
-
 #endif // pf_connection_h__

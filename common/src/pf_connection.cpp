@@ -12,9 +12,6 @@ PfConnection::PfConnection():ref_count(0),state(0),on_destroy(NULL)
 
 PfConnection::~PfConnection()
 {
-	cmd_pool.destroy();
-	data_pool.destroy();
-	reply_pool.destroy();
 }
 
 int PfConnection::close()
@@ -24,34 +21,11 @@ int PfConnection::close()
 		return 0;//connection already closed
 	}
 
-	//S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
+	S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
 	do_close();
 	if(on_close)
 		on_close(this);
 	return 0;
-}
-
-int PfConnection::init_mempools()
-{
-	int rc = 0;
-	if (io_depth <= 0 || io_depth > MAX_IO_DEPTH)
-		return -EINVAL;
-	rc = cmd_pool.init(sizeof(PfMessageHead), io_depth * 2);
-	if (rc)
-		goto release1;
-	rc = data_pool.init(MAX_IO_SIZE, io_depth * 2);
-	if (rc)
-		goto release2;
-	rc = reply_pool.init(sizeof(PfMessageReply), io_depth * 2);
-	if (rc)
-		goto release3;
-	return rc;
-release3:
-	data_pool.destroy();
-release2:
-	cmd_pool.destroy();
-release1:
-	return rc;
 }
 
 int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct sockaddr_in* ipaddr)
@@ -60,7 +34,7 @@ int parse_net_address(const char* ipv4, unsigned short port, /*out*/struct socka
 	int rc = getaddrinfo(ipv4, NULL, NULL, &addr);
 	if (rc)
 	{
-		S5LOG_ERROR("Failed to getaddrinfo: %s, %s\n", ipv4, gai_strerror(rc));
+		S5LOG_ERROR("Failed to getaddrinfo: %s, %s", ipv4, gai_strerror(rc));
 		return -1;
 	}
 	*ipaddr = *(struct sockaddr_in*)addr->ai_addr;

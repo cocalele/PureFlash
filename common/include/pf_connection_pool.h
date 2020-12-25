@@ -8,11 +8,12 @@
 class PfConnection;
 class PfPoller;
 
+typedef void (*conn_close_handler)(PfConnection*);
 class PfConnectionPool
 {
 public:
 	PfConnectionPool() : pool_size(0){ }
-	int init(int size, PfPoller* poller, void* owner, uint64_t vol_id, int io_depth, work_complete_handler _handler);
+	int init(int size, PfPoller* poller, void* owner, uint64_t vol_id, int io_depth, work_complete_handler _handler, conn_close_handler close_handler);
 	PfConnection* get_conn(const std::string& ip) noexcept ;
 	void close_all();
 public:
@@ -28,6 +29,7 @@ public:
 	};
 	uint64_t vol_id;
 	work_complete_handler on_work_complete;
+	conn_close_handler  on_conn_closed;
 };
 
 #endif // pf_connection_pool_h__

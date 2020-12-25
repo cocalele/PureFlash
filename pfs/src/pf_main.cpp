@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 	S5LOG_INFO("====     (  V  ) PureFlash (  V  )          ====");
 	S5LOG_INFO("====     --m-m---------------m-m--          ====");
 	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
-	std::set_terminate(unexpected_exit_handler);
+	//std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
 	while(opt_error_code() == 0 && opt_has_next())
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
 		{
 			app_context.trays.push_back(s);
 		}
-		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity);
+		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		s->start();
 	}
 	for (i = 0; i < MAX_PORT_COUNT; i++)
@@ -225,6 +225,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	app_context.error_handler = new PfErrorHandler();
+	if(app_context.error_handler == NULL) {
+		S5LOG_FATAL("Failed to alloc error_handler");
+	}
+
 	app_context.tcp_server=new PfTcpServer();
 	rc = app_context.tcp_server->init();
 	if(rc)
@@ -262,10 +267,15 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 	return -1;
 }
 
-PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE)
+PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE), recovery_buf_pool(RECOVERY_IO_SIZE)
 {
+	int rc;
 	pthread_mutex_init(&lock, NULL);
-	error_handler = new PfErrorHandler();
+	rc = recovery_io_bd_pool.init(RECOVERY_IO_SIZE, 512);
+	if(rc) {
+		S5LOG_FATAL("Failed to init recovery_buf_pool");
+	}
+
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)

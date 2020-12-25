@@ -19,17 +19,23 @@
 
 #define MAX_NAME_LEN 96	///< max length of name used in s5 modules.
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
+#define _WRITE_OP_ 0x01
+#define _READ_OP_ 0x02
+#define _NODATA_OP_ 0x03
+#define IS_WRITE_OP(op) ((op & 0x03) == _WRITE_OP_)
+#define IS_READ_OP(op) ((op & 0x03) == _READ_OP_)
 
 enum PfOpCode : uint8_t {
-    S5_OP_WRITE = 0X01,
-    S5_OP_READ  = 0X02,
-    S5_OP_REPLICATE_WRITE = 0X81,
-    S5_OP_COW_READ = 0X82,
-    S5_OP_COW_WRITE = 0X83,
-    S5_OP_RECOVERY_READ = 0X84,
-    S5_OP_RECOVERY_WRITE = 0X85,
-    S5_OP_HEARTBEAT = 0X86,
+    S5_OP_WRITE = _WRITE_OP_,
+    S5_OP_READ  = _READ_OP_,
+    S5_OP_REPLICATE_WRITE = 0X11,
+    S5_OP_COW_READ = 0X22,
+    S5_OP_COW_WRITE = 0X21,
+    S5_OP_RECOVERY_READ = 0X32,
+    S5_OP_RECOVERY_WRITE = 0X31,
+    S5_OP_HEARTBEAT = 0X13,
 };
+
 const char* PfOpCode2Str(PfOpCode op);
 
 enum PfMessageStatus : uint16_t{
@@ -60,6 +66,7 @@ enum PfMessageStatus : uint16_t{
 	MSG_STATUS_RECOVERY_FAILED = 0xCC,
 	MSG_STATUS_SSD_ERROR = 0xCD,
 	MSG_STATUS_REP_TO_PRIMARY = 0xCE, //replicating write to primary node
+	MSG_STATUS_NO_RESOURCE = 0xCF, //no memory or other resource
 
 	MSG_STATUS_DEGRADE = 0x2000,
 	MSG_STATUS_REOPEN = 0x4000,

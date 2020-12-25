@@ -62,6 +62,9 @@ const char* PfMessageStatus2Str(PfMessageStatus msg_st)
 		C_NAME(MSG_STATUS_RECOVERY_FAILED)
 		C_NAME(MSG_STATUS_SSD_ERROR)
 		C_NAME(MSG_STATUS_REP_TO_PRIMARY)
+		C_NAME(MSG_STATUS_NO_RESOURCE)
+		C_NAME(MSG_STATUS_DEGRADE)
+		C_NAME(MSG_STATUS_REOPEN)
 		default:
 			sprintf(buf, "Unknown status:%d", msg_st);
 			return buf;

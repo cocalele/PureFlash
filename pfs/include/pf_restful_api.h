@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <stdint.h>
+#include <nlohmann/json.hpp>
+#include <pf_message.h>
 
 class ReplicaArg
 {
@@ -54,10 +56,38 @@ public:
 
 	RestfulReply();
 	RestfulReply(std::string op, int ret_code=RestfulReply::OK, const char* reason="");
-
-
-
 };
+void from_json(const nlohmann::json& j, RestfulReply& p);
+
+class GetSnapListReply : public RestfulReply {
+public:
+	std::vector<int> snap_list;
+};
+void from_json(const nlohmann::json& j, GetSnapListReply& p);
+
+class BackgroudTaskReply : public RestfulReply {
+public:
+	int64_t task_id;
+	std::string status; //WAITING, RUNNING, SUCCEEDED, FAILED
+	int progress;
+
+	BackgroudTaskReply():task_id(0), progress(0){ }
+};
+class ErrorReportReply : public RestfulReply {
+public:
+	PfMessageStatus action_code;
+	uint16_t meta_ver;
+};
+
+
+void from_json(const nlohmann::json& j, RestfulReply& p) ;
+void from_json(const nlohmann::json& j, ReplicaArg& p);
+void from_json(const nlohmann::json& j, ShardArg& p);
+void from_json(const nlohmann::json& j, PrepareVolumeArg& p);
+void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
+void to_json(nlohmann::json& j, const RestfulReply& r);
+void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
+void from_json(const nlohmann::json& j, ErrorReportReply& p);
 
 struct mg_connection;
 struct http_message;
@@ -70,4 +100,11 @@ void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm);
 void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm);
 void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm);
+void handle_begin_recovery(struct mg_connection *nc, struct http_message * hm);
+void handle_end_recovery(struct mg_connection *nc, struct http_message *hm);
+void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm);
+void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm);
+void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
+void handle_query_task(struct mg_connection *nc, struct http_message * hm);
+void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 #endif // pf_restful_api_h__
