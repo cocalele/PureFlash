@@ -46,6 +46,8 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 				handle_delete_replica(nc, hm);
 			else if (strcmp(opcode, "query_task") == 0)
 				handle_query_task(nc, hm);
+			else if (strcmp(opcode, "calculate_replica_md5") == 0)
+				handle_cal_replica_md5(nc, hm);
 			else {
 				S5LOG_ERROR("Unknown op:%s", opcode);
 				string cstr = format_string("Unknown op:%s", opcode);

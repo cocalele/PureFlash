@@ -8,3 +8,6 @@
 [submodule "pfs/nlohmann_json"]
 	path = pfs/nlohmann_json
 	url = https://gitee.com/cocalele/json.git 
+[submodule "thirdParty/isa-l_crypto"]
+	path = thirdParty/isa-l_crypto
+	url = https://gitee.com/mirrors/isa-l_crypto.git
