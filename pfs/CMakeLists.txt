@@ -47,7 +47,7 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 # include(...) for pulling in other CMake projects anyways.
 add_subdirectory(nlohmann_json)
 
-INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include)
+INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include ${THIRDPARTY}/isa-l_crypto)
 
 set (S5AFS_SRC 
 	src/pf_cluster.cpp
@@ -65,7 +65,7 @@ set (S5AFS_SRC
 	src/pf_volume.cpp
 	src/pf_error_handler.cpp
 	src/pf_replicator.cpp
-		src/pf_bitmap.cpp include/pf_bitmap.h src/pf_bgtask_manager.cpp)
+		src/pf_bitmap.cpp include/pf_bitmap.h src/pf_bgtask_manager.cpp src/pf_scrub.cpp include/pf_scrub.h)
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c
         include/pf_threadpool.h)
@@ -77,7 +77,7 @@ link_directories(${CMAKE_BINARY_DIR}/bin)
 add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
-TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json aio curl ${GCOV})
+TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json aio curl ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a ${GCOV})
 
 add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so

@@ -45,7 +45,7 @@ struct replica_id_t {
 	inline __attribute__((always_inline)) uint32_t shard_index() const { return SHARD_INDEX(rep_id); }
 	inline __attribute__((always_inline)) uint32_t replica_index() const { return REPLICA_INDEX(rep_id); }
 
-	inline __attribute__((always_inline))  replica_id_t(uint64_t id) : rep_id(id){}
+	inline __attribute__((always_inline)) explicit  replica_id_t(uint64_t id) : rep_id(id){}
 };
 #define int64_to_replica_id(x) ((replica_id_t) { (uint64_t)(x) })
 

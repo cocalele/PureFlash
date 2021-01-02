@@ -9,6 +9,7 @@
 #include "pf_volume.h"
 #include "pf_main.h"
 #include "pf_replica.h"
+#include "pf_scrub.h"
 
 using nlohmann::json;
 using namespace std;
@@ -83,6 +84,14 @@ void from_json(const json& j, ErrorReportReply& p) {
 	j.at("action_code").get_to(p.action_code);
 	j.at("meta_ver").get_to(p.meta_ver);
 }
+void to_json(nlohmann::json& j, const CalcMd5Reply& r)
+{
+	j = json{{"ret_code", r.ret_code},
+	         {"reason",   r.reason},
+	         {"op",       r.op},
+	         {"md5",      r.md5},
+	};
+}
 
 template <typename R>
 void send_reply_to_client(R& r, struct mg_connection *nc) {
@@ -90,7 +99,7 @@ void send_reply_to_client(R& r, struct mg_connection *nc) {
 	json jr = r;
 	string jstr = jr.dump();
 	const char* cstr = jstr.c_str();
-	mg_send_head(nc, 200, strlen(cstr), "Content-Type: text/plain");
+	mg_send_head(nc, r.ret_code == 0 ? 200 : 400, strlen(cstr), "Content-Type: text/plain");
 	mg_printf(nc, "%s", cstr);
 }
 
@@ -357,7 +366,7 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
 								   format_string("recovery 0x%llx", rep_id),
 								   [disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size, meta_ver](void*)->RestfulReply*{
-		int rc = disk->recovery_replica(rep_id, from_ip, from , from_ssd_uuid, obj_size, (uint16_t)meta_ver);
+		int rc = disk->recovery_replica(replica_id_t(rep_id), from_ip, from , from_ssd_uuid, obj_size, (uint16_t)meta_ver);
 		RestfulReply *r = new RestfulReply();
 		if(rc != 0){
 			r->ret_code = rc;
@@ -448,4 +457,23 @@ void handle_query_task(struct mg_connection *nc, struct http_message * hm) {
 		r.status = TaskStatusToStr(t->status);
 	}
 	send_reply_to_client(r, nc);
+}
+
+void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm) {
+	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	CalcMd5Reply reply;
+	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for cal_replica_md5", ssd_uuid.c_str());
+		reply.ret_code = -ENOENT;
+		reply.reason = "disk not found";
+		send_reply_to_client(reply, nc);
+		return;
+	}
+
+	PfFlashStore* disk = app_context.trays[i];
+	Scrub scrub;
+	reply.md5 = scrub.cal_replica(disk, int64_to_replica_id(rep_id));
+	send_reply_to_client(reply, nc);
 }

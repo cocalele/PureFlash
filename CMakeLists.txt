@@ -45,8 +45,17 @@ macro(use_cxx11)
         set (CMAKE_CXX_STANDARD 11)
     endif ()
 endmacro(use_cxx11)
+macro(USE_ISA_L)
+	execute_process(COMMAND ./autogen.sh
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+	execute_process(COMMAND ./configure
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+	execute_process(COMMAND make -j 4
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+endmacro(USE_ISA_L)
 
 USE_ZOOKEEPER()
+USE_ISA_L()
 add_compile_options (-fdiagnostics-color=always)
 add_subdirectory(${ZOOKEEPER_SOURCE})
 

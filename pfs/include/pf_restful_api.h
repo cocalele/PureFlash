@@ -78,7 +78,13 @@ public:
 	PfMessageStatus action_code;
 	uint16_t meta_ver;
 };
+class CalcMd5Reply : public RestfulReply {
+public:
+	CalcMd5Reply() : RestfulReply("calculate_replica_md5_reply"){
 
+	};
+	std::string md5;
+};
 
 void from_json(const nlohmann::json& j, RestfulReply& p) ;
 void from_json(const nlohmann::json& j, ReplicaArg& p);
@@ -88,6 +94,7 @@ void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
 void to_json(nlohmann::json& j, const RestfulReply& r);
 void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
 void from_json(const nlohmann::json& j, ErrorReportReply& p);
+void to_json(nlohmann::json& j, const CalcMd5Reply& r);
 
 struct mg_connection;
 struct http_message;
@@ -107,4 +114,5 @@ void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
 void handle_query_task(struct mg_connection *nc, struct http_message * hm);
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
+void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
 #endif // pf_restful_api_h__
