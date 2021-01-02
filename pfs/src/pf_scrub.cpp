@@ -75,7 +75,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 		}
 		HASH_CTX_FLAG hash_falg = HASH_UPDATE;
 		if(obj_idx == 0)
-			HASH_CTX_FLAG hash_falg = HASH_UPDATE;
+			hash_falg = HASH_FIRST;
 		for(int64_t read_idx = 0; read_idx < s->head.objsize/read_size; read_idx ++){
 			size_t r = pread(s->fd, read_buf, read_size, obj_offset+read_idx*read_size);
 			if(r !=  read_size){
@@ -92,12 +92,14 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 		}
 	}
 	while (CTX_MGR_FLUSH(mgr));
-	char rst[sizeof(ctxpool[0].job.result_digest) * PARALLEL_NUM * 2+4];//extra 4 bytes, only 1 used for \0
+	char rst[sizeof(ctxpool[0].job.result_digest) * PARALLEL_NUM * 2 + 4];//extra 4 bytes, only 1 used for \0
 	for (int i = 0; i < PARALLEL_NUM; i++)
 	{
 		for(int j=0;j<sizeof(ctxpool[i].job.result_digest);j++) {
 			sprintf(rst + i*sizeof(ctxpool[i].job.result_digest) + j*2, "%02x", *(((char*)&ctxpool[i].job.result_digest) + j));
 		}
 	}
+	rst[sizeof(ctxpool[0].job.result_digest) * PARALLEL_NUM * 2] = 0;
+	S5LOG_INFO("Calculate md5 for replica:0x%llx, %s", rep_id.val(), rst);
 	return rst;
 }
