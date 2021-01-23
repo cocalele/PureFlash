@@ -153,7 +153,7 @@ struct io_waiter
 	int rc;
 };
 
-void io_cbk(int complete_status, void* cbk_arg)
+void io_cbk(void* cbk_arg, int complete_status)
 {
 	struct io_waiter* w = (struct io_waiter*)cbk_arg;
 	w->rc = complete_status;
@@ -211,8 +211,7 @@ int main(int argc, char* argv[])
 	}
 	try {
 		auto result = options.parse(argc, argv);
-		if (result.count("help"))
-		{
+		if (result.count("help")) {
 			std::cout << options.help() << std::endl;
 			exit(0);
 		}

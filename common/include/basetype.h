@@ -25,6 +25,5 @@ typedef unsigned int BOOL;
 #define LBA_LENGTH_ORDER 12
 #define SECTOR_SIZE 512 //this is linux standarded
 
-#define S5_MAX_IO_SIZE (16<<10)
 #endif //__BASE_TYPE_H__
 

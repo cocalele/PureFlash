@@ -37,7 +37,7 @@ int init_cluster(const char* zk_ip_port, const char* cluster_name)
  *
  *
  */
-static int zk_update(const char* node, const char* value, int val_len)
+static int zk_update(const char* node, const char* value, int val_len) //NOTE: keep this unused function help compile OK
 {
 	int rc = zoo_create(app_context.zk_client.zkhandle, node, NULL, -1, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 	if (rc != ZOK && rc != ZNODEEXISTS)

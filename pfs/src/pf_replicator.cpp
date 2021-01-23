@@ -32,7 +32,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	io->data_bd->cbk_data = io;
 	io->ulp_arg = t;
 	cmd->opcode = t->opcode;
-	cmd->buf_addr = (__le64) io->data_bd->buf;
+	//cmd->buf_addr = (__le64) io->data_bd->buf;
 
 	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
@@ -138,7 +138,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	io->data_bd->cbk_data = io;
 	io->ulp_arg = t;
 	cmd->opcode = t->opcode;
-	cmd->buf_addr = (__le64) io->data_bd->buf;
+	//cmd->buf_addr = (__le64) io->data_bd->buf;
 	cmd->vol_id = t->volume_id;
 	cmd->rkey = 0;
 	cmd->offset = t->offset;

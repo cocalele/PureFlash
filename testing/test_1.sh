@@ -7,10 +7,11 @@ COND_IP=$(pfcli get_pfc)
 read DB_IP DB_NAME DB_USER DB_PASS <<< $(assert pfcli get_conn_str)
 export DB_IP DB_NAME DB_USER DB_PASS
 
-curlex "http://$COND_IP:49180/s5c/?op=delete_volume&name=$VOL1"
+curlex "http://$COND_IP:49180/s5c/?op=delete_volume&volume_name=$VOL1"
+sleep 1
 
 info "Creating volume $VOL1"
-assert curlex "http://$COND_IP:49180/s5c/?op=create_volume&name=$VOL1&size=$((5<<30))&rep_cnt=3"
+assert curlex "http://$COND_IP:49180/s5c/?op=create_volume&volume_name=$VOL1&size=$((5<<30))&rep_cnt=3"
 
 count1=$( get_obj_count $VOL1 )
 SNAP1_FILE=${VOL1}_snap1.dat

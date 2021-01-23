@@ -124,7 +124,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%x meta_ver:%d diff than client:%d",
 			  PfOpCode2Str(cmd->opcode), cmd->opcode,  cmd->vol_id, vol->meta_ver, cmd->meta_ver);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
-		iocb->complete_meta_ver = vol->meta_ver;
+		iocb->complete_meta_ver = (uint16_t)vol->meta_ver;
 		reply_io_to_client(iocb);
 		return 0;
 	}
@@ -137,7 +137,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x, offset:%lld exceeds volume size:%lld",
 		            PfOpCode2Str(cmd->opcode), cmd->vol_id, cmd->offset, vol->size);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_FIELD;
-		iocb->complete_meta_ver = vol->meta_ver;
+		iocb->complete_meta_ver = (uint16_t)vol->meta_ver;
 		reply_io_to_client(iocb);
 		return 0;
 	}
@@ -255,7 +255,7 @@ int PfDispatcher::init_mempools()
 	rc = cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
 	if (rc)
 		goto release1;
-	rc = data_pool.init(MAX_IO_SIZE, pool_size * 2);
+	rc = data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;
 	rc = reply_pool.init(sizeof(PfMessageReply), pool_size * 2);

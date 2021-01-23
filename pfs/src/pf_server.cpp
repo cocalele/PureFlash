@@ -172,10 +172,10 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	S5LOG_INFO("Receive handshake for conn:%s, io_depth:%d", conn->connection_info.c_str(), hs_msg->hsqsize);
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
-	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
+	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
 	{
-		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, MAX_IO_DEPTH);
-		hs_msg->hsqsize=MAX_IO_DEPTH;
+		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, PF_MAX_IO_DEPTH);
+		hs_msg->hsqsize=PF_MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
@@ -338,7 +338,7 @@ int PfTcpServer::accept_connection()
 		S5LOG_ERROR("Failed to alloc PfTcpConnection");
 		goto release1;
 	}
-	rc = conn->init(connfd, get_best_poller(), MAX_IO_DEPTH, MAX_IO_DEPTH*2); //recv_q is double of send_q, to avoid RNR error
+	rc = conn->init(connfd, get_best_poller(), PF_MAX_IO_DEPTH, PF_MAX_IO_DEPTH * 2); //recv_q is double of send_q, to avoid RNR error
 	if(rc)
 	{
 		S5LOG_ERROR("Failed to int PfTcpConnection, rc:%d", rc);

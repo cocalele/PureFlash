@@ -362,6 +362,13 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 	BackgroudTaskReply r;
 	r.op="recovery_replica_reply";
 	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for handle_get_snap_list", ssd_uuid.c_str());
+		r.ret_code = -ENOENT;
+		r.reason = "disk not found";
+		send_reply_to_client(r, nc);
+		return;
+	}
 	PfFlashStore* disk = app_context.trays[i];
 	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
 								   format_string("recovery 0x%llx", rep_id),
@@ -392,6 +399,12 @@ void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
 	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for handle_clean_disk", ssd_uuid.c_str());
+		mg_send_head(nc, 400, 5, "Content-Type: text/plain");
+		mg_printf(nc, "ERROR");
+		return;
+	}
 	PfFlashStore* disk = app_context.trays[i];
 	S5LOG_WARN("Clean disk:%s", disk->tray_name);
 	disk->sync_invoke([disk]()->int{
@@ -416,8 +429,15 @@ void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
 	uint64_t offset = (uint64_t)get_http_param_as_int64(&hm->query_string, "offset", 0, true);
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
-	int i = app_context.get_ssd_index(ssd_uuid);
 	GetSnapListReply reply;
+	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for handle_get_snap_list", ssd_uuid.c_str());
+		reply.ret_code = -ENOENT;
+		reply.reason = "disk not found";
+		send_reply_to_client(reply, nc);
+		return;
+	}
 	reply.op = "get_snap_list_reply";
 	PfFlashStore* disk = app_context.trays[i];
 	int rc = disk->sync_invoke([disk, vol_id, offset, &reply]()->int{
@@ -430,8 +450,15 @@ void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
-	int i = app_context.get_ssd_index(ssd_uuid);
 	RestfulReply reply("delete_replica_reply");
+	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for handle_delete_replica", ssd_uuid.c_str());
+		reply.ret_code = -ENOENT;
+		reply.reason = "disk not found";
+		send_reply_to_client(reply, nc);
+		return;
+	}
 	PfFlashStore* disk = app_context.trays[i];
 	int rc = disk->sync_invoke([disk, rep_id]()->int{
 		return disk->delete_replica(replica_id_t(rep_id));

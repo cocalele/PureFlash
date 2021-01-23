@@ -11,7 +11,7 @@ function assert()
 {
     local cmd=$*
     echo "Run:$cmd" > /dev/stderr
-    eval ${cmd}
+    eval '${cmd}'
     if [ $? -ne 0 ]; then
         fatal "Failed to run:$cmd"
     fi
@@ -40,6 +40,8 @@ function curlex () {
         return 0
     fi
 }
+
+
 function query_db () {
     mysql -h$DB_IP -u$DB_USER -p$DB_PASS $DB_NAME -B --disable-column-names -e "$*"
 }

@@ -1591,6 +1591,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				recovery_head_entry->prev_snap = block_pos->second;
 				block_pos->second = recovery_head_entry;
 			}
+			return 0;
 		});
 
 
@@ -1680,7 +1681,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 					sem_post(&recov_sem);
 					break;
 				}
-				bd->data_len = read_bs;
+				bd->data_len = (int)read_bs;
 				t->recovery_bd = bd;
 				t->volume_id = rep_id.to_volume_id().vol_id;
 				t->offset = offset;

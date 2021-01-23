@@ -98,7 +98,8 @@ struct PfMessageHead
 	uint16_t                  command_id;
 	uint32_t                  snap_seq;
 	uint64_t                  vol_id;
-	uint64_t                  buf_addr;
+	//uint64_t                  buf_addr;
+	uint64_t                  rsv5;
 	uint32_t                  rkey;
 	uint16_t                  meta_ver;
 	uint16_t                  rsv4;

@@ -30,7 +30,7 @@
 
 using namespace std;
 using nlohmann::json;
-
+size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *buf, size_t bytes);
 
 static const char* pf_lib_ver = "S5 client version:0x00010000";
 
@@ -217,7 +217,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			PfClientIocb* iocb = bd->client_iocb;
 			conn->add_ref(); //for start send data
 			iocb->data_bd->conn = conn;
-			conn->start_send(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
+			conn->start_send(iocb->data_bd); //on client side, use use's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
 			//assert(bd->reply_bd->command_id<32);
@@ -236,7 +236,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->add_ref(); //for start recv data
 				iocb->data_bd->conn = conn;
 				//S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
-				conn->start_recv(iocb->data_bd, iocb->user_buf); //on client side, use use's buffer
+				conn->start_recv(iocb->data_bd); //on client side, use use's buffer
 				return 1;
 			}
 		}
@@ -311,7 +311,7 @@ int PfClientVolume::do_open(bool reopen)
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
 	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done, client_on_tcp_close);
-	rc = data_pool.init(S5_MAX_IO_SIZE, io_depth);
+	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
 		return rc;
@@ -589,8 +589,14 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 	        io->sent_time=0;
 	        io->conn->dec_ref();
 	        io->conn=NULL;
+	        if(io->cmd_bd->cmd_bd->opcode == S5_OP_READ)  {
+	        	if(io->user_iov_cnt)
+					iov_from_buf(io->user_iov, io->user_iov_cnt, io->data_bd->buf, io->data_bd->data_len);
+		        else
+		        	memcpy(io->user_buf, io->data_bd->buf, io->data_bd->data_len);
+	        }
 			free_iocb(io);
-			h(s, arg);
+			h(arg, s);
 
     }
     else if(wr_bd->wr_op != TCP_WR_SEND)
@@ -667,7 +673,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 
 		if (conn == NULL)
 		{
-			io->ulp_handler(-EIO, io->ulp_arg);
+			io->ulp_handler(io->ulp_arg, -EIO);
 			S5LOG_ERROR("conn == NULL ,command id:%d task_sequence:%d, io_cmd :%d", io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
 			iocb_pool.free(io);
 			break;
@@ -678,7 +684,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		if(unlikely(rbd == NULL))
 		{
 			S5LOG_ERROR("No reply bd available to do io now, requeue IO");
-			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			io->ulp_handler(io->ulp_arg, -EAGAIN);
 			iocb_pool.free(io);
 			break;
 		}
@@ -691,16 +697,15 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		{
 			S5LOG_ERROR("Failed to post_recv for reply");
 			reply_pool.free(rbd);
-			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			io->ulp_handler(io->ulp_arg, -EAGAIN);
 			iocb_pool.free(io);
 			break;
 		}
 		rc = conn->post_send(cmd_bd);
-		if (rc)
-		{
+		if (rc)	{
 			S5LOG_ERROR("Failed to post_send for cmd");
 			//reply_pool.free(rbd); //not reclaim rbd, since this bd has in connection's receive queue
-			io->ulp_handler(-EAGAIN, io->ulp_arg);
+			io->ulp_handler(io->ulp_arg, -EAGAIN);
 			iocb_pool.free(io);
 			break;
 		}
@@ -875,6 +880,85 @@ void PfClientVolume::close() {
 //		delete volume->shards[i];
 //	}
 }
+static inline size_t
+iov_to_buf(const struct iovec *iov, const unsigned int iov_cnt, void *buf, size_t bytes)
+{
+	size_t done;
+	size_t offset = 0;
+	unsigned int i;
+	for (i = 0, done = 0; (offset || done < bytes) && i < iov_cnt; i++) {
+		if (offset < iov[i].iov_len) {
+			size_t len = std::min(iov[i].iov_len - offset, bytes - done);
+			memcpy((char*)buf + done, (char*)iov[i].iov_base + offset, len);
+			done += len;
+			offset = 0;
+		} else {
+			offset -= iov[i].iov_len;
+		}
+	}
+	assert(offset == 0);
+	return done;
+}
+size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *buf, size_t bytes)
+{
+	size_t done;
+	size_t offset = 0;
+	unsigned int i;
+	for (i = 0, done = 0; (offset || done < bytes) && i < iov_cnt; i++) {
+		if (offset < iov[i].iov_len) {
+			size_t len = std::min(iov[i].iov_len - offset, bytes - done);
+			memcpy((char*)iov[i].iov_base + offset, (char*)buf + done, len);
+			done += len;
+			offset = 0;
+		} else {
+			offset -= iov[i].iov_len;
+		}
+	}
+	assert(offset == 0);
+	return done;
+}
+
+int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
+                 ulp_io_handler callback, void* cbk_arg, int is_write) {
+	// Check request params
+	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
+		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
+		return -EIO;
+	}
+	if(unlikely(length > PF_MAX_IO_SIZE)){
+		S5LOG_ERROR("IO size:%l exceed max:%l", length, PF_MAX_IO_SIZE);
+		return -EIO;
+	}
+
+	auto io = volume->iocb_pool.alloc();
+	if (io == NULL)
+		return -EAGAIN;
+	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
+	//assert(io->data_bd->client_iocb != NULL);
+
+	io->ulp_handler = callback;
+	io->ulp_arg = cbk_arg;
+
+	struct PfMessageHead *cmd = io->cmd_bd->cmd_bd;
+	io->submit_time = now_time_usec();
+	io->user_iov = iov;
+	io->user_iov_cnt = iov_cnt;
+	io->data_bd->data_len = (int)length;
+	cmd->opcode = is_write ? S5_OP_WRITE : S5_OP_READ;
+	if(is_write){
+		iov_to_buf(iov, iov_cnt, io->data_bd->buf, length);
+	}
+	cmd->vol_id = volume->volume_id;
+	//cmd->buf_addr = (__le64) buf;
+	cmd->rkey = 0;
+	cmd->offset = offset;
+	cmd->length = (uint32_t)length;
+	cmd->snap_seq = volume->snap_seq;
+	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io);
+	if (rc)
+		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
+	return rc;
+}
 
 int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
@@ -896,10 +980,12 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	struct PfMessageHead *cmd = io->cmd_bd->cmd_bd;
 	io->submit_time = now_time_usec();
 	io->user_buf = buf;
+	io->user_iov_cnt = 0;
+	memcpy(io->data_bd->buf, buf, length);
 	io->data_bd->data_len = (int)length;
 	cmd->opcode = is_write ? S5_OP_WRITE : S5_OP_READ;
 	cmd->vol_id = volume->volume_id;
-	cmd->buf_addr = (__le64) buf;
+	//cmd->buf_addr = (__le64) buf;
 	cmd->rkey = 0;
 	cmd->offset = offset;
 	cmd->length = (uint32_t)length;
@@ -908,4 +994,9 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	if (rc)
 		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
 	return rc;
+}
+
+uint64_t pf_get_volume_size(struct PfClientVolume* vol)
+{
+	return vol->volume_size;
 }

@@ -134,3 +134,11 @@ after build finish, all binary should be found under  * bin * dir
    # source jconductor/env-pfc.sh
    # test_1.sh
    ```
+   
+4. Run Qemu
+==================
+## 1) build qemu with pfbd
+cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  
+
+## 2) run qemu-img 
+qemu/build/qemu-img dd bs=4k count=1  if=pfbd:test_3 of=./test.dat 

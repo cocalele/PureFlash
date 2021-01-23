@@ -498,8 +498,8 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 {
 	Cleaner clean;
 	int rc = 0;
-	if(io_depth > MAX_IO_DEPTH) {
-		S5LOG_ERROR("io_depth:%d exceed max allowed:%d", io_depth, MAX_IO_DEPTH);
+	if(io_depth > PF_MAX_IO_DEPTH) {
+		S5LOG_ERROR("io_depth:%d exceed max allowed:%d", io_depth, PF_MAX_IO_DEPTH);
 		return NULL;
 	}
 	int socket_fd = socket(AF_INET, SOCK_STREAM, 0);

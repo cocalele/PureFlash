@@ -48,7 +48,11 @@ public:
 	BufferDescriptor* cmd_bd;
 	BufferDescriptor* data_bd;
 	BufferDescriptor* reply_bd; //Used by dispatcher tasks
-	void* user_buf;			//used by qfa_client to store user buffer
+	union{
+		void* user_buf;			//used by qfa_client to store user buffer
+		const struct iovec* user_iov;
+	};
+	int user_iov_cnt;
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
 
