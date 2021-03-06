@@ -1,0 +1,43 @@
+1. Run PureFlash from docker
+============================
+
+```
+# docker pull pureflash/pureflash:1.0
+# docker run -it --rm pureflash/pureflash:1.0
+```
+For first run, this may take about 60 seconds to initialize a fake disk file.
+
+2. PureFlash command line tool
+==============================
+
+`pfcli` is the command line tool to managment PureFlash storeage system, you can use it like bellow:
+
+# pfcli list_store
++----+---------------+--------+
+| Id | Management IP | Status |
++----+---------------+--------+
+|  1 |     127.0.0.1 |     OK |
++----+---------------+--------+
+ 
+# pfcli list_disk
++----------+--------------------------------------+--------+
+| Store ID |                 uuid                 | Status |
++----------+--------------------------------------+--------+
+|        1 | 9ae5b25f-a1b7-4b8d-9fd0-54b578578333 |     OK |
++----------+--------------------------------------+--------+
+
+3. Test PureFlash in docker
+===========================
+
+# pfcli create_volume -v test_v1 -s 2G --rep 1
++------------+---------+------------+----------+--------+
+|     Id     |   Name  |    Size    | RepCount | Status |
++------------+---------+------------+----------+--------+
+| 1107296256 | test_v1 | 2147483648 |        1 |     OK |
++------------+---------+------------+----------+--------+
+
+# pfdd --rw write --if /dev/zero -v test_v1 --bs 4k --count 10
+ 
+# fio -name=test -ioengine=pfbd -volume=test_v1 -iodepth=2  -rw=randwrite -size=2G -bs=4k -direct=1
+
+pfdd is a tool like dd on Linux system. and fio( https://gitee.com/cocalele/fio.git)  is a version with pfbd enabled.

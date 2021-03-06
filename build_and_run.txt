@@ -6,7 +6,7 @@ PureFlash can be build with cmake tools.
 
 1. Build on Linux
 =================
-0) Prerequisite to build on CentOS 7
+0a) Prerequisite to build on CentOS 7
   - ninja
     # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
     # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
@@ -31,10 +31,9 @@ PureFlash can be build with cmake tools.
     -  libtool
       # yum install libtool # for centos
 
-0) Prerequisite to build on Ubuntu
+0b) Prerequisite to build on Ubuntu
   - ninja
-    # wget http://repo.okay.com.mx/centos/7/x86_64/release//ninja-build-1.8.2-1.el7.x86_64.rpm
-    # rpm -i ninja-build-1.8.2-1.el7.x86_64.rpm
+    # apt install ninja-build
 
   - ant
    ant is used to compile zookeeper lib and pfconductor
@@ -48,7 +47,7 @@ PureFlash can be build with cmake tools.
     # export JAVA_HOME=/opt/jdk-14.0.1
     # export PATH=$PATH:$JAVA_HOME/bin
   - Ohters
-    # apt-get install libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev libtool nasm
+    # apt-get install libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev libtool nasm autoconf cmake
 
 
 1) check out code
@@ -67,6 +66,7 @@ PureFlash can be build with cmake tools.
 
 3) run cmake to generate ninja scripts
   # cd PureFlash;
+  # export PUREFLASH_HOME=`pwd`
   # mkdir build_deb; cd build_deb
   # cmake -GNinja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja ..
 
@@ -87,31 +87,31 @@ after build finish, all binary should be found under  * bin * dir
 2. Run
 =================
 
-0) Prerequisite to run,
+## 2.1 Setup a loopback device for debug environment
 
-   - Setup a loopback dev
-   ice for debug environment
-
-    # truncate  -s 50G /etc/pureflash/data0.img
+    # truncate  -s 50G /opt/pureflash/data0.img
 	the file size should great than 40GB, for the meta data will use 40GB.
 	
-    # losetup /dev/loop0 /etc/pureflash/data0.img
-### 2.4 Start zookeeper
-
+    # losetup /dev/loop0 /opt/pureflash/data0.img
+	
+	Note, the loopback device is only for testing/debug purpose. You can use physical SSD if you have one.
+	
+## 2.2 Start zookeeper
+    # wget https://downloads.apache.org/zookeeper/zookeeper-3.5.9/apache-zookeeper-3.5.9-bin.tar.gz
     # $ZOOBINDIR/zkServer.sh start
 
-### 2.5 install mysql
+## 2.3 install mariadb
 
-   on ubuntu OS:
+   Jconductor need MariaDB version higher than 10.4. You can download and install appropriate version from https://mariadb.com/downloads/;
+   Then run commands:
 ```
-    sudo apt install mysql-server
     sudo systemctl start mysql
     sudo mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'pureflash'@'%' IDENTIFIED BY '123456'"
-    sudo mysql -e
+    sudo mysql -e "source jconductor/res/init_s5metadb.sql"  #replace `jconductor` with the right dir
 ```
 
 1) Config file
-   Please reference `pfs_template.conf` and `pfc_template.conf` to prepare config file for pfs and pfc(jconductor).
+   Please reference `pfs/pfs_template.conf` and `jconductor/pfc_template.conf` to prepare config file for pfs and pfc(jconductor).
    by default, pfs and jconductor will lookup config file under directory /etc/pureflash/{pfc.conf, pfs.conf}
 
 
@@ -125,7 +125,7 @@ after build finish, all binary should be found under  * bin * dir
    # source jconductor/env-pfc.sh
    # pfc
    ```
-
+   
 3. Run testcase
 ===================
    There are some testcase under pfs/testing directory. it can be run like bellow:
@@ -134,11 +134,37 @@ after build finish, all binary should be found under  * bin * dir
    # source jconductor/env-pfc.sh
    # test_1.sh
    ```
-   
-4. Run Qemu
+4. Run fio
+=============
+## 1) build fio
+```
+   # git clone https://gitee.com/cocalele/fio.git
+   # cd fio
+   # ./configure --pfbd-include=${PUREFLASH_HOME}/common/include --pfbd-lib==${PUREFLASH_HOME}/build_deb/bin/
+   # make
+```
+## 2） run fio
+```
+   # pfcli create_volume -v test_v1 -s 2G
+   # fio -name=test -ioengine=pfbd -volume=test_v1 -iodepth=2  -rw=randwrite -size=2G -bs=4k -direct=1
+```
+
+5. Run Qemu
 ==================
 ## 1) build qemu with pfbd
-cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  
-
+```
+   # apt install -y  libglib2.0-dev libpixman-1-dev
+   # git clone  https://gitee.com/cocalele/qemu.git
+   # git checkout pfbd
+   # mkdir /usr/include/pfbd
+   # cp ${PUREFLASH_HOME}/common/include/pf_client_api.h /usr/include/pfbd/pf_client_api.h
+   # cp ${PUREFLASH_HOME}/build_deb/bin/libs5common.a /usr/lib/libs5common.a
+   # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper.a /usr/lib/libzookeeper.a
+   # cp ${PUREFLASH_HOME}/build_deb/bin/libhashtable.a /usr/lib/libhashtable.a
+   # cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  && ninja
+```
 ## 2) run qemu-img 
-qemu/build/qemu-img dd bs=4k count=1  if=pfbd:test_3 of=./test.dat 
+```
+
+   # qemu/build/qemu-img dd bs=4k count=1  if=pfbd:test_v1 of=./test.dat 
+```

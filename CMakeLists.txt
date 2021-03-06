@@ -52,6 +52,8 @@ macro(USE_ISA_L)
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 	execute_process(COMMAND make -j 4
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+	execute_process(COMMAND make install
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 endmacro(USE_ISA_L)
 
 USE_ZOOKEEPER()
