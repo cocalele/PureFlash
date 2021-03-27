@@ -277,10 +277,10 @@ static int32_t s5bd_unmap_bd(struct ioctlparam* param)
 	}
 
 #ifndef INTERNAL_DEBUG
-	if(atomic_read(&ictx->kref.refcount) > 1)
+	if(kref_read(&ictx->kref) > 1)
 	{
 		LOG_WARN("Device(%s) is in use, ref(%d).",
-				ictx->disk->disk_name, atomic_read(&ictx->kref.refcount));
+				ictx->disk->disk_name, kref_read(&ictx->kref));
 		return -EAGAIN;
 	}
 #endif
@@ -441,10 +441,7 @@ static void __exit s5bd_mngt_dev_exit(void)
 		}
 	}
 
-	if (misc_deregister(&s5bd_mngt_miscdev) < 0)
-		LOG_ERROR("Failed to unmap device[%s].", s5bd_mngt_miscdev.name);
-	else
-		LOG_INFO("Succeed to unmap device[%s].", s5bd_mngt_miscdev.name);
+	misc_deregister(&s5bd_mngt_miscdev);
 
 	return;
 }
