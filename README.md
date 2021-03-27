@@ -66,7 +66,7 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
   All conductor and afs nodes(instance) register themself to zookeeper, so the active conductor can discovery services in cluster.
 
 ## 3.4 MetaDB
-  MetaDB is a PostgreSQL cluster with HA.   
+  MetaDB is a MariaDB cluster with HA.   
   
 ## 3.5 S5bd and S5kd
   S5bd is user space client. Qemu   

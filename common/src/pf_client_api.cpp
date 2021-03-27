@@ -35,6 +35,7 @@ size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *b
 static const char* pf_lib_ver = "S5 client version:0x00010000";
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
+const char* default_cfg_file = "/etc/pureflash/pf.conf";
 
 void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("index").get_to(p.index);
@@ -116,6 +117,8 @@ struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_f
 		_clean.push_back([volume]() { delete volume; });
 		//other calls
 		volume->volume_name = volume_name;
+		if(cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
 		volume->cfg_file = cfg_filename;
 		if(snap_name)
 			volume->snap_name = snap_name;
@@ -155,6 +158,8 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 		Cleaner _clean;
 		ListVolumeReply reply;
 
+		if(cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
 		conf_file_t cfg = conf_open(cfg_filename);
 		if(cfg == NULL)
 		{
@@ -923,11 +928,11 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
 		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
-		return -EIO;
+		return -EINVAL;
 	}
 	if(unlikely(length > PF_MAX_IO_SIZE)){
 		S5LOG_ERROR("IO size:%l exceed max:%l", length, PF_MAX_IO_SIZE);
-		return -EIO;
+		return -EINVAL;
 	}
 
 	auto io = volume->iocb_pool.alloc();
@@ -965,7 +970,7 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
 		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
-		return -EIO;
+		return -EINVAL;
 	}
 
 	auto io = volume->iocb_pool.alloc();

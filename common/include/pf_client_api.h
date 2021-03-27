@@ -44,6 +44,22 @@ void pf_close_volume(struct PfClientVolume *volume);
 const char *show_ver();
 int pf_io_submit(struct PfClientVolume *volume, void *buf, size_t length, off_t offset,
                  ulp_io_handler callback, void *cbk_arg, int is_write);
+				 
+/**
+ * Submit IO vector.
+ * @param volume, the volume to submit IO
+ * @param iov, io vector
+ * @param iov_cnt, iovec count in param iov
+ * @param length, total length of iovs
+ * @param offset, offset in volume, of this IO to perform in volume
+ * @param callback, the call back handler function to call when IO complete_status
+ * @param cbk_arg, user defined data to passed to callback when IO complete. PureFlash system will not touch this argument
+ * @param is_write, indict this IO is WRITE or READ. 1 for WRITE IO; 0 for READ IO
+ * @return 0 on success, negative number to indicate submit error.
+ * @retval -EINVAL  argument invalidate, length too large or offset not aligned on sector(512B)
+ * @retval -EAGAIN  device is temporary busy, caller can retry this IO later
+ *
+ */
 int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
                   ulp_io_handler callback, void* cbk_arg, int is_write);
 #define pf_io_submit_read(v, buf, len, off, cbk, arg)  pf_io_submit(v, buf, len, off, cbk, arg, 0)
