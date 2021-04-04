@@ -22,6 +22,7 @@ class PfConnection;
 enum WcStatus {
 	TCP_WC_SUCCESS = 0,
 	TCP_WC_FLUSH_ERR = 5,
+	RDMA_WC_SUCCESS = 10
 };
 const char* WcStatusToStr(WcStatus s);
 
@@ -29,8 +30,14 @@ const char* WcStatusToStr(WcStatus s);
 enum WrOpcode {
 	TCP_WR_SEND = 0,
 	TCP_WR_RECV = 128,
+	RDMA_WR_SEND = 129,
+	RDMA_WR_RECV = 130,
+	RDMA_WR_WRITE = 131,
+	RDMA_WR_READ = 132
 };
 const char* OpCodeToStr(WrOpcode op) ;
+
+typedef void(*completion_handler)(int status, int opcode, void* data);
 
 struct BufferDescriptor
 {
@@ -48,6 +55,7 @@ struct BufferDescriptor
 	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_capacity; /// this is the size, i.e. max size of buf
+	struct ibv_mr* mrs[4];
 	BufferPool* owner_pool;
 	PfConnection* conn;
 };
@@ -55,14 +63,30 @@ struct BufferDescriptor
 class BufferPool
 {
 public:
+	size_t buf_size;
+	int buf_count;
+	struct ibv_mr* mrs[4];
 	int init(size_t buffer_size, int count);
 	inline BufferDescriptor* alloc() { return free_bds.dequeue(); }
 	inline int free(BufferDescriptor* bd){ bd->client_iocb = NULL; return free_bds.enqueue(bd); }
 	void destroy();
-private:
-	PfFixedSizeQueue<BufferDescriptor*> free_bds;
 	void* data_buf;
 	BufferDescriptor* data_bds;
+private:
+	PfFixedSizeQueue<BufferDescriptor*> free_bds;
+};
+
+struct disp_mem_pool
+{
+	BufferPool cmd_pool;
+	BufferPool data_pool;
+	BufferPool reply_pool;
+};
+
+struct replicator_mem_pool
+{
+	BufferPool cmd_pool;
+	BufferPool reply_pool;
 };
 #endif //_S5_BUFFER_H_
 

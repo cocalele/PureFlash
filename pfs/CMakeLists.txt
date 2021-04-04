@@ -55,6 +55,7 @@ set (S5AFS_SRC
 	src/pf_main.cpp
 	src/pf_s5message.cpp
 	src/pf_server.cpp
+	src/pf_rdma_server.cpp
 	src/pf_dispatcher.cpp
 	src/pf_md5.cpp
 	src/pf_redolog.cpp
@@ -71,13 +72,15 @@ set (HTTP_SRC
         include/pf_threadpool.h)
 	
 file(GLOB_RECURSE INCS "*.h")
+file(GLOB INCS1  "../../rdma-include/rdma/*.h")
+file(GLOB INCS2  "../../rdma-include/infiniband/*.h")
 
 link_directories(${CMAKE_BINARY_DIR}/bin)
 
 add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
-TARGET_LINK_LIBRARIES(pfs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json aio curl ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a ${GCOV})
+TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper uuid s5common nlohmann_json::nlohmann_json aio curl ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a ${GCOV})
 
 add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so

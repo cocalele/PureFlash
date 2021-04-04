@@ -7,6 +7,8 @@
 #include "pf_message.h"
 #include "pf_main.h"
 
+extern enum connection_type rep_conn_type;
+extern struct replicator_mem_pool* rep_mem_pool[10];
 
 int PfReplicator::begin_replicate_io(IoSubTask* t)
 {
@@ -32,9 +34,9 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	io->data_bd->cbk_data = io;
 	io->ulp_arg = t;
 	cmd->opcode = t->opcode;
-	//cmd->buf_addr = (__le64) io->data_bd->buf;
+	cmd->buf_addr = (__le64) io->data_bd->buf;
 
-	PfConnection* c = conn_pool->get_conn((int)t->store_id);
+	PfConnection* c = (PfConnection *)conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
 		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
 		iocb_pool.free(io);
@@ -42,7 +44,9 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}
 	io->conn = c;
-	BufferDescriptor* rbd = reply_pool.alloc();
+	if(conn_pool->conn_type == RDMA_TYPE)
+		cmd->rkey = io->data_bd->mrs[((PfRdmaConnection *)c)->dev_ctx->idx]->rkey;
+	BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, requeue IO", rep_index);
@@ -57,7 +61,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d", rep_index, c->connection_info.c_str(), rc);
 		usleep(100);
 		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
-		reply_pool.free(rbd);
+		mem_pool.reply_pool.free(rbd);
 		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
@@ -111,7 +115,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 		t->complete(s, reply->meta_ver);
 	}
 
-	reply_pool.free(iocb->reply_bd);
+	mem_pool.reply_pool.free(iocb->reply_bd);
 	iocb->reply_bd = NULL;
 	iocb->data_bd = NULL; //replicator has no data bd pool, data_bd comes from up layer
 	iocb->conn = NULL;
@@ -138,7 +142,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	io->data_bd->cbk_data = io;
 	io->ulp_arg = t;
 	cmd->opcode = t->opcode;
-	//cmd->buf_addr = (__le64) io->data_bd->buf;
+	cmd->buf_addr = (__le64) io->data_bd->buf;
 	cmd->vol_id = t->volume_id;
 	cmd->rkey = 0;
 	cmd->offset = t->offset;
@@ -154,7 +158,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		return -EINVAL;
 	}
 	io->conn = c;
-	BufferDescriptor* rbd = reply_pool.alloc();
+	BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, abort recovery read.", rep_index);
@@ -167,7 +171,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);
 		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
-		reply_pool.free(rbd);
+		mem_pool.reply_pool.free(rbd);
 		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
@@ -229,7 +233,7 @@ PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 	if(addr.conn != NULL && addr.conn->state == CONN_OK)
 		return addr.conn;
 	for(int i=0;i<addr.ip.size();i++){
-		addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx]);
+		addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx], conn_type);
 		if(addr.conn)
 			return addr.conn;
 		addr.curr_ip_idx = (addr.curr_ip_idx+1)%(int)addr.ip.size();
@@ -257,7 +261,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 			if (unlikely(iocb == NULL))
 			{
 				S5LOG_WARN("Previous replicating IO back but timeout!");
-				conn->replicator->reply_pool.free(bd);
+				conn->replicator->mem_pool.reply_pool.free(bd);
 				return 0;
 			}
 //			if(iocb->reply_bd != bd) {
@@ -295,7 +299,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 		S5LOG_ERROR("replicating connection closed, %s", bd->conn->connection_info.c_str());
 		if(bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
 			S5LOG_WARN("Connection:%p error during receive reply, will resend IO", conn);
-			conn->replicator->reply_pool.free(bd);
+			conn->replicator->mem_pool.reply_pool.free(bd);
 		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
 			auto io = bd->client_iocb;
 			S5LOG_WARN("Connection:%p error during send head of:%s, will resend IO", conn, PfOpCode2Str(((SubTask*)io->ulp_arg)->opcode));
@@ -331,6 +335,26 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 	return 0;
 
 }
+
+static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
+{
+	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
+    if(bd->data_len == sizeof(PfMessageReply))
+    {
+        PfClientIocb *iocb = bd->client_iocb;
+        struct PfMessageReply *reply = bd->reply_bd;
+        iocb = conn->replicator->pick_iocb(reply->command_id, reply->command_seq);
+        if (unlikely(iocb == NULL))
+        {
+            S5LOG_WARN("Previous replicating IO back but timeout!");
+            conn->replicator->mem_pool.reply_pool.free(bd);
+            return 0;
+        }
+        return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
+    }
+    return -1;
+}
+
 void replicator_on_conn_close(PfConnection* conn)
 {
 	if(conn->unclean_closed) {
@@ -405,21 +429,27 @@ int PfReplicator::init(int index)
 		return -ENOMEM;
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init(128, tcp_poller, this, 0, rep_iodepth, replicator_on_tcp_network_done, replicator_on_conn_close);
+	if(rep_conn_type == TCP_TYPE) {
+		//this if for tcp connection
+		conn_pool->init(128, tcp_poller, this, 0, rep_iodepth, TCP_TYPE, replicator_on_tcp_network_done, replicator_on_conn_close);
+	} else {
+		//this if for rdma connection
+		conn_pool->init(128, tcp_poller, this, 0, rep_iodepth, RDMA_TYPE, replicator_on_rdma_network_done, replicator_on_conn_close);
+	}
 
-	rc = cmd_pool.init(sizeof(PfMessageHead), rep_iodepth);
+	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), rep_iodepth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
 		return rc;
 	}
-	clean.push_back([this](){cmd_pool.destroy();});
+	clean.push_back([this](){mem_pool.cmd_pool.destroy();});
 
-	rc = reply_pool.init(sizeof(PfMessageReply), rep_iodepth);
+	rc = mem_pool.reply_pool.init(sizeof(PfMessageReply), rep_iodepth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init reply_pool, rc:%d", rc);
 		return rc;
 	}
-	clean.push_back([this](){reply_pool.destroy();});
+	clean.push_back([this](){mem_pool.reply_pool.destroy();});
 
 	rc = iocb_pool.init(rep_iodepth);
 	if(rc != 0){
@@ -429,18 +459,19 @@ int PfReplicator::init(int index)
 	for(int i=0;i<rep_iodepth;i++)
 	{
 		PfClientIocb* io = iocb_pool.alloc();
-		io->cmd_bd = cmd_pool.alloc();
+		io->cmd_bd = mem_pool.cmd_pool.alloc();
 		io->cmd_bd->cmd_bd->command_id = (uint16_t )i;
 		io->cmd_bd->data_len = io->cmd_bd->buf_capacity;
 		io->cmd_bd->client_iocb = io;
 		io->data_bd = NULL;
 		io->reply_bd = NULL;
-		BufferDescriptor* rbd = reply_pool.alloc();
+		BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 		rbd->data_len = rbd->buf_capacity;
 		rbd->client_iocb = NULL;
-		reply_pool.free(rbd);
+		mem_pool.reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
+	rep_mem_pool[rep_index] = &mem_pool;
 	clean.cancel_all();
 	return 0;
 }

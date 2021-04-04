@@ -51,7 +51,7 @@ void PfEventQueue::destroy()
 {
 	current_queue = NULL;
 	queue1.destroy();
-	queue1.destroy();
+	queue2.destroy();
 	close(event_fd);
 }
 

@@ -2,10 +2,11 @@
 #include "pf_connection_pool.h"
 #include "pf_connection.h"
 #include "pf_tcp_connection.h"
+#include "pf_rdma_connection.h"
 
 using namespace  std;
 
-int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vol_id, int io_depth,
+int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vol_id, int io_depth, enum connection_type type,
 						   work_complete_handler _handler, conn_close_handler close_handler)
 {
 	pool_size = size;
@@ -15,11 +16,12 @@ int PfConnectionPool::init(int size, PfPoller* poller, void* owner, uint64_t  vo
 	on_work_complete = _handler;
 	on_conn_closed = close_handler;
 	this->vol_id = vol_id;
+	this->conn_type = type;
 	return 0;
 }
 
 
-PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
+PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_type conn_type) noexcept
 {
 	std::lock_guard<std::mutex> _l(mtx);
 	auto pos = ip_id_map.find(ip);
@@ -35,14 +37,24 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip) noexcept
 	}
 
 	try {
-		PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth,
-		                                                        4/*connection timeout*/);
-		c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
-		c->on_work_complete = on_work_complete;
-		c->on_close = on_conn_closed;
-		c->master = this->owner;
-		ip_id_map[ip] = c;
-		return c;
+		if (conn_type == TCP_TYPE) {
+			PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth, 4/*connection timeout*/);
+			c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
+			c->on_work_complete = on_work_complete;
+			c->on_close = on_conn_closed;
+			c->master = this->owner;
+			ip_id_map[ip] = c;
+			return c;
+		}
+		else if (conn_type == RDMA_TYPE) {
+			PfRdmaConnection *c = PfRdmaConnection::connect_to_server(ip, 49160, poller, vol_id, io_depth, 4/*connection timeout*/);
+			c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
+			c->on_work_complete = on_work_complete;
+			c->on_close = on_conn_closed;
+			c->master = this->owner;
+			ip_id_map[ip] = c;
+			return c;
+		}
 	}
 	catch(std::exception& e) {
 		S5LOG_ERROR("Error connect to:%s, exception:%s", ip.c_str(), e.what());
