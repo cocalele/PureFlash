@@ -2,7 +2,7 @@
 #include "pf_dispatcher.h"
 #include "pf_message.h"
 
-
+extern struct disp_mem_pool* disp_mem_pool[10];
 //PfDispatcher::PfDispatcher(const std::string &name) :PfEventThread(name.c_str(), IO_POOL_SIZE*3) {
 //
 //}
@@ -19,7 +19,7 @@ int PfDispatcher::init(int disp_index)
 	int rc = PfEventThread::init(format_string("disp_%d", disp_index).c_str(), IO_POOL_SIZE * 4);
 	if(rc)
 		return rc;
-	rc = init_mempools();
+	rc = init_mempools(disp_index);
 	return rc;
 }
 
@@ -176,9 +176,15 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	iocb->setup_subtask(s, cmd->opcode);
 	for (int i = 0; i < iocb->vol->rep_count; i++) {
 		if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
+			int rc = 0;
 			iocb->subtasks[i]->rep_id = s->replicas[i]->id;
 			iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
-			s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+			rc = s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+			if(rc) {
+				S5LOG_ERROR("submit_io, rc:%d", rc);
+			}
+		} else {
+			S5LOG_DEBUG("process none");
 		}
 	}
 	return 0;
@@ -248,17 +254,17 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	return 0;
 }
 
-int PfDispatcher::init_mempools()
+int PfDispatcher::init_mempools(int disp_index)
 {
 	int pool_size = IO_POOL_SIZE;
 	int rc = 0;
-	rc = cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
+	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
 	if (rc)
 		goto release1;
-	rc = data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
+	rc = mem_pool.data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;
-	rc = reply_pool.init(sizeof(PfMessageReply), pool_size * 2);
+	rc = mem_pool.reply_pool.init(sizeof(PfMessageReply), pool_size * 2);
 	if (rc)
 		goto release3;
 	rc = iocb_pool.init(pool_size * 2);
@@ -267,14 +273,14 @@ int PfDispatcher::init_mempools()
 	for(int i=0;i<pool_size*2;i++)
 	{
 		PfServerIocb *cb = iocb_pool.alloc();
-		cb->cmd_bd = cmd_pool.alloc();
+		cb->cmd_bd = mem_pool.cmd_pool.alloc();
 		cb->cmd_bd->data_len = sizeof(PfMessageHead);
 		cb->cmd_bd->server_iocb = cb;
-		cb->data_bd = data_pool.alloc();
+		cb->data_bd = mem_pool.data_pool.alloc();
 		//data len of data_bd depends on length in message head
 		cb->data_bd->server_iocb = cb;
 
-		cb->reply_bd = reply_pool.alloc();
+		cb->reply_bd = mem_pool.reply_pool.alloc();
 		cb->reply_bd->data_len =  sizeof(PfMessageReply);
 		cb->reply_bd->server_iocb = cb;
 		for(int i=0;i<3;i++) {
@@ -286,13 +292,14 @@ int PfDispatcher::init_mempools()
 		//TODO: still 2 subtasks not initialized, for metro replicating and rebalance
 		iocb_pool.free(cb);
 	}
+	disp_mem_pool[disp_index] = &mem_pool;
 	return rc;
 release4:
-	reply_pool.destroy();
+	mem_pool.reply_pool.destroy();
 release3:
-	data_pool.destroy();
+	mem_pool.data_pool.destroy();
 release2:
-	cmd_pool.destroy();
+	mem_pool.cmd_pool.destroy();
 release1:
 	return rc;
 }

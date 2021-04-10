@@ -27,6 +27,7 @@
 
 
 class PfTcpServer;
+class PfRdmaServer;
 
 #define MAX_TRAY_COUNT 32
 #define MAX_PORT_COUNT 4
@@ -48,10 +49,13 @@ public:
 	std::set<PfConnection*> ingoing_connections;
 	std::string mngt_ip;
 	int store_id;
-    PfZkClient zk_client;
-    int64_t meta_size;
+	PfZkClient zk_client;
+	int64_t meta_size;
+	int rep_conn_type;
 
 	PfTcpServer* tcp_server;
+	PfRdmaServer* rdma_server;
+	struct PfRdmaDevContext* dev_ctx[4];
 	std::vector<PfFlashStore*> trays;
 	std::vector<PfDispatcher*> disps;
 	std::vector<PfReplicator*> replicators;

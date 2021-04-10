@@ -36,15 +36,15 @@ public:
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
 	}
-	int process_io_complete(PfClientIocb* io, int complete_status);
+	int process_io_complete(PfClientIocb* iocb, int _complete_status);
 	int handle_conn_close(PfConnection* c);
 
 	int rep_index;
 
 	PfPoller *tcp_poller;
+	PfPoller *rdma_poller;
 	PfRepConnectionPool *conn_pool;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
-	BufferPool cmd_pool;
-	BufferPool reply_pool;
+	struct replicator_mem_pool mem_pool;
 };
 #endif // pf_replicator_h__
