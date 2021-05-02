@@ -736,7 +736,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
-				S5LOG_ERROR("heartbeat timeout for conn:%p", io->conn->connection_info.c_str());
+				S5LOG_ERROR("heartbeat timeout for conn:%s", io->conn->connection_info.c_str());
 				iocb_pool.free(io);
 				break;
 			}
@@ -788,7 +788,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
 			{
 				conn_pool->ip_id_map.erase(it++);
-				S5LOG_ERROR("connection:%p:%s timeout", conn->connection_info.c_str());
+				S5LOG_ERROR("connection:%p:%s timeout", conn, conn->connection_info.c_str());
 				conn->close();
 			}
 			else
@@ -836,7 +836,8 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 		}
 		shard->current_ip = (shard->current_ip + 1) % (int)shard->store_ips.size();
 	}
-	S5LOG_ERROR("Failed to get an usable IP for vol:%s shard:%d", volume_name.c_str(), shard_index);
+	S5LOG_ERROR("Failed to get an usable IP for vol:%s shard:%d, change volume state to VOLUME_DISCONNECTED ",
+			 volume_name.c_str(), shard_index);
 	state = VOLUME_DISCONNECTED;
 	return NULL;
 }
@@ -922,19 +923,25 @@ size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *b
 	assert(offset == 0);
 	return done;
 }
-
+static int unalign_io_print_cnt = 0;
 int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
-		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
+		S5LOG_ERROR("Invalid offset:%ld or length:%ld", offset, length);
 		return -EINVAL;
 	}
 	if(unlikely(length > PF_MAX_IO_SIZE)){
-		S5LOG_ERROR("IO size:%l exceed max:%l", length, PF_MAX_IO_SIZE);
+		S5LOG_ERROR("IO size:%ld exceed max:%ld", length, PF_MAX_IO_SIZE);
 		return -EINVAL;
 	}
-
+	if(unlikely((offset & 0x0fff) || (length & 0x0fff)))	{
+		unalign_io_print_cnt ++;
+		if((unalign_io_print_cnt % 1000) == 1) {
+			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%x, num:%d", volume->volume_name.c_str(),
+			        is_write?"WRITE":"READ", offset, length, unalign_io_print_cnt);
+		}
+	}
 	auto io = volume->iocb_pool.alloc();
 	if (io == NULL)
 		return -EAGAIN;
@@ -969,10 +976,16 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
-		S5LOG_ERROR("Invalid offset:%l or length:%l", offset, length);
+		S5LOG_ERROR("Invalid offset:%ld or length:%ld", offset, length);
 		return -EINVAL;
 	}
-
+	if(unlikely((offset & 0x0fff) || (length & 0x0fff)))	{
+		unalign_io_print_cnt ++;
+		if((unalign_io_print_cnt % 1000) == 1) {
+			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%x, num:%d", volume->volume_name.c_str(),
+			           is_write ? "WRITE" : "READ", offset, length, unalign_io_print_cnt);
+		}
+	}
 	auto io = volume->iocb_pool.alloc();
 	if (io == NULL)
 		return -EAGAIN;

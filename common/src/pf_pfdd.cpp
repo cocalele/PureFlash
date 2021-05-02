@@ -260,7 +260,7 @@ int main(int argc, char* argv[])
 			}
 			ssize_t rc = pwrite(fd, buf, bs, offset_in_file + i * bs);
 			if(rc != bs) {
-				S5LOG_FATAL("Failed write data from file, rc:%l, errno:%d", rc, errno);
+				S5LOG_FATAL("Failed write data to file, rc:%l, errno:%d", rc, errno);
 			}
 
 		} else {
@@ -271,7 +271,7 @@ int main(int argc, char* argv[])
 			pf_io_submit(vol, buf, bs, offset + i * bs, io_cbk, &arg, is_write);
 			sem_wait(&arg.sem);
 			if(arg.rc != 0) {
-				S5LOG_FATAL("Failed read data from volume, rc:%d", arg.rc);
+				S5LOG_FATAL("Failed write data to volume, rc:%d", arg.rc);
 			}
 		}
 	}

@@ -143,6 +143,14 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	}
 	PfShard * s = vol->shards[shard_index];
 
+//	if(unlikely((cmd->offset & 0x0fff) || (cmd->length & 0x0fff)))	{
+//		static int prt_cnt = 0;
+//		prt_cnt ++;
+//		if((prt_cnt % 1000) == 1) {
+//			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%x, num:%d", vol->name, PfOpCode2Str(cmd->opcode),
+//			           cmd->offset, cmd->length, prt_cnt);
+//		}
+//	}
 	switch(cmd->opcode) {
 		case S5_OP_WRITE:
 			return dispatch_write(iocb, vol, s);
