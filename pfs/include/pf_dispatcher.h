@@ -5,11 +5,13 @@
 #include <libaio.h>
 #include "pf_event_thread.h"
 #include "pf_connection.h"
-#include "pf_rdma_connection.h"
 #include "pf_mempool.h"
 #include "pf_volume.h"
 #include "pf_message.h"
+#ifdef WITH_RDMA
 #include <rdma/rdma_cma.h>
+#include "pf_rdma_connection.h"
+#endif
 #include <netdb.h>
 #include <net/if.h>
 #include <arpa/inet.h>

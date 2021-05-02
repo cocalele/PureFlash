@@ -30,13 +30,13 @@ int Scrub::feed_data(void* buf, size_t len, size_t off)
 
 	if(off/(MD5_BUF_LEN*PARALLEL_NUM) == 0)
 		flag = HASH_UPDATE;
-	size_t seg_len = len / PARALLEL_NUM;
-	CTX_MGR_SUBMIT(mgr, &ctxpool[ctx_idx], buf, len, flag);
-
+	//size_t seg_len = len / PARALLEL_NUM;
+	CTX_MGR_SUBMIT(mgr, &ctxpool[ctx_idx], buf, (uint32_t)len, flag);
+	return 0;
 }
 
 std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
-	int iodepth = PARALLEL_NUM;
+	//int iodepth = PARALLEL_NUM;
 	size_t read_size = MD5_BUF_LEN*PARALLEL_NUM;
 	void* read_buf = memalign(LBA_LENGTH, read_size);
 	if(read_buf == NULL) {
@@ -48,7 +48,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 	uint64_t base_off = rep_id.shard_index()*SHARD_SIZE;
 
 	for(int64_t obj_idx = 0; obj_idx < SHARD_SIZE/s->head.objsize; obj_idx ++){
-		lmt_key key = {.vol_id=rep_id.to_volume_id().vol_id, .slba=(obj_idx*s->head.objsize+base_off)/LBA_LENGTH};
+		lmt_key key = {.vol_id=rep_id.to_volume_id().vol_id, .slba=(int64_t)(obj_idx*s->head.objsize+base_off)/LBA_LENGTH};
 //		sem_t recov_sem;
 //		sem_init(&recov_sem, 0, iodepth);
 

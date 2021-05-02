@@ -56,6 +56,13 @@ macro(USE_ISA_L)
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 endmacro(USE_ISA_L)
 
+INCLUDE(CheckIncludeFiles)
+CHECK_INCLUDE_FILES(rdma/rdma_cma.h HAVE_RDMA_H)
+IF (HAVE_RDMA_H)
+    add_definitions(-DWITH_RDMA)
+ENDIF (HAVE_RDMA_H)
+
+
 USE_ZOOKEEPER()
 USE_ISA_L()
 add_compile_options (-fdiagnostics-color=always)

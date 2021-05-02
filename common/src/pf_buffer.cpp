@@ -65,6 +65,10 @@ const char* OpCodeToStr(WrOpcode op) {
 			return "RDMA_WR_SEND";
 		case RDMA_WR_RECV:
 			return "RDMA_WR_RECV";
+		case RDMA_WR_WRITE:
+			return "RDMA_WR_WRITE";
+		case RDMA_WR_READ:
+			return "RDMA_WR_READ";
 	}
 	S5LOG_ERROR("Unknown op code:%d", op);
 	return "Unknown";

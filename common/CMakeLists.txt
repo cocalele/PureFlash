@@ -32,7 +32,6 @@ set (S5COMMON_SRC
 	src/pf_event_thread.cpp
 	src/pf_poller.cpp
 	src/pf_tcp_connection.cpp
-	src/pf_rdma_connection.cpp
 	src/pf_utils.cpp
 	src/pf_conf.cpp
 	src/pf_conf_utils.cpp
@@ -51,6 +50,10 @@ set (S5COMMON_SRC
 	src/pf_client_api.cpp
 	src/pf_connection_pool.cpp
 	)
+IF (HAVE_RDMA_H)
+	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
+ENDIF (HAVE_RDMA_H)
+
 set (PFDD_SRC
 		src/pf_pfdd.cpp
 	)

@@ -211,8 +211,8 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	outstanding_read = conn->dev_ctx->dev_attr.max_qp_rd_atom;
 	if (outstanding_read > 128)
 		outstanding_read = 128;
-	cm_params.responder_resources = outstanding_read;
-	cm_params.initiator_depth = outstanding_read;
+	cm_params.responder_resources = (uint8_t)outstanding_read;
+	cm_params.initiator_depth = (uint8_t)outstanding_read;
 	cm_params.retry_count = 7;
 	cm_params.rnr_retry_count = 7;
 	rc = rdma_accept(id, &cm_params);
@@ -231,13 +231,11 @@ release0:
 int PfRdmaServer::init(int port)
 {
     int rc;
-    pthread_t rdma_server_t;
     struct sockaddr_in listen_addr;
-    conf_file_t conf = app_context.conf;
     this->ec = NULL;
     memset(&listen_addr, 0, sizeof(listen_addr));
     listen_addr.sin_family = AF_INET;
-    listen_addr.sin_port = htons(port);
+    listen_addr.sin_port = htons((uint16_t)port);
 
     this->ec = rdma_create_event_channel();
     rc = rdma_create_id(this->ec, &this->cm_id, NULL, RDMA_PS_TCP);

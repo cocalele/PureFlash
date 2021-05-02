@@ -22,11 +22,10 @@ ENDIF()
 
 
 
-
 USE_ZOOKEEPER()
 
-set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-extensions -Wno-variadic-macros -I/usr/include ${C_FLAG_GCOV}")
-set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wno-variadic-macros -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
+set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-extensions -Wno-variadic-macros -Wno-format-truncation -I/usr/include ${C_FLAG_GCOV}")
+set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wno-variadic-macros -Wno-format-truncation -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 add_definitions(-D_XOPEN_SOURCE)
@@ -55,7 +54,6 @@ set (S5AFS_SRC
 	src/pf_main.cpp
 	src/pf_s5message.cpp
 	src/pf_server.cpp
-	src/pf_rdma_server.cpp
 	src/pf_dispatcher.cpp
 	src/pf_md5.cpp
 	src/pf_redolog.cpp
@@ -70,7 +68,10 @@ set (S5AFS_SRC
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c
         include/pf_threadpool.h)
-	
+IF (HAVE_RDMA_H)
+	set (S5AFS_SRC ${S5AFS_SRC}  src/pf_rdma_server.cpp)
+ENDIF (HAVE_RDMA_H)
+
 file(GLOB_RECURSE INCS "*.h")
 file(GLOB INCS1  "../../rdma-include/rdma/*.h")
 file(GLOB INCS2  "../../rdma-include/infiniband/*.h")
