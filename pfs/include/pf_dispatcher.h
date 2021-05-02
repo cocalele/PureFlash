@@ -5,9 +5,15 @@
 #include <libaio.h>
 #include "pf_event_thread.h"
 #include "pf_connection.h"
+#include "pf_rdma_connection.h"
 #include "pf_mempool.h"
 #include "pf_volume.h"
 #include "pf_message.h"
+#include <rdma/rdma_cma.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
 
 #define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
 struct PfServerIocb;
@@ -103,9 +109,7 @@ class PfDispatcher : public PfEventThread
 {
 public:
 	ObjectMemoryPool<PfServerIocb> iocb_pool;
-	BufferPool cmd_pool;
-	BufferPool data_pool;
-	BufferPool reply_pool;
+	struct disp_mem_pool mem_pool;
 	std::map<uint64_t, PfVolume*> opened_volumes;
 	int disp_index;
 
@@ -116,7 +120,7 @@ public:
 	virtual int process_event(int event_type, int arg_i, void* arg_p);
 
 	int init(int disp_idx);
-	int init_mempools();
+	int init_mempools(int disp_idx);
 
 	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s);

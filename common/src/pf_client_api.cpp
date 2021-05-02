@@ -315,7 +315,7 @@ int PfClientVolume::do_open(bool reopen)
 		return -ENOMEM;
 	}
 	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, client_on_tcp_network_done, client_on_tcp_close);
+	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, TCP_TYPE, client_on_tcp_network_done, client_on_tcp_close);
 	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
@@ -830,7 +830,7 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 	PfClientShardInfo * shard = &shards[shard_index];
 	for (int i=0; i < shard->store_ips.size(); i++)
 	{
-		conn = conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip]);
+		conn = conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip], TCP_TYPE);
 		if (conn != NULL) {
 			return conn;
 		}

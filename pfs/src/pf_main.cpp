@@ -27,6 +27,7 @@ int init_restful_server();
 void unexpected_exit_handler();
 void stop_app();
 PfAfsAppContext app_context;
+enum connection_type rep_conn_type = TCP_TYPE; //TCP:0  RDMA:1
 
 void sigroutine(int dunno)
 {
@@ -237,6 +238,15 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to init tcp server:%d", rc);
 		return rc;
 	}
+
+	app_context.rdma_server = new PfRdmaServer();
+	rc = app_context.rdma_server->init(RDMA_PORT_BASE);
+	if(rc)
+	{
+		S5LOG_ERROR("Failed to init rdma server:%d", rc);
+		return rc;
+	}
+
 	do {
 		rc = set_store_node_state(store_id, NS_OK, TRUE);
 		if(rc == ZNODEEXISTS) {

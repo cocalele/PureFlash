@@ -23,6 +23,7 @@ public:
 	pthread_t tid;
 	char name[32];
 	int max_fd;
+	struct PfRdmaDevContext *dev_ctx;
 
 	PfPoller();
 	~PfPoller();

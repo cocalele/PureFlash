@@ -11,8 +11,10 @@
 
 #include <pthread.h>
 #include "pf_main.h"
+#include "pf_rdma_connection.h"
+#include <rdma/rdma_cma.h>
 #define TCP_PORT_BASE   49162               ///<the value of port base.
-
+#define RDMA_PORT_BASE  49160
 
 
 class PfPoller;
@@ -34,6 +36,19 @@ private:
 	 * a round-robin way is used to choose poller in `pollers`
 	 */
 	PfPoller* get_best_poller();
+};
+
+class PfRdmaServer
+{
+public:
+	PfRdmaConnection *conn;
+	PfPoller* poller;
+	int init(int port);
+	int server_socket_fd;
+	pthread_t rdma_listen_t;
+	struct rdma_event_channel* ec;
+	struct rdma_cm_id* cm_id;
+	int on_connect_request(struct rdma_cm_event *evt);
 };
 #endif	//__S5D_SRV_TOE__
 

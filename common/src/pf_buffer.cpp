@@ -1,5 +1,6 @@
 #include <exception>
 #include <malloc.h>
+#include <string.h>
 #include "pf_buffer.h"
 
 using namespace std;
@@ -8,6 +9,9 @@ int BufferPool::init(size_t buffer_size, int count)
 {
 	int rc = 0;
 	Cleaner clean;
+	this->buf_size = buffer_size;
+	this->buf_count = count;
+	memset(mrs, 0, 4*sizeof(struct ibv_mr*));
 	rc = free_bds.init(count);
 	if(rc != 0)
 		throw std::runtime_error(format_string("init memory pool failed, rc:%d", rc));
@@ -45,6 +49,8 @@ const char* WcStatusToStr(WcStatus s) {
 			return "TCP_WC_SUCCESS";
 		case TCP_WC_FLUSH_ERR:
 			return "TCP_WC_FLUSH_ERR";
+        case RDMA_WC_SUCCESS:
+            return "RDMA_WC_SUCCESS";
 	}
 	S5LOG_ERROR("Unknown WcStatus:%d", s);
 	return "Unknown";
@@ -55,6 +61,10 @@ const char* OpCodeToStr(WrOpcode op) {
 			return "TCP_WR_SEND";
 		case TCP_WR_RECV:
 			return "TCP_WR_RECV";
+		case RDMA_WR_SEND:
+			return "RDMA_WR_SEND";
+		case RDMA_WR_RECV:
+			return "RDMA_WR_RECV";
 	}
 	S5LOG_ERROR("Unknown op code:%d", op);
 	return "Unknown";

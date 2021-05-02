@@ -19,6 +19,11 @@ class PfDispatcher;
 class PfVolume;
 class PfReplicator;
 
+enum connection_type {
+	TCP_TYPE = 0,
+	RDMA_TYPE = 1
+};
+
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
 {

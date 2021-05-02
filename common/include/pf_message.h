@@ -98,16 +98,15 @@ struct PfMessageHead
 	uint16_t                  command_id;
 	uint32_t                  snap_seq;
 	uint64_t                  vol_id;
-	//uint64_t                  buf_addr;
-	uint64_t                  rsv5;
+	uint64_t                  buf_addr;
 	uint32_t                  rkey;
 	uint16_t                  meta_ver;
-	uint16_t                  rsv4;
+	uint16_t                  rsv2;
 	uint64_t                  offset;
 	uint32_t                  length;
 	uint32_t                  command_seq;  //use this field to hold io task sequence number
-	uint64_t                  rsv2;
 	uint64_t                  rsv3;
+	uint64_t                  rsv4;
 };
 #define PF_MSG_HEAD_SIZE 64
 static_assert(sizeof(PfMessageHead) == PF_MSG_HEAD_SIZE, "PfMessageHead");
