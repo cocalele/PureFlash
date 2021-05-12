@@ -27,6 +27,7 @@ int init_restful_server();
 void unexpected_exit_handler();
 void stop_app();
 PfAfsAppContext app_context;
+extern BufferPool* recovery_bd_pool;
 enum connection_type rep_conn_type = TCP_TYPE; //TCP:0  RDMA:1
 
 void sigroutine(int dunno)
@@ -180,6 +181,8 @@ int main(int argc, char *argv[])
 		}
 
 	}
+
+	recovery_bd_pool = &app_context.recovery_io_bd_pool;
 
 	for (i = 0; i < MAX_PORT_COUNT; i++)
 	{
