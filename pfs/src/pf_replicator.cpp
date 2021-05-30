@@ -158,6 +158,8 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		return -EINVAL;
 	}
 	io->conn = c;
+	if(conn_pool->conn_type == RDMA_TYPE)
+		cmd->rkey = io->data_bd->mrs[((PfRdmaConnection *)c)->dev_ctx->idx]->rkey;
 	BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
@@ -176,6 +178,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		iocb_pool.free(io);
 		return -EAGAIN;
 	}
+	io->reply_bd = rbd;
 	rc = c->post_send(io->cmd_bd);
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_send in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);

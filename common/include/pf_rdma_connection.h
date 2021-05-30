@@ -48,6 +48,7 @@ public:
 	virtual int post_send(BufferDescriptor* buf);
 	virtual int post_read(BufferDescriptor* buf, uintptr_t raddr, uint32_t rkey);
 	virtual int post_read(BufferDescriptor* buf);
+	virtual int post_write(BufferDescriptor* buf, uintptr_t raddr, uint32_t rkey);
 	virtual int post_write(BufferDescriptor* buf);
 	virtual int do_close(void);
 

@@ -79,6 +79,7 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
 }
 static inline void reply_io_to_client(PfServerIocb *iocb)
 {
+	int rc = 0;
 	const static int ms1 = 1000;
 	if(unlikely(iocb->conn->state != CONN_OK)) {
 		S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
@@ -104,7 +105,11 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 	reply_bd->status = iocb->complete_status;
 	reply_bd->meta_ver = iocb->complete_meta_ver;
 	reply_bd->command_seq = cmd_bd->command_seq;
-	iocb->conn->post_send(iocb->reply_bd);
+	rc = iocb->conn->post_send(iocb->reply_bd);
+	if (rc)
+	{
+		S5LOG_ERROR("post_send, rc:%d", rc);
+	}
 }
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 {
@@ -257,6 +262,16 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
 	if(iocb->task_mask == 0){
+        PfRdmaConnection *conn = (PfRdmaConnection *)iocb->conn;
+        if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA)) {
+            iocb->add_ref();
+            conn->add_ref();
+            int rc = conn->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
+            if (rc)
+            {
+            	S5LOG_ERROR("post_write, rc:%d", rc);
+            }
+        }
 		reply_io_to_client(iocb);
 	}
 	return 0;

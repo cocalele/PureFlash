@@ -109,7 +109,11 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 				conn->post_recv(iocb->cmd_bd);
 			}
 		}
-		else {
+		else if(bd->wr_op == WrOpcode::RDMA_WR_WRITE) {
+			//read or recovery_read
+			PfServerIocb *iocb = bd->server_iocb;
+            iocb->dec_ref();
+		} else {
 			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
 		}
 	}
@@ -157,6 +161,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
         rc = -EINVAL;
         goto release0;
     }
+	conn->transport = TRANSPORT_RDMA;
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
 	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
@@ -206,6 +211,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 			rc = -EINVAL;
 			goto release0;
 		}
+		conn->add_ref();
 	}
 	memset(&cm_params, 0, sizeof(cm_params));
 	outstanding_read = conn->dev_ctx->dev_attr.max_qp_rd_atom;

@@ -14,6 +14,7 @@
 #define DEFAULT_MAX_MR		64
 struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT]={0};
 struct replicator_mem_pool* rep_mem_pool[MAX_REPLICATOR_COUNT]={0};
+BufferPool* recovery_bd_pool;
 struct PfRdmaDevContext* global_dev_ctx[4];
 pthread_mutex_t global_dev_lock;
 
@@ -105,6 +106,12 @@ static int register_rep_context_buf(struct ibv_pd* pd, int idx)
 			return rc;
 		}
 		S5LOG_DEBUG("register_rep_mem i:%d done", i);
+	}
+	rc = rdma_mem_pool(recovery_bd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ|IBV_ACCESS_REMOTE_WRITE);
+	if (rc)
+	{
+		S5LOG_ERROR("rdma_mem_pool for recovery_io_bd_pool failed, rc:%d", rc);
+		return rc;
 	}
 	return 0;
 }
@@ -426,8 +433,8 @@ int PfRdmaConnection::post_read(BufferDescriptor* buf, uintptr_t raddr, uint32_t
     struct ibv_send_wr wr, *bad_wr = NULL;
     struct ibv_sge sge;
 
-	buf->conn = this;
-	buf->wr_op = RDMA_WR_RECV;
+    buf->conn = this;
+    buf->wr_op = RDMA_WR_RECV;
 
     wr.wr_id = (uint64_t)buf;
     wr.next = NULL;
@@ -436,19 +443,49 @@ int PfRdmaConnection::post_read(BufferDescriptor* buf, uintptr_t raddr, uint32_t
     wr.opcode = IBV_WR_RDMA_READ;
     wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)raddr;
-	wr.wr.rdma.rkey = rkey;
+    wr.wr.rdma.rkey = rkey;
 
     sge.addr = (uint64_t)buf->buf;
     sge.length = buf->data_len;
     sge.lkey = buf->mrs[this->dev_ctx->idx]->lkey;
 
-	int rc = ibv_post_send(rdma_id->qp, &wr, &bad_wr);
-	if (rc)
-	{
-		S5LOG_ERROR("ibv_post_send failed, rc:%d", rc);
-		return rc;
-	}
-	return 0;
+    int rc = ibv_post_send(rdma_id->qp, &wr, &bad_wr);
+    if (rc)
+    {
+        S5LOG_ERROR("ibv_post_send failed, rc:%d", rc);
+        return rc;
+    }
+    return 0;
+}
+
+int PfRdmaConnection::post_write(BufferDescriptor* buf, uintptr_t raddr, uint32_t rkey)
+{
+    struct ibv_send_wr wr, *bad_wr = NULL;
+    struct ibv_sge sge;
+
+    buf->conn = this;
+    buf->wr_op = RDMA_WR_WRITE;
+
+    wr.wr_id = (uint64_t)buf;
+    wr.next = NULL;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uint64_t)raddr;
+    wr.wr.rdma.rkey = rkey;
+
+    sge.addr = (uint64_t)buf->buf;
+    sge.length = buf->data_len;
+    sge.lkey = buf->mrs[this->dev_ctx->idx]->lkey;
+
+    int rc = ibv_post_send(rdma_id->qp, &wr, &bad_wr);
+    if (rc)
+    {
+        S5LOG_ERROR("ibv_post_send failed, rc:%d", rc);
+        return rc;
+    }
+    return 0;
 }
 
 int PfRdmaConnection::post_write(BufferDescriptor* buf)
