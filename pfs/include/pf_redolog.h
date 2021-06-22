@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #ifndef pf_redolog_h__
 #define pf_redolog_h__
 #include <stdint.h>

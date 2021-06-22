@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #ifndef afs_cluster_h__
 #define afs_cluster_h__
 #include <stdint.h>
