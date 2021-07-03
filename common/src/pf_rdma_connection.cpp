@@ -26,16 +26,17 @@ int on_addr_resolved(struct rdma_cm_id* id)
         S5LOG_ERROR("rdma_resolve_route failed, errno:%d", errno);
         return rc;
     }
+    return 0;
 }
 
-static int rdma_mem_pool(BufferPool *pool, struct ibv_pd *pd, int idx, int access_mode)
+static int register_rdma_mem_pool(BufferPool *pool, struct ibv_pd *pd, int idx, int access_mode)
 {
     if (pd == NULL)
     {
 	S5LOG_ERROR("pd is NULL");
         return -1;
     }
-    S5LOG_DEBUG("rdma_mem_pool, idx;%d", idx);
+    S5LOG_DEBUG("register_rdma_mem_pool, idx;%d", idx);
     if (pool->mrs[idx] != NULL)
     {
 	S5LOG_ERROR("pool->mrs[%d] is not NULL", idx);
@@ -62,22 +63,23 @@ static int register_disp_context_buf(struct ibv_pd* pd, int idx)
 		if (disp_mem_pool[i] == 0)
 			break;
 		struct disp_mem_pool* mem_pool = disp_mem_pool[i];
-		rc = rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		rc = register_rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 		if (rc)
 		{
-			S5LOG_ERROR("rdma_mem_pool for disp cmd_pool failed, rc:%d", rc);
+			S5LOG_ERROR("register_rdma_mem_pool for disp cmd_pool failed, rc:%d", rc);
 			return rc;
 		}
-		rc = rdma_mem_pool(&mem_pool->data_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ|IBV_ACCESS_REMOTE_WRITE);
+		rc = register_rdma_mem_pool(&mem_pool->data_pool, pd, idx,
+		                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
 		if (rc)
 		{
-			S5LOG_ERROR("rdma_mem_pool for disp data_pool failed, rc:%d", rc);
+			S5LOG_ERROR("register_rdma_mem_pool for disp data_pool failed, rc:%d", rc);
 			return rc;
 		}
-		rc = rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		rc = register_rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 		if (rc)
 		{
-			S5LOG_ERROR("rdma_mem_pool for disp reply_pool failed, rc:%d", rc);
+			S5LOG_ERROR("register_rdma_mem_pool for disp reply_pool failed, rc:%d", rc);
 			return rc;
 		}
 		S5LOG_DEBUG("register_dispatcher_mem i:%d done", i);
@@ -93,24 +95,25 @@ static int register_rep_context_buf(struct ibv_pd* pd, int idx)
 		if(rep_mem_pool[i] == 0)
 			break;
 		struct replicator_mem_pool* mem_pool = rep_mem_pool[i];
-		rc = rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		rc = register_rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 		if (rc)
 		{
-			S5LOG_ERROR("rdma_mem_pool for replicator cmd_pool failed, rc:%d", rc);
+			S5LOG_ERROR("register_rdma_mem_pool for replicator cmd_pool failed, rc:%d", rc);
 			return rc;
 		}
-		rc = rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		rc = register_rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 		if (rc)
 		{
-			S5LOG_ERROR("rdma_mem_pool for replicator reply_pool failed, rc:%d", rc);
+			S5LOG_ERROR("register_rdma_mem_pool for replicator reply_pool failed, rc:%d", rc);
 			return rc;
 		}
 		S5LOG_DEBUG("register_rep_mem i:%d done", i);
 	}
-	rc = rdma_mem_pool(recovery_bd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ|IBV_ACCESS_REMOTE_WRITE);
+	rc = register_rdma_mem_pool(recovery_bd_pool, pd, idx,
+	                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
 	if (rc)
 	{
-		S5LOG_ERROR("rdma_mem_pool for recovery_io_bd_pool failed, rc:%d", rc);
+		S5LOG_ERROR("register_rdma_mem_pool for recovery_io_bd_pool failed, rc:%d", rc);
 		return rc;
 	}
 	return 0;
@@ -147,6 +150,7 @@ static void *cq_poller_proc(void *arg_)
             }
         }
     }
+    return NULL;
 }
 
 static void on_rdma_cq_event(int fd, uint32_t events, void *arg)
@@ -252,8 +256,8 @@ int on_route_resolved(struct rdma_cm_id* id)
 		outstanding_read = 128;
 	cm_params.private_data = hmsg;
 	cm_params.private_data_len = sizeof(PfHandshakeMessage);
-	cm_params.responder_resources = outstanding_read;
-	cm_params.initiator_depth = outstanding_read;
+	cm_params.responder_resources = (uint8_t)outstanding_read;
+	cm_params.initiator_depth = (uint8_t)outstanding_read;
 	cm_params.retry_count = 7;
 	cm_params.rnr_retry_count = 7;
 	rc = rdma_connect(id, &cm_params);
@@ -321,7 +325,7 @@ PfRdmaConnection* PfRdmaConnection::connect_to_server(const std::string ip, int 
 		S5LOG_ERROR("getaddrinfo failed, rc:%d", rc);
 		return NULL;
 	}
-	((struct sockaddr_in*)addr->ai_addr)->sin_port = htons(port);
+	((struct sockaddr_in*)addr->ai_addr)->sin_port = htons((uint16_t)port);
 	S5LOG_DEBUG("server ip:%s.\n", ip.c_str());
 	PfRdmaConnection* conn = new PfRdmaConnection();
 	conn->ec = rdma_create_event_channel();
@@ -539,5 +543,9 @@ int PfRdmaConnection::do_close()
 		    S5LOG_ERROR("ibv_dereg_mr rep reply_pool failed, rc:%d", rc);
 		}
 	}
-	rdma_destroy_id(id);
+	rc = rdma_destroy_id(id);
+	if(rc) {
+		S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);
+	}
+	return rc;
 }
