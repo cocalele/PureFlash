@@ -9,8 +9,10 @@
 
 #define RDMA_RESOLVE_ROUTE_TIMEOUT_MS 100
 
-#define MAX_DISPATCHER_COUNT	10
-#define MAX_REPLICATOR_COUNT	10
+
+//this code is included both server and client side,
+#define MAX_DISPATCHER_COUNT 10
+#define MAX_REPLICATOR_COUNT 10
 #define DEFAULT_MAX_MR		64
 struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT]={0};
 struct replicator_mem_pool* rep_mem_pool[MAX_REPLICATOR_COUNT]={0};

@@ -48,6 +48,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			return c;
 		}
 		else if (conn_type == RDMA_TYPE) {
+#ifdef WITH_RDMA
 			PfRdmaConnection *c = PfRdmaConnection::connect_to_server(ip, 49160, poller, vol_id, io_depth, 4/*connection timeout*/);
 			c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
 			c->on_work_complete = on_work_complete;
@@ -56,6 +57,9 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			c->transport = TRANSPORT_RDMA;
 			ip_id_map[ip] = c;
 			return c;
+#else
+			S5LOG_FATAL("RDMA not enabled, please compile with -DWITH_RDMA=1");
+#endif
 		}
 	}
 	catch(std::exception& e) {

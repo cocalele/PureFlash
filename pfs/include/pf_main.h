@@ -36,6 +36,8 @@ class PfRdmaServer;
 
 #define MAX_TRAY_COUNT 32
 #define MAX_PORT_COUNT 4
+#define MAX_DISPATCHER_COUNT 10
+#define MAX_REPLICATOR_COUNT 10
 #define IO_POOL_SIZE 4096
 
 #define DATA_PORT 0

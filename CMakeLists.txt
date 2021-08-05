@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1)
 if(COMMAND cmake_policy)
   cmake_policy(SET CMP0015 NEW)
 endif()
@@ -52,12 +52,13 @@ macro(USE_ISA_L)
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 	execute_process(COMMAND make -j 4
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
-	execute_process(COMMAND make install
-                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+#	execute_process(COMMAND make install
+#                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 endmacro(USE_ISA_L)
 
 INCLUDE(CheckIncludeFiles)
-CHECK_INCLUDE_FILES(rdma/rdma_cma.h HAVE_RDMA_H)
+CHECK_INCLUDE_FILES("rdma/rdma_cma.h" HAVE_RDMA_H)
+
 IF (HAVE_RDMA_H)
     add_definitions(-DWITH_RDMA)
 ENDIF (HAVE_RDMA_H)

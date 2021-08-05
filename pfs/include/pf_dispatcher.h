@@ -46,6 +46,8 @@ struct SubTask
 
 struct IoSubTask : public SubTask
 {
+#pragma warning("Use union here is beter")
+	struct iovec uring_iov;
 	iocb aio_cb; //aio cb to perform io
 	IoSubTask* next;//used for chain waiting io
     inline void complete_read_with_zero();
@@ -69,6 +71,14 @@ struct RecoverySubTask : public SubTask
 	virtual void complete(PfMessageStatus comp_status);
 	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
 };
+struct CowTask : public IoSubTask {
+	off_t src_offset;
+	off_t dst_offset;
+	void* buf;
+	int size;
+	sem_t sem;
+};
+
 struct PfServerIocb
 {
 public:
@@ -82,6 +92,7 @@ public:
 	uint16_t  complete_meta_ver;
 	uint32_t task_mask;
 	uint32_t ref_count;
+	int disp_index;
 	BOOL is_timeout;
 
 	SubTask* subtasks[PF_MAX_SUBTASK_CNT];

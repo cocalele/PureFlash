@@ -6,8 +6,9 @@
 #include <pf_main.h>
 #include "pf_dispatcher.h"
 #include "pf_message.h"
+#include "pf_rdma_connection.h"
 
-extern struct disp_mem_pool* disp_mem_pool[10];
+extern struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT];
 //PfDispatcher::PfDispatcher(const std::string &name) :PfEventThread(name.c_str(), IO_POOL_SIZE*3) {
 //
 //}
@@ -97,7 +98,7 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 
 	if (io_elapse_time > 2000)
 	{
-		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, vol:%s, since received:%dms",
+		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol:%s, since received:%dms",
 		           iocb->cmd_bd->cmd_bd->offset >> SHARD_SIZE_ORDER,
 		           iocb->cmd_bd->cmd_bd->command_id,
 		           iocb->vol->name,
@@ -289,6 +290,7 @@ int PfDispatcher::init_mempools(int disp_index)
 	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
 	if (rc)
 		goto release1;
+	S5LOG_INFO("Allocate data_pool with max IO size:%d, depth:%d", PF_MAX_IO_SIZE, pool_size * 2);
 	rc = mem_pool.data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;
@@ -307,7 +309,7 @@ int PfDispatcher::init_mempools(int disp_index)
 		cb->data_bd = mem_pool.data_pool.alloc();
 		//data len of data_bd depends on length in message head
 		cb->data_bd->server_iocb = cb;
-
+		cb->disp_index = disp_index;
 		cb->reply_bd = mem_pool.reply_pool.alloc();
 		cb->reply_bd->data_len =  sizeof(PfMessageReply);
 		cb->reply_bd->server_iocb = cb;
@@ -317,10 +319,13 @@ int PfDispatcher::init_mempools(int disp_index)
 			cb->subtasks[i]->task_mask = 1 << i;
 			cb->subtasks[i]->parent_iocb = cb;
 		}
+
 		//TODO: still 2 subtasks not initialized, for metro replicating and rebalance
 		iocb_pool.free(cb);
 	}
+#ifdef WITH_RDMA
 	disp_mem_pool[disp_index] = &mem_pool;
+#endif
 	return rc;
 release4:
 	mem_pool.reply_pool.destroy();

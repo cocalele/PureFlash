@@ -11,6 +11,9 @@
 #include "pf_client_priv.h"
 #include "pf_message.h"
 #include "pf_main.h"
+#ifdef WITH_RDMA
+#include "pf_rdma_connection.h"
+#endif
 
 extern enum connection_type rep_conn_type;
 extern struct replicator_mem_pool* rep_mem_pool[10];
@@ -49,8 +52,10 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}
 	io->conn = c;
+#ifdef WITH_RDMA
 	if(conn_pool->conn_type == RDMA_TYPE)
 		cmd->rkey = io->data_bd->mrs[((PfRdmaConnection *)c)->dev_ctx->idx]->rkey;
+#endif
 	BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
@@ -163,8 +168,10 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 		return -EINVAL;
 	}
 	io->conn = c;
+#ifdef WITH_RDMA
 	if(conn_pool->conn_type == RDMA_TYPE)
 		cmd->rkey = io->data_bd->mrs[((PfRdmaConnection *)c)->dev_ctx->idx]->rkey;
+#endif
 	BufferDescriptor* rbd = mem_pool.reply_pool.alloc();
 	if(unlikely(rbd == NULL))
 	{
@@ -343,7 +350,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 	return 0;
 
 }
-
+#ifdef WITH_RDMA
 static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
@@ -362,7 +369,7 @@ static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus comple
     }
     return -1;
 }
-
+#endif
 void replicator_on_conn_close(PfConnection* conn)
 {
 	if(conn->unclean_closed) {
@@ -442,7 +449,11 @@ int PfReplicator::init(int index)
 		conn_pool->init(128, tcp_poller, this, 0, rep_iodepth, TCP_TYPE, replicator_on_tcp_network_done, replicator_on_conn_close);
 	} else {
 		//this if for rdma connection
+#ifdef WITH_RDMA
 		conn_pool->init(128, tcp_poller, this, 0, rep_iodepth, RDMA_TYPE, replicator_on_rdma_network_done, replicator_on_conn_close);
+#else
+		S5LOG_FATAL("RDMA not enabled, please compile with flag -DWITH_RDMA=1");
+#endif
 	}
 
 	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), rep_iodepth);
@@ -479,7 +490,9 @@ int PfReplicator::init(int index)
 		mem_pool.reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
+#ifdef WITH_RDMA
 	rep_mem_pool[rep_index] = &mem_pool;
+#endif
 	clean.cancel_all();
 	return 0;
 }

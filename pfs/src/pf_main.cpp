@@ -152,8 +152,23 @@ int main(int argc, char *argv[])
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
 	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
 		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
-	int i=0;
-	for(i=0;i<MAX_TRAY_COUNT;i++)
+	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
+	app_context.disps.reserve(disp_count);
+	for (int i = 0; i < disp_count; i++)
+	{
+		app_context.disps.push_back(new PfDispatcher());
+		rc = app_context.disps[i]->init(i);
+		if (rc) {
+			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
+			return rc;
+		}
+		rc = app_context.disps[i]->start();
+		if (rc != 0) {
+			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
+		}
+	}
+
+	for(int i=0;i<MAX_TRAY_COUNT;i++)
 	{
 		string name = format_string("tray.%d", i);
 		const char* devname = conf_get(fp, name.c_str(), "dev", NULL, false);
@@ -161,19 +176,16 @@ int main(int argc, char *argv[])
 			break;
 		auto s = new PfFlashStore();
 		rc = s->init(devname);
-		if(rc)
-		{
+		if(rc) {
 			S5LOG_ERROR("Failed init tray:%s, rc:%d", devname, rc);
 			continue;
-		}
-		else
-		{
+		} else {
 			app_context.trays.push_back(s);
 		}
 		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		s->start();
 	}
-	for (i = 0; i < MAX_PORT_COUNT; i++)
+	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("port.%d", i);
 		const char* ip = conf_get(fp, name.c_str(), "ip", NULL, false);
@@ -186,10 +198,10 @@ int main(int argc, char *argv[])
 		}
 
 	}
-
+#ifdef WITH_RDMA
 	recovery_bd_pool = &app_context.recovery_io_bd_pool;
-
-	for (i = 0; i < MAX_PORT_COUNT; i++)
+#endif
+	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("rep_port.%d", i);
 		const char* ip = conf_get(fp, name.c_str(), "ip", NULL, false);
@@ -202,21 +214,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
-	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
-	app_context.disps.reserve(disp_count);
-	for(int i=0;i<disp_count; i++)
-	{
-		app_context.disps.push_back(new PfDispatcher());
-		rc = app_context.disps[i]->init(i);
-		if(rc) {
-			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
-			return rc;
-		}
-		rc = app_context.disps[i]->start();
-		if(rc != 0) {
-			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
-		}
-	}
+
 
 	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
 	app_context.replicators.reserve(rep_count);
@@ -246,15 +244,17 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to init tcp server:%d", rc);
 		return rc;
 	}
-
+#ifdef WITH_RDMA
 	app_context.rdma_server = new PfRdmaServer();
 	rc = app_context.rdma_server->init(RDMA_PORT_BASE);
 	if(rc)
 	{
-		S5LOG_ERROR("Failed to init rdma server:%d", rc);
-		return rc;
+		S5LOG_ERROR("Failed to init rdma server:%d, RDMA disabled.", rc);
+		delete app_context.rdma_server;
+		app_context.rdma_server = NULL;
+		//return rc;
 	}
-
+#endif
 	do {
 		rc = set_store_node_state(store_id, NS_OK, TRUE);
 		if(rc == ZNODEEXISTS) {

@@ -21,13 +21,13 @@
 #include "pf_threadpool.h"
 #include "pf_volume.h"
 #include "pf_bitmap.h"
+#include "pf_ioengine.h"
 
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
 #define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
 
 
 #define S5_VERSION 0x00020000
-#define MAX_AIO_DEPTH 4096
 
 class PfRedoLog;
 class IoSubTask;
@@ -123,7 +123,7 @@ public:
 	//following are hot variables used by every IO. Put compact for cache hit convenience
 	int fd;
 	uint64_t in_obj_offset_mask; // := obj_size -1,
-	io_context_t aio_ctx;
+
 	pthread_t polling_tid; //polling thread
 
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
@@ -148,10 +148,7 @@ public:
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int preocess_io_event(IoSubTask* io);
 
-	void aio_polling_proc();
-	std::thread aio_poller;
-	void init_aio();
-
+	PfIoEngine* ioengine;
 	void trimming_proc();
 	std::thread trimming_thread;
 

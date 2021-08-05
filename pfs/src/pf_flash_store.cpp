@@ -65,13 +65,6 @@ static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_R
 
 static uint64_t get_device_cap(int fd);
 
-struct CowTask : public IoSubTask{
-	off_t src_offset;
-	off_t dst_offset;
-	void* buf;
-	int size;
-	sem_t sem;
-};
 
 
 static BOOL is_disk_clean(int fd)
@@ -218,7 +211,11 @@ int PfFlashStore::init(const char* tray_name)
 		return ret;
 
 	in_obj_offset_mask = head.objsize - 1;
-	init_aio();
+
+	//TODO: change io engine according to config file
+	ioengine = new PfAioEngine(this);
+	//ioengine = new PfIouringEngine(this);  
+	ioengine->init();
 	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
 
 	err_clean.cancel_all();
@@ -236,7 +233,6 @@ int PfFlashStore::init(const char* tray_name)
 inline int PfFlashStore::do_read(IoSubTask* io)
 {
 	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
-	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 
 	lmt_key key = {VOLUME_ID(io->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
 	auto block_pos = obj_lmt.find(key);
@@ -253,11 +249,9 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	{
 		if (likely(entry->status == EntryStatus::NORMAL || entry->status == EntryStatus::DELAY_DELETE_AFTER_COW)) {
 			//TODO: should we lock this entry first?
-			io_prep_pread(&io->aio_cb, fd, data_bd->buf, cmd->length,
-				entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
 			io->opcode = S5_OP_READ;
-			struct iocb *ios[1] = {&io->aio_cb};
-			io_submit(aio_ctx, 1, ios);
+			ioengine->submit_io(io, entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask), cmd->length);
+			
 		}
 		else
 		{
@@ -374,12 +368,9 @@ int PfFlashStore::do_write(IoSubTask* io)
 
 
 	}
-	//below is the most possible case
-	io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, cmd->length,
-	               entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask));
-	struct iocb* ios[1] = {&io->aio_cb};
-	//S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
-	io_submit(aio_ctx, 1, ios);
+
+	ioengine->submit_io(io, entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask), cmd->length);
+
 	return 0;
 }
 
@@ -861,96 +852,20 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
 	{
 		struct CowTask *req = (struct CowTask*)arg_p;
 		req->opcode = S5_OP_COW_READ;
-		io_prep_pread(&req->aio_cb, fd, req->buf, req->size, req->src_offset );
-		struct iocb* ios[1] = {&req->aio_cb};
-		S5LOG_DEBUG("io_submit for cow read, ssd:%s, buf:%p len:%d  offset:0x%llx", this->tray_name, req->buf,
-			  req->size, req->src_offset);
-		io_submit(aio_ctx, 1, ios);
+		ioengine->submit_io(req, req->src_offset, req->size);
 	}
 	break;
 	case EVT_COW_WRITE:
 	{
 		struct CowTask *req = (struct CowTask*)arg_p;
 		req->opcode = S5_OP_COW_WRITE;
-		io_prep_pwrite(&req->aio_cb, fd, req->buf, req->size, req->dst_offset );
-		struct iocb* ios[1] = {&req->aio_cb};
-		//S5LOG_DEBUG("io_submit for cid:%d, ssd:%s, len:%d", cmd->command_id, tray_name, cmd->length);
-		io_submit(aio_ctx, 1, ios);
+		ioengine->submit_io(req, req->dst_offset, req->size);
 	}
 	break;
 	default:
 		S5LOG_FATAL("Unimplemented event type:%d", event_type);
 	}
     return 0;
-}
-
-void PfFlashStore::aio_polling_proc()
-{
-#define MAX_EVT_CNT 100
-	struct io_event evts[MAX_EVT_CNT];
-	char name[32];
-	snprintf(name, sizeof(name), "aio_%s", tray_name);
-	prctl(PR_SET_NAME, name);
-	int rc=0;
-	while(1) {
-		rc = io_getevents(aio_ctx, 1, MAX_EVT_CNT, evts, NULL);
-		if(rc < 0)
-		{
-			continue;
-		}
-		else
-		{
-			for(int i=0;i<rc;i++)
-			{
-				struct iocb* aiocb = (struct iocb*)evts[i].obj;
-				int64_t len = evts[i].res;
-				int64_t res = evts[i].res2;
-				IoSubTask* t = pf_container_of(aiocb, IoSubTask, aio_cb);
-				switch(t->opcode) {
-					case S5_OP_READ:
-					case S5_OP_WRITE:
-					case S5_OP_REPLICATE_WRITE:
-						//S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
-						if (unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
-							S5LOG_ERROR("aio error, len:%d rc:%d, op:%d off:0x%llx len:%d, logic offset:0x%llx, buf:%p", (int) len, (int) res,
-				                aiocb->aio_lio_opcode, aiocb->u.c.offset, aiocb->u.c.nbytes, t->parent_iocb->cmd_bd->cmd_bd->offset,
-				                aiocb->u.c.buf);
-							//res = (res == 0 ? len : res);
-							app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
-						} else
-							t->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
-						break;
-					case S5_OP_COW_READ:
-					case S5_OP_COW_WRITE:
-						if (unlikely(len != ((CowTask *) t)->size || res < 0)) {
-							S5LOG_ERROR("cow aio error, op:%d, len:%d rc:%d", t->opcode, (int) len, (int) res);
-							//res = (res == 0 ? len : res);
-							app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
-
-						} else {
-							t->complete_status = PfMessageStatus::MSG_STATUS_SUCCESS;
-							sem_post(&((CowTask*)t)->sem);
-						}
-
-						break;
-					default:
-						S5LOG_FATAL("Unknown task opcode:%d", t->opcode);
-				}
-
-			}
-		}
-	}
-}
-
-void PfFlashStore::init_aio()
-{
-    int rc = io_setup(MAX_AIO_DEPTH, &aio_ctx);
-    if(rc < 0)
-    {
-        S5LOG_ERROR("io_setup failed, rc:%d", rc);
-        throw std::runtime_error(format_string("io_setup failed, rc:%d", rc));
-    }
-    aio_poller = std::thread(&PfFlashStore::aio_polling_proc, this);
 }
 
 PfFlashStore::~PfFlashStore()
@@ -1828,3 +1743,4 @@ void PfFlashStore::post_load_check()
 	//used obj count + free + trim= total. any object should in one of three state: {used, free, trim}
 	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
 }
+
