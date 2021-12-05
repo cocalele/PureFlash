@@ -6,7 +6,7 @@
 #ifndef pf_dispatcher_h__
 #define pf_dispatcher_h__
 
-#include <map>
+#include <unordered_map>
 #include <libaio.h>
 #include "pf_event_thread.h"
 #include "pf_connection.h"
@@ -128,7 +128,7 @@ class PfDispatcher : public PfEventThread
 public:
 	ObjectMemoryPool<PfServerIocb> iocb_pool;
 	struct disp_mem_pool mem_pool;
-	std::map<uint64_t, PfVolume*> opened_volumes;
+	std::unordered_map<uint64_t, PfVolume*> opened_volumes;
 	int disp_index;
 
 	//PfDispatcher(const std::string &name);
@@ -146,6 +146,7 @@ public:
 
 	void set_snap_seq(int64_t volume_id, int snap_seq);
 	int set_meta_ver(int64_t volume_id, int meta_ver);
+	int add_temp_replica(PfVolume* vol);
 };
 
 inline void PfServerIocb::dec_ref() {

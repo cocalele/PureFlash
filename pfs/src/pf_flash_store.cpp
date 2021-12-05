@@ -1452,12 +1452,18 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	S5LOG_INFO("Begin recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
 			this->tray_name, recov_object_size);
 
-	auto pos = app_context.opened_volumes.find(rep_id.to_volume_id().vol_id);
-	if(pos == app_context.opened_volumes.end()) {
-		S5LOG_ERROR("volume 0x:%llx not opened", rep_id.to_volume_id().vol_id);
-		return -EINVAL;
+	PfVolume* vol = NULL;
+	{
+		AutoMutexLock _l(&app_context.lock);
+		auto pos = app_context.opened_volumes.find(rep_id.to_volume_id().vol_id);
+		if (pos == app_context.opened_volumes.end()) {
+			S5LOG_ERROR("volume 0x:%llx not opened", rep_id.to_volume_id().vol_id);
+			return -EINVAL;
+		}
+		vol = pos->second;
+		vol->add_ref();
 	}
-	PfVolume* vol = pos->second;
+	DeferCall _d([vol] {vol->dec_ref(); });
 
 	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize);
 	if(pendding_buf == NULL) {

@@ -26,7 +26,7 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 	switch (ev) {
 	case MG_EV_HTTP_REQUEST:
 		mg_get_http_var(&hm->query_string, "op", opcode, sizeof(opcode));
-		S5LOG_INFO("api op:%s", opcode);
+		S5LOG_INFO("api op:%s, %.*s", opcode, hm->query_string.len, hm->query_string.p);
 		//mg_send_head(nc, 200, hm->message.len, "Content-Type: text/plain");
 		//mg_printf(nc, "%.*s", (int)hm->message.len, hm->message.p);
 		//mg_printf(nc, "%.*s", (int)hm->body.len, hm->body.p);
@@ -53,6 +53,8 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 				handle_query_task(nc, hm);
 			else if (strcmp(opcode, "calculate_replica_md5") == 0)
 				handle_cal_replica_md5(nc, hm);
+			else if (strcmp(opcode, "add_temp_replica") == 0)
+				handle_add_temp_replica(nc, hm);
 			else {
 				S5LOG_ERROR("Unknown op:%s", opcode);
 				string cstr = format_string("Unknown op:%s", opcode);

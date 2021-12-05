@@ -15,6 +15,7 @@
 class ReplicaArg
 {
 public:
+	uint64_t id;
 	int index;
 	int store_id;
 	std::string tray_uuid;
@@ -58,6 +59,7 @@ public:
 	const static int REMOTE_ERROR = 5;
 	const static int ALREADY_DONE = 6;
 	const static int INVALID_STATE = 7;
+	const static int INTERNAL_ERROR = 100;
 
 	RestfulReply();
 	RestfulReply(std::string op, int ret_code=RestfulReply::OK, const char* reason="");
@@ -120,4 +122,5 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
 void handle_query_task(struct mg_connection *nc, struct http_message * hm);
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
+void handle_add_temp_replica(struct mg_connection* nc, struct http_message* hm);
 #endif // pf_restful_api_h__

@@ -31,6 +31,7 @@ void from_json(const json& j, RestfulReply& p) {
 }
 
 void from_json(const json& j, ReplicaArg& p) {
+	j.at("id").get_to(p.id);
 	j.at("index").get_to(p.index);
 	j.at("store_id").get_to(p.store_id);
 	j.at("tray_uuid").get_to(p.tray_uuid);
@@ -125,6 +126,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 	for (int i = 0; i < arg.shard_count; i++)
 	{
 		PfShard* shard = new PfShard(); //will be release on ~PfVolume
+		memset(shard->replicas, 0, sizeof(shard->replicas));
 		vol->shards.push_back(shard);
 		shard->id = arg.volume_id | (arg.shards[i].index << 4);
 		shard->shard_index = arg.shards[i].index;
@@ -134,10 +136,10 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		shard->rep_count = vol->rep_count;
 		shard->snap_seq = vol->snap_seq;
 		shard->status = health_status_from_str(arg.shards[i].status);
+		S5LOG_INFO("Convert to shard:%d with %d replicas", i, arg.shards[i].replicas.size());
 		for (int j = 0; j < arg.shards[i].replicas.size(); j++)
 		{
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
-			S5ASSERT(rarg.index == j);
 			bool is_local = (rarg.store_id == app_context.store_id);
 			PfReplica * r;
 			if(is_local)
@@ -146,7 +148,8 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				r = new PfSyncRemoteReplica();
 			shard->replicas[j] = r;
 			r->rep_index = rarg.index;
-			r->id = shard->id | r->rep_index;
+			r->id = rarg.id;
+			S5ASSERT(r->id != 0);
 			r->store_id = rarg.store_id;
 			r->is_primary = (rarg.index == shard->primary_replica_index);
 			r->is_local = is_local;
@@ -221,39 +224,54 @@ void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm)
 	S5LOG_INFO("Receive prepare volume req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
 	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
 	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
-	PfVolume* vol = NULL;
-	try {
-		vol = convert_argument_to_volume(arg);
-	}
-	catch(std::exception& e) {
-		RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_ARG, e.what());
-		json jr = r;
-		string jstr = jr.dump();
-		const char* cstr = jstr.c_str();
-		mg_send_head(nc, 500, strlen(cstr), "Content-Type: text/plain");
-		mg_printf(nc, "%s", cstr);
-		return;
-	}
-	DeferCall _rel([vol]{vol->dec_ref();});
 	int rc = 0;
 	for(auto d : app_context.disps)
 	{
+		PfVolume* vol = NULL;
+		try {
+			vol = convert_argument_to_volume(arg);
+		}
+		catch (std::exception& e) {
+			RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_ARG, e.what());
+			json jr = r;
+			string jstr = jr.dump();
+			const char* cstr = jstr.c_str();
+			mg_send_head(nc, 500, strlen(cstr), "Content-Type: text/plain");
+			mg_printf(nc, "%s", cstr);
+			return;
+		}
+		DeferCall _rel([vol] {vol->dec_ref(); });
 		rc = d->sync_invoke([d, vol]()->int {return d->prepare_volume(vol);});
-
+		assert(rc == 0);
 	}
-	if(rc == 0)
-	{
-		S5LOG_INFO("Succeeded prepare volume:%s", vol->name);
-		AutoMutexLock _l(&app_context.lock);
-		if(app_context.opened_volumes.find(vol->id) == app_context.opened_volumes.end()){
+
+	{//begin a new code block, so app_context lock can release quickly
+		PfVolume* vol = NULL;
+		try {
+			vol = convert_argument_to_volume(arg);
+		}
+		catch (std::exception& e) {
+			RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_ARG, e.what());
+			json jr = r;
+			string jstr = jr.dump();
+			const char* cstr = jstr.c_str();
+			mg_send_head(nc, 500, strlen(cstr), "Content-Type: text/plain");
+			mg_printf(nc, "%s", cstr);
+			return;
+		}
+		DeferCall _rel([vol] {vol->dec_ref(); });
+		AutoMutexLock _l(&app_context.lock); //
+		auto pos = app_context.opened_volumes.find(vol->id);
+		if (pos == app_context.opened_volumes.end()) {
 			vol->add_ref();
 			app_context.opened_volumes[vol->id] = vol;
 		}
-	}//these code in separate code block, so lock can be released quickly
-	if(rc == -EALREADY)
-	{
-		S5LOG_ERROR("Volume already opened:%s, this is a bug", vol->name);
+		else {
+			*pos->second = std::move(*vol);
+		}
 	}
+	S5LOG_INFO("Succeeded prepare volume:%s", arg.volume_name.c_str());
+
 	RestfulReply r(arg.op + "_reply");
 	send_reply_to_client(r, nc);
 }
@@ -309,23 +327,33 @@ void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) 
 
 void handle_begin_recovery(struct mg_connection *nc, struct http_message * hm) {
 	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	int64_t rep_index = get_http_param_as_int64(&hm->query_string, "replica_index", -1, false);
 
 	RestfulReply r("begin_recovery_reply");
 	for(auto d : app_context.disps)
 	{
-		int rc = d->sync_invoke([d, rep_id]()->int {
+		int rc = d->sync_invoke([d, rep_id, rep_index]()->int {
 			replica_id_t  rid = int64_to_replica_id(rep_id);
 			auto pos = d->opened_volumes.find(rid.to_volume_id().vol_id);
 			if(pos == d->opened_volumes.end()) {
 				return RestfulReply::INVALID_STATE;
 			}
 			PfVolume* v = pos->second;
-			v->shards[rid.shard_index()]->replicas[rid.replica_index()]->status = HS_RECOVERYING;
+			int act_rep_idx = rid.replica_index();
+			if(rep_index >= 0){
+				if(rep_index >= MAX_REP_COUNT || v->shards[rid.shard_index()]->replicas[rep_index] == NULL){
+					return RestfulReply::INTERNAL_ERROR;
+				}
+				act_rep_idx = (int)rep_index;
+			}
+			
+			v->shards[rid.shard_index()]->replicas[act_rep_idx]->status = HS_RECOVERYING;
 			return 0;
 		});
-		if(rc == RestfulReply::INVALID_STATE) {
-			r.ret_code = RestfulReply::INVALID_STATE;
-			r.reason = "Volume not opened";
+		if(rc) {
+			S5LOG_ERROR("Begin recovery failed for:%d", rc);
+			r.ret_code = rc;
+			r.reason = format_string("Begin recovery failed for:%d", rc);
 		}
 	}
 	send_reply_to_client(r, nc);
@@ -333,19 +361,26 @@ void handle_begin_recovery(struct mg_connection *nc, struct http_message * hm) {
 
 void handle_end_recovery(struct mg_connection *nc, struct http_message * hm) {
 	int64_t rep_id = get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	int64_t rep_index = get_http_param_as_int64(&hm->query_string, "replica_index", -1, false);
 	int64_t ok = get_http_param_as_int64(&hm->query_string, "ok", 0, true);
 	RestfulReply r("end_recovery_reply");
 	for(auto d : app_context.disps)
 	{
-		int rc = d->sync_invoke([d, rep_id, ok]()->int {
+		int rc = d->sync_invoke([d, rep_id, rep_index, ok]()->int {
 			replica_id_t  rid = int64_to_replica_id(rep_id);
 			auto pos = d->opened_volumes.find(rid.to_volume_id().vol_id);
 			if(pos == d->opened_volumes.end()) {
 				return RestfulReply::INVALID_STATE;
 			}
 			PfVolume* v = pos->second;
-
-			v->shards[rid.shard_index()]->replicas[rid.replica_index()]->status = (ok ? HS_OK : HS_ERROR);
+			int act_rep_idx = rid.replica_index();
+			if (rep_index >= 0) {
+				if (rep_index >= MAX_REP_COUNT || v->shards[rid.shard_index()]->replicas[rep_index] == NULL) {
+					return RestfulReply::INTERNAL_ERROR;
+				}
+				act_rep_idx = (int)rep_index;
+			}
+			v->shards[rid.shard_index()]->replicas[act_rep_idx]->status = (ok ? HS_OK : HS_ERROR);
 			return 0;
 		});
 		if(rc == RestfulReply::INVALID_STATE) {
@@ -355,7 +390,7 @@ void handle_end_recovery(struct mg_connection *nc, struct http_message * hm) {
 	}
 	send_reply_to_client(r, nc);
 }
-
+ 
 void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
 	int from = (int)get_http_param_as_int64(&hm->query_string, "from_store_id", 0, true);
@@ -508,4 +543,46 @@ void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm) 
 	Scrub scrub;
 	reply.md5 = scrub.cal_replica(disk, int64_to_replica_id(rep_id));
 	send_reply_to_client(reply, nc);
+}
+
+void handle_add_temp_replica(struct mg_connection* nc, struct http_message* hm)
+{
+	string vol_name = get_http_param_as_string(&hm->query_string, "name", NULL, true);
+	S5LOG_INFO("Receive add_temp_replica req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
+	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
+	PrepareVolumeArg arg = j.get<PrepareVolumeArg>();
+	PfVolume* vol = NULL;
+	try {
+		vol = convert_argument_to_volume(arg);
+	}
+	catch (std::exception& e) {
+		RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_ARG, e.what());
+		json jr = r;
+		string jstr = jr.dump();
+		const char* cstr = jstr.c_str();
+		mg_send_head(nc, 500, strlen(cstr), "Content-Type: text/plain");
+		mg_printf(nc, "%s", cstr);
+		return;
+	}
+	DeferCall _rel([vol] {vol->dec_ref(); });
+	int rc = 0;
+	for (auto d : app_context.disps)
+	{
+		rc = d->sync_invoke([d, vol]()->int {return d->prepare_volume(vol); });
+		assert(rc == 0);
+	}
+	{
+		S5LOG_INFO("Succeeded prepare volume:%s", vol->name);
+		AutoMutexLock _l(&app_context.lock);
+		auto pos = app_context.opened_volumes.find(vol->id);
+		if (pos == app_context.opened_volumes.end()) {
+			vol->add_ref();
+			app_context.opened_volumes[vol->id] = vol;
+		} else {
+			*pos->second = std::move(*vol);
+		}
+	}
+	RestfulReply r(arg.op + "_reply");
+	send_reply_to_client(r, nc);
+
 }

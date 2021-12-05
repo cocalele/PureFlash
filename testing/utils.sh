@@ -10,8 +10,8 @@ function info {
 function assert()
 {
     local cmd=$*
-    echo "Run:$cmd" > /dev/stderr
-    eval '${cmd}'
+	echo "Run:$cmd" > /dev/stderr
+	eval '${cmd}'
     if [ $? -ne 0 ]; then
         fatal "Failed to run:$cmd"
     fi
@@ -23,6 +23,24 @@ function assert_equal()
         fatal "Assert fail, $1 != $2, $3"
     fi
 }
+
+function assert_not_eq()
+{
+    if [ "$1" == "$2" ]; then
+        fatal "Assert fail, $1 != $2, $3"
+    fi
+}
+
+function assert_fail()
+{
+    local cmd=$*
+	echo "Run:$cmd" > /dev/stderr
+	eval '${cmd}'
+    if [ $? -eq 0 ]; then
+        fatal "Failed to run:$cmd"
+    fi
+}
+
 function curlex () {
     echo "curl $@"
     rsp=$(curl --write-out '\n%{http_code}\n'  "$@" 2>/dev/null)

@@ -120,6 +120,7 @@ struct PfVolume
 		if(_ref_count == 0)
 			delete this;
 	}
+	PfVolume& operator=(PfVolume&& nv);
 private:
 	~PfVolume();
 	int _ref_count; //name similar with rep_count, so add prefix with _

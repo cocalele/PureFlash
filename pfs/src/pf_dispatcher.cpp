@@ -12,7 +12,7 @@ extern struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT];
 //PfDispatcher::PfDispatcher(const std::string &name) :PfEventThread(name.c_str(), IO_POOL_SIZE*3) {
 //
 //}
-
+ 
 int PfDispatcher::init(int disp_index)
 {
  /*
@@ -36,32 +36,13 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	if (pos != opened_volumes.end())
 	{
 		PfVolume* old_v = pos->second;
-		if(old_v->meta_ver >= vol->meta_ver) {
-			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
-			  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
-			return 0;
-		}
+		//if(old_v->meta_ver >= vol->meta_ver) {
+		//	S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+		//	  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
+		//	return 0;
+		//}
 
-		old_v->meta_ver = vol->meta_ver;
-		old_v->shard_count = vol->shard_count;
-		old_v->size = vol->size;
-		old_v->snap_seq = vol->snap_seq;
-		old_v->status = vol->status;
-		for(int i=0;i<old_v->shard_count;i++){
-			PfShard *s=old_v->shards[i];
-			for(int j=0;j<s->rep_count; j++) {
-				if(s->replicas[i]->status == HealthStatus::HS_RECOVERYING && vol->shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
-					vol->shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep recoverying continue
-				}
-			}
-			old_v->shards[i] = vol->shards[i];
-			vol->shards[i] = NULL;
-			delete s;
-		}
-		for(int i=old_v->shard_count; i<vol->shards.size(); i++) { //enlarged shard
-			old_v->shards.push_back(vol->shards[i]);
-			vol->shards[i] = NULL;
-		}
+		(*old_v) = std::move(*vol);
 	} else {
 		vol->add_ref();
 		opened_volumes[vol->id] = vol;
@@ -357,5 +338,42 @@ int PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
 		return -EINVAL;
 	}
 	pos->second->meta_ver = meta_ver;
+	return 0;
+}
+
+int PfDispatcher::add_temp_replica(PfVolume* vol)
+{
+	assert(vol);
+	auto pos = opened_volumes.find(vol->id);
+	if (pos == opened_volumes.end()) {
+		S5LOG_ERROR("Volume:%s not opened and can't add tempory replica", vol->name);
+		return -ENOENT;
+	}
+
+	PfVolume* old_v = pos->second;
+	if (old_v->meta_ver != vol->meta_ver) {
+		S5LOG_ERROR("meta_ver mismatch, volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+			disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
+		return -EAGAIN;
+	}
+	if (vol->shards.size() != 1) {
+		S5LOG_ERROR("Only 1 shard can be chosed to add temp replica");
+		return -EINVAL;
+	}
+
+	PfShard* new_shard = vol->shards[0];
+	PfShard* old_shard = old_v->shards[new_shard->shard_index];
+	PfReplica* new_rep = new_shard->replicas[0];
+
+	if(old_shard->replicas[new_rep->rep_index] != NULL){
+		S5LOG_ERROR("Replica index:%d already inuse!", new_rep->rep_index);
+		return -EINVAL;
+	}
+
+	old_shard->replicas[new_rep->rep_index] = new_rep;
+	new_shard->replicas[0] = NULL;
+			
+		
+	
 	return 0;
 }

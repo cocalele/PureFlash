@@ -47,7 +47,7 @@ PureFlash can be build with cmake tools.
     # export JAVA_HOME=/opt/jdk-14.0.1
     # export PATH=$PATH:$JAVA_HOME/bin
   - Ohters
-    # apt-get install libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev libtool nasm autoconf cmake librdmacm-dev
+    # apt-get install libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev libtool nasm autoconf cmake librdmacm-dev pkg-config g++
 
 
 1) check out code
