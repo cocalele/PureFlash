@@ -11,9 +11,10 @@ export DB_IP DB_NAME DB_USER DB_PASS
 
 pfcli delete_volume  -v $VOL_NAME
 assert pfcli create_volume  -v $VOL_NAME -s $VOL_SIZE -r 3
+query_db "select hex(replica_id), is_primary, store_id, tray_uuid from v_replica_ext where volume_name='$VOL_NAME'"
+
 #assert "fio --enghelp | grep pfbd "
-pfdd --rw write --if /dev/zero -v $VOL_NAME --bs 4k --count 10
- 
+assert pfdd --rw write --if /dev/zero -v $VOL_NAME --bs 4k --count 10
 PRIMARY_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where is_primary=1 and volume_name='$VOL_NAME') limit 1")
 read rep_id store_id tray_uuid store_ip <<< $(query_db "select replica_id , store_id , tray_uuid, s.mngt_ip from v_replica_ext, t_store s  where volume_name='$VOL_NAME' and is_primary=0 and store_id=s.id limit 1")
 

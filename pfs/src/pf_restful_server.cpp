@@ -53,8 +53,8 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 				handle_query_task(nc, hm);
 			else if (strcmp(opcode, "calculate_replica_md5") == 0)
 				handle_cal_replica_md5(nc, hm);
-			else if (strcmp(opcode, "add_temp_replica") == 0)
-				handle_add_temp_replica(nc, hm);
+			else if (strcmp(opcode, "prepare_shards") == 0)
+				handle_prepare_shards(nc, hm);
 			else {
 				S5LOG_ERROR("Unknown op:%s", opcode);
 				string cstr = format_string("Unknown op:%s", opcode);

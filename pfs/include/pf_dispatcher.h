@@ -146,7 +146,7 @@ public:
 
 	void set_snap_seq(int64_t volume_id, int snap_seq);
 	int set_meta_ver(int64_t volume_id, int meta_ver);
-	int add_temp_replica(PfVolume* vol);
+	int prepare_shards(PfVolume* vol);
 };
 
 inline void PfServerIocb::dec_ref() {

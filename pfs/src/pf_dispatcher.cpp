@@ -36,11 +36,11 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	if (pos != opened_volumes.end())
 	{
 		PfVolume* old_v = pos->second;
-		//if(old_v->meta_ver >= vol->meta_ver) {
-		//	S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
-		//	  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
-		//	return 0;
-		//}
+		if(old_v->meta_ver >= vol->meta_ver) {
+			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+			  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
+			return 0;
+		}
 
 		(*old_v) = std::move(*vol);
 	} else {
@@ -341,7 +341,7 @@ int PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
 	return 0;
 }
 
-int PfDispatcher::add_temp_replica(PfVolume* vol)
+int PfDispatcher::prepare_shards(PfVolume* vol)
 {
 	assert(vol);
 	auto pos = opened_volumes.find(vol->id);
@@ -351,29 +351,14 @@ int PfDispatcher::add_temp_replica(PfVolume* vol)
 	}
 
 	PfVolume* old_v = pos->second;
-	if (old_v->meta_ver != vol->meta_ver) {
-		S5LOG_ERROR("meta_ver mismatch, volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
-			disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
-		return -EAGAIN;
+	old_v->meta_ver = vol->meta_ver;
+	for(int i=0;i<vol->shards.size();i++)
+	{
+		PfShard* new_shard = vol->shards[i];
+		PfShard* old_shard = old_v->shards[new_shard->shard_index];
+		old_v->shards[new_shard->shard_index] = new_shard;
+		vol->shards[i] = NULL;
+		delete old_shard;
 	}
-	if (vol->shards.size() != 1) {
-		S5LOG_ERROR("Only 1 shard can be chosed to add temp replica");
-		return -EINVAL;
-	}
-
-	PfShard* new_shard = vol->shards[0];
-	PfShard* old_shard = old_v->shards[new_shard->shard_index];
-	PfReplica* new_rep = new_shard->replicas[0];
-
-	if(old_shard->replicas[new_rep->rep_index] != NULL){
-		S5LOG_ERROR("Replica index:%d already inuse!", new_rep->rep_index);
-		return -EINVAL;
-	}
-
-	old_shard->replicas[new_rep->rep_index] = new_rep;
-	new_shard->replicas[0] = NULL;
-			
-		
-	
 	return 0;
 }
