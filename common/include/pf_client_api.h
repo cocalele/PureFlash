@@ -25,6 +25,9 @@ struct PfClientVolumeInfo {
 	int meta_ver;
 	int snap_seq;
 };
+
+
+
 struct PfClientVolume *pf_open_volume(const char *volume_name, const char *cfg_filename, const char *snap_name,
                                       int lib_ver);
 /**

@@ -255,7 +255,7 @@ static void client_on_tcp_close(PfConnection* c)
 
 }
 
-int PfClientVolume::do_open(bool reopen)
+int PfClientVolume::do_open(bool reopen, bool is_aof)
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_file.c_str());
@@ -282,8 +282,8 @@ int PfClientVolume::do_open(bool reopen)
 		return -ENOMEM;
 	}
 	DeferCall _2([esc_snap_name]() { curl_free(esc_snap_name); });
-
-	std::string query = format_string("op=open_volume&volume_name=%s&snapshot_name=%s", esc_vol_name, esc_snap_name);
+	const char* op = is_aof ? "open_aof" : "open_volume";
+	std::string query = format_string("op=%s&volume_name=%s&snapshot_name=%s", op, esc_vol_name, esc_snap_name);
 	rc = query_conductor(cfg, query, *this);
 	if (rc != 0)
 		return rc;
@@ -371,8 +371,6 @@ int PfClientVolume::do_open(bool reopen)
 	open_time = now_time_usec();
 	return 0;
 }
-
-
 
 static inline int cmp(const void *a, const void *b)
 {
