@@ -94,8 +94,9 @@ typedef struct curl_memory {
 	size_t size;
 }curl_memory_t;
 
-struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
-                                      int lib_ver)
+
+struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+                                      int lib_ver, bool is_aof)
 {
 	int rc = 0;
 	if (lib_ver != S5_LIB_VER)
@@ -123,7 +124,7 @@ struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_f
 		if(snap_name)
 			volume->snap_name = snap_name;
 
-		rc = volume->do_open();
+		rc = volume->do_open(false, is_aof);
 		if (rc)	{
 			return NULL;
 		}
@@ -140,6 +141,12 @@ struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_f
 		S5LOG_ERROR("Exception in open volume:%s", e.what());
 	}
 	return NULL;
+}
+
+
+struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
+{
+	return _pf_open_volume(volume_name, cfg_filename, snap_name, lib_ver, false);
 }
 
 int pf_query_volume_info(const char* volume_name, const char* cfg_filename, const char* snap_name,
@@ -492,7 +499,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 			long http_code = 0;
 			curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
 			curl_buf.memory[curl_buf.size] = 0;
-			S5LOG_DEBUG("HTTP return:%d content:%s", http_code, curl_buf.memory);
+			S5LOG_DEBUG("HTTP return:%d content:%*.s", http_code, curl_buf.size, curl_buf.memory);
 			if (http_code == 200)
 			{
 				return curl_buf.memory;

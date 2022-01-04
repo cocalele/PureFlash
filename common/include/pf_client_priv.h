@@ -10,6 +10,8 @@
 #include "pf_client_api.h"
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 
+class PfPoller;
+
 /*
  * for open volume, jconductor will return a json like:
  *  {
@@ -188,7 +190,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times);
 std::string get_master_conductor_ip(const char *zk_host, const char* cluster_name);
 
 template<typename ReplyT>
-int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply)
+int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply, bool no_exception=false)
 {
 	const char* zk_ip = conf_get(cfg, "zookeeper", "ip", "", TRUE);
 	if(zk_ip == NULL)
@@ -207,7 +209,7 @@ int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply
 		if( reply_buf != NULL) {
 			DeferCall _rel([reply_buf]() { free(reply_buf); });
 			auto j = nlohmann::json::parse((char*)reply_buf);
-			if(j["ret_code"].get<int>() != 0) {
+			if (j["ret_code"].get<int>() != 0 && !no_exception) {
 				throw std::runtime_error(format_string("Failed %s, reason:%s", url.c_str(), j["reason"].get<std::string>().c_str()));
 			}
 			j.get_to<ReplyT>(reply);

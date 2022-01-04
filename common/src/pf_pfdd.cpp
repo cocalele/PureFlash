@@ -261,13 +261,14 @@ int main(int argc, char* argv[])
 			}
 			ssize_t rc = pwrite(fd, buf, bs, offset_in_file + i * bs);
 			if(rc != bs) {
-				S5LOG_FATAL("Failed write data to file, rc:%l, errno:%d", rc, errno);
+				S5LOG_FATAL("Failed write data to file, rc:%ld, errno:%d", rc, errno);
 			}
+			fsync(fd);
 
 		} else {
 			ssize_t rc = pread(fd, buf, bs, offset_in_file + i * bs);
 			if(rc != bs) {
-				S5LOG_FATAL("Failed read data from file, rc:%l, errno:%d", rc, errno);
+				S5LOG_FATAL("Failed read data from file, rc:%ld, errno:%d", rc, errno);
 			}
 			pf_io_submit(vol, buf, bs, offset + i * bs, io_cbk, &arg, is_write);
 			sem_wait(&arg.sem);

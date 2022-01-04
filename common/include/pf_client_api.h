@@ -3,6 +3,10 @@
 //
 #ifndef PUREFLASH_S5_CLIENT_API_H
 #define PUREFLASH_S5_CLIENT_API_H
+#include <stdint.h>
+#include <stddef.h>
+#include <unistd.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

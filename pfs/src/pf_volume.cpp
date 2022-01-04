@@ -42,7 +42,7 @@ PfVolume& PfVolume::operator=(PfVolume&& vol)
 	for (int i = 0; i < shard_count; i++) {
 		PfShard* s = shards[i];
 		for (int j = 0; j < s->rep_count; j++) {
-			if (s->replicas[i]->status == HealthStatus::HS_RECOVERYING && vol.shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
+			if (s->replicas[j]->status == HealthStatus::HS_RECOVERYING && vol.shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
 				vol.shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep recoverying continue
 			}
 		}
@@ -51,6 +51,7 @@ PfVolume& PfVolume::operator=(PfVolume&& vol)
 		vol.shards[i] = NULL;
 		delete s;
 	}
+
 	for (int i = shard_count; i < vol.shards.size(); i++) { //enlarged shard
 		shards.push_back(vol.shards[i]);
 		vol.shards[i] = NULL;

@@ -49,6 +49,7 @@ set (S5COMMON_SRC
 	src/pf_zk_client.cpp
 	src/pf_client_api.cpp
 	src/pf_connection_pool.cpp
+	src/pf_aof.cpp
 	)
 IF (HAVE_RDMA_H)
 	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
@@ -83,3 +84,6 @@ TARGET_LINK_LIBRARIES(s5common dl rdmacm ibverbs pthread  ${GCOV})
 
 add_executable(pfdd ${PFDD_SRC})
 TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs pthread uuid zookeeper curl ${GCOV})
+
+add_executable(aof_helper src/pf_aof_test_helper.cpp)
+TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ibverbs pthread uuid zookeeper curl ${GCOV})
