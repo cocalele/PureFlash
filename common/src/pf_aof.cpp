@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <string>
 #include <exception>
+#include <algorithm>
 #include <nlohmann/json.hpp>
 #include <curl/curl.h>
 #include "pf_aof.h"
@@ -56,6 +57,9 @@ PfAof::PfAof(ssize_t append_buf_size)
 	append_buf = aligned_alloc(4096, append_buf_size);
 	if(append_buf == NULL)
 		throw std::runtime_error(format_string("Failed alloc append buf"));
+	read_buf = aligned_alloc(4096, 8192);
+	if (read_buf == NULL)
+		throw std::runtime_error(format_string("Failed alloc read_buf"));
 
 	this->append_buf_size = append_buf_size;
 	this->append_tail = 0;
@@ -274,8 +278,8 @@ void PfAof::sync()
 
 	io_waiter arg;
 	arg.rc = 0;
-	int iodepth = 32;
-	sem_init(&arg.sem, 0, iodepth);//io depth 32
+	int iodepth = 24;
+	sem_init(&arg.sem, 0, iodepth);
 
 	ssize_t buf_off = 0;
 	while (cur_file_tail < file_len) {
@@ -362,8 +366,16 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 
 	if (offset + len > file_len - append_tail /*offset of append buf head in file*/) //some data is in write buffer
 	{
-		ssize_t in_buf_len = offset + len - (file_len - append_tail);
-		memcpy((char**)buf + len - in_buf_len, append_buf, in_buf_len);
+		ssize_t in_buf_len = min(len, offset + len - (file_len - append_tail));
+		off_t in_buf_off = 0;
+		if(len == in_buf_len){
+			in_buf_off = offset + len - (file_len - append_tail) - in_buf_len;
+		}
+		memcpy((char*)buf + len - in_buf_len, (char*)append_buf + in_buf_off, in_buf_len);
+		S5LOG_INFO("Copy to user buf:%p+0x%lx, from append_buf, len:0x%lx, first QWORD:0x%lx",
+			buf, len - in_buf_len, in_buf_len, *(long*)( (char*)buf + len - in_buf_len));
+		if (len == in_buf_len)
+			return len;//all in append buffer
 		vol_end = vol_off + (len - in_buf_len);
 		assert(vol_end % 4096 == 0);
 	}
@@ -377,28 +389,35 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 
 	io_waiter arg;
 	arg.rc = 0;
-	int iodepth = 32;
-	sem_init(&arg.sem, 0, iodepth);//io depth 32
+	int iodepth = 24;
+	sem_init(&arg.sem, 0, iodepth);
 
-
+	bool copy_head = false;
+	bool copy_tail = false;
 	//in read buf, first 4K is unaligned head, second 4K is unaligned tail
 	if(vol_off%4096 != 0) {
 		sem_wait(&arg.sem);
+		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned head", aligned_off, 4096);
 		rc = pf_io_submit_read(volume, read_buf, 4096, aligned_off, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
 			return -EIO;
 		}
 		aligned_off += 4096;//unaligned part is 4K
+		copy_head = true;
 	}
-	if(vol_end % 4096 != 0){
+	if(vol_end % 4096 != 0 /*unaligned end*/  
+		&&  ( DOWN_ALIGN_4K(vol_end) != DOWN_ALIGN_4K(vol_off) //unaligned end is in different 4K with head
+			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
 		sem_wait(&arg.sem);
+		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
 		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
 			return -EIO;
 		}
 		aligned_end -= 4096;
+		copy_tail = true;
 	}
 
 	ssize_t buf_off = offset & 4095; //skip unaligned part in buffer
@@ -430,17 +449,17 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 			return -EIO;
 		}
 	}
-	if (vol_off % 4096 != 0) {
-		memcpy(buf, (char*)read_buf + (vol_off & 4095LL), 4096 - (vol_off & 4095LL));
+	if (copy_head) {
+		memcpy(buf, (char*)read_buf + (vol_off & 4095LL), min(4096 - (vol_off & 4095LL), (long long)len) );
 	}
-	if (vol_end % 4096 != 0) {
+	if (copy_tail) {
 		memcpy((char*)buf + len - (len & 4095LL), (char*)read_buf + 4096, len & 4095LL);
 		//                         ^^^^^^^^^^^^^         ^^^^^^^^^^^^^^^
 		//                                |                   + second 4K is unaligned data of tail
 		//                                +  this is unaligned part length in tail
 	}
 
-	
+	//S5LOG_INFO("Read buf:%p first QWORD:0x%lx",buf, *(long*)buf);
 	return len;
 }
 /**

@@ -63,7 +63,7 @@ int do_sync()
 int do_read(cmd& c)
 {
 	printf("write at:%ld to file:%s:%ld\n", c.src_offset,  c.src_file.c_str(), c.length);
-	int f = open(c.src_file.c_str(), O_RDWR);
+	int f = open(c.src_file.c_str(), O_RDWR|O_CREAT, 0666);
 	if (f < 0) {
 		fprintf(stderr, "Failed to open file:%s, (%d):%s", c.src_file.c_str(), errno, strerror(errno));
 		return -errno;
@@ -81,12 +81,13 @@ int do_read(cmd& c)
 		fprintf(stderr, "Failed to append aof, %ld  rc:%d", r, -errno);
 		return -errno;
 	}
+	//S5LOG_INFO("Read buf:%p first QWORD:0x%lx", buf, *(long*)buf);
 	ssize_t r2 = pwrite(f, buf, r, c.src_offset);
 	if (r2 != r) {
 		fprintf(stderr, "Failed to read file:%s, %ld  rc:%d", c.src_file.c_str(), r, -errno);
 		return -errno;
 	}
-	
+	fsync(f);
 	return 0;
 }
 int main(int argc, char** argv)
@@ -104,7 +105,6 @@ int main(int argc, char** argv)
 	}
 	while (rc == 0) {
 		cin.getline(buf, sizeof(buf));
-		cin.clear();
 		if((cin.rdstate() & std::ios_base::eofbit) != 0) {
 			fprintf(stderr, "stdin EOF \n");
 			return 0;

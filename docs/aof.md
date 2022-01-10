@@ -25,6 +25,7 @@ AOF文件特性单一，不提供随机访问，因此对于EC, 压缩这样的功能就很友好。
 方法1：
 在Volume的头部保留一个4K空间作为元数据区。
 然后由Client API写入数据时对元数据区的length进行更新。
+这个方法逻辑比较简单，现在的实现选择此方法。
 
 方法2：
 在每个shard保留第一个4K，在这里记录file length. 这样就是，每次append write后，PureFlash server端负责写入length。
