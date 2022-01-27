@@ -5,6 +5,7 @@
 class PfAof;
 
 PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
+int pf_aof_access(const char* volume_name, const char* cfg_filename);
 
 
 class  PfAof
@@ -14,7 +15,7 @@ private:
 	void* append_buf;
 	off_t append_tail;//append tail in buffer
 	ssize_t file_len;
-	void* read_buf;//a small buffer to read unaligned part
+	mutable void* read_buf;//a small buffer to read unaligned part
 	union{
 	void* head_buf;
 	struct PfAofHead* head;
@@ -24,7 +25,7 @@ public:
 	PfAof(ssize_t append_buf_size = 2 << 20);
 	~PfAof();
 	ssize_t append(const void* buf, ssize_t len);
-	ssize_t read(void* buf, ssize_t len, off_t offset);
+	ssize_t read(void* buf, ssize_t len, off_t offset) const;
 	void sync();
 	inline ssize_t file_length() { return file_len; }
 private:

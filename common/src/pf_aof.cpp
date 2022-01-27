@@ -68,6 +68,7 @@ PfAof::PfAof(ssize_t append_buf_size)
 }
 PfAof::~PfAof()
 {
+	sync();
 	if (volume != NULL) {
 		volume->close();
 		delete volume;
@@ -348,7 +349,7 @@ ssize_t PfAof::append(const void* buf, ssize_t len)
 	return len;
 }
 
-ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
+ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 {
 	int rc = 0;
 /*          +------------------------
@@ -371,7 +372,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 		if(len == in_buf_len){
 			in_buf_off = offset + len - (file_len - append_tail) - in_buf_len;
 		}
-		memcpy((char*)buf + len - in_buf_len, (char*)append_buf + in_buf_off, in_buf_len);
+		memcpy((char*)buf + len - in_buf_len, (const char*)append_buf + in_buf_off, in_buf_len);
 		S5LOG_INFO("Copy to user buf:%p+0x%lx, from append_buf, len:0x%lx, first QWORD:0x%lx",
 			buf, len - in_buf_len, in_buf_len, *(long*)( (char*)buf + len - in_buf_len));
 		if (len == in_buf_len)
@@ -411,7 +412,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
 		sem_wait(&arg.sem);
 		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
-		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
+		rc = pf_io_submit_read(volume, (const char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
 			return -EIO;
@@ -453,7 +454,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 		memcpy(buf, (char*)read_buf + (vol_off & 4095LL), min(4096 - (vol_off & 4095LL), (long long)len) );
 	}
 	if (copy_tail) {
-		memcpy((char*)buf + len - (len & 4095LL), (char*)read_buf + 4096, len & 4095LL);
+		memcpy((char*)buf + len - (len & 4095LL), (const char*)read_buf + 4096, len & 4095LL);
 		//                         ^^^^^^^^^^^^^         ^^^^^^^^^^^^^^^
 		//                                |                   + second 4K is unaligned data of tail
 		//                                +  this is unaligned part length in tail
@@ -465,7 +466,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset)
 /**
  * @return 0 if volume exists; -1 other otherwise
  */
-static int pf_aof_access(const char* volume_name, const char* cfg_filename)
+int pf_aof_access(const char* volume_name, const char* cfg_filename)
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_filename);
