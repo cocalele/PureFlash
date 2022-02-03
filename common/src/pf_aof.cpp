@@ -29,7 +29,6 @@ extern const char* default_cfg_file; //defined in pf_client_api.cpp
 #define DOWN_ALIGN_4K(x)  ((x)  & (~4095LL))
 
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write);
-static int pf_aof_access(const char* volume_name, const char* cfg_filename);
 
 class GeneralReply
 {
@@ -412,7 +411,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
 		sem_wait(&arg.sem);
 		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
-		rc = pf_io_submit_read(volume, (const char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
+		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
 			return -EIO;
