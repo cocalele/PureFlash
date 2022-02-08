@@ -36,6 +36,15 @@ static const char* pf_lib_ver = "S5 client version:0x00010000";
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
 const char* default_cfg_file = "/etc/pureflash/pf.conf";
+void from_json(const json& j, GeneralReply& reply)
+{
+	j.at("op").get_to(reply.op);
+	j.at("ret_code").get_to(reply.ret_code);
+	if (reply.ret_code != 0) {
+		if (j.contains("reason"))
+			j.at("reason").get_to(reply.reason);
+	}
+}
 
 void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("index").get_to(p.index);
@@ -1022,4 +1031,53 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 uint64_t pf_get_volume_size(struct PfClientVolume* vol)
 {
 	return vol->volume_size;
+}
+
+int pf_create_tenant(const char* tenant_name, const char* cfg_filename)
+{
+	int rc = 0;
+	
+	S5LOG_INFO("Creating tenant %s", tenant_name);
+	try
+	{
+		Cleaner _clean;
+		GeneralReply reply;
+
+		if (cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
+		conf_file_t cfg = conf_open(cfg_filename);
+		if (cfg == NULL)
+		{
+			S5LOG_ERROR("Failed open config file:%s, rc:%d", cfg_filename, -errno);
+			return -errno;
+		}
+		DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+		char* esc_t_name = curl_easy_escape(NULL, tenant_name, 0);
+		if (!esc_t_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+			return -ENOMEM;
+		}
+		DeferCall _1([esc_t_name]() { curl_free(esc_t_name); });
+		std::string query = format_string("op=create_tenant&tenant_name=%s", esc_t_name);
+
+		rc = query_conductor(cfg, query, reply);
+		if (rc != 0)
+		{
+			S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+			return rc;
+		}
+
+		
+		S5LOG_INFO("Succeeded create tenant %s", tenant_name);
+
+		_clean.cancel_all();
+		return 0;
+	}
+	catch (std::exception& e)
+	{
+		S5LOG_ERROR("Exception in create tenant:%s", e.what());
+	}
+	return -1;
 }

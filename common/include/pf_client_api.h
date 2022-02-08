@@ -72,6 +72,8 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 #define pf_io_submit_read(v, buf, len, off, cbk, arg)  pf_io_submit(v, buf, len, off, cbk, arg, 0)
 #define pf_io_submit_write(v, buf, len, off, cbk, arg)  pf_io_submit(v, buf, len, off, cbk, arg, 1)
 
+int pf_create_tenant(const char* tenant_name, const char* cfg_filename);
+
 #ifdef __cplusplus
 }
 #endif

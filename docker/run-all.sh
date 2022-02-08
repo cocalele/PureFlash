@@ -36,7 +36,7 @@ if [ $status -ne 0 ]; then
   echo "Failed to start zookeeper: $status"
   exit $status
 fi
-
+sleep 2
 echo "Start PureFlash jconductor..."
 JCROOT=$DIR/jconductor
 $JAVA_HOME/bin/java  -classpath $JCROOT:$JCROOT/lib/*  -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf &> /var/log/pfc.log &

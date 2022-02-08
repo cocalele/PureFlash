@@ -30,22 +30,6 @@ extern const char* default_cfg_file; //defined in pf_client_api.cpp
 
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write);
 
-class GeneralReply
-{
-public:
-	std::string op;
-	int ret_code;
-	std::string reason;
-};
-void from_json(const json& j, GeneralReply& reply)
-{
-	j.at("op").get_to(reply.op);
-	j.at("ret_code").get_to(reply.ret_code);
-	if (reply.ret_code != 0) {
-		if(j.contains("reason"))
-			j.at("reason").get_to(reply.reason);
-	}
-}
 
 PfAof::PfAof(ssize_t append_buf_size)
 {

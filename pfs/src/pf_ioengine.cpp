@@ -28,6 +28,7 @@ PfIoEngine::PfIoEngine(PfFlashStore* d)
 int PfAioEngine::init()
 {
 	S5LOG_INFO("Initing AIO engine for disk:%s", disk->tray_name);
+	aio_ctx = NULL;
 	int rc = io_setup(MAX_AIO_DEPTH, &aio_ctx);
 	if (rc < 0)
 	{
