@@ -95,6 +95,7 @@ create table t_volume(
 	quotaset_id integer, 
 	status varchar(16), 
 	meta_ver integer default 0,
+	features integer default 0,
 	exposed integer default 0,
 	rep_count integer default 1,
 	snap_seq integer default 0,

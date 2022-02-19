@@ -6,7 +6,7 @@ class PfAof;
 
 PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
 int pf_aof_access(const char* volume_name, const char* cfg_filename);
-
+int pf_ls_aof_children(const char* tenant_name, const char* cfg_filename, std::vector<std::string>* result);
 
 class  PfAof
 {

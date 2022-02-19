@@ -1081,3 +1081,126 @@ int pf_create_tenant(const char* tenant_name, const char* cfg_filename)
 	}
 	return -1;
 }
+
+int pf_rename_volume(/*const char* tenant_name,*/const char* vol_name, const char* new_name, const char* cfg_filename)
+{
+	int rc = 0;
+
+	S5LOG_INFO("rename volume %s to %s", vol_name, new_name);
+	try
+	{
+		GeneralReply reply;
+
+		if (cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
+		conf_file_t cfg = conf_open(cfg_filename);
+		if (cfg == NULL)
+		{
+			S5LOG_ERROR("Failed open config file:%s, rc:%d", cfg_filename, -errno);
+			return -errno;
+		}
+		DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+		//char* esc_t_name = curl_easy_escape(NULL, tenant_name, 0);
+		//if (!esc_t_name)
+		//{
+		//	S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+		//	return -ENOMEM;
+		//}
+		//DeferCall _1([esc_t_name]() { curl_free(esc_t_name); });
+
+		char* esc_v_name = curl_easy_escape(NULL, vol_name, 0);
+		if (!esc_v_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+			return -ENOMEM;
+		}
+		DeferCall _2([esc_v_name]() { curl_free(esc_v_name); });
+
+		char* esc_nv_name = curl_easy_escape(NULL, new_name, 0);
+		if (!esc_nv_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+			return -ENOMEM;
+		}
+		DeferCall _3([esc_nv_name]() { curl_free(esc_nv_name); });
+
+
+		//std::string query = format_string("op=update_volume&tenant_name=%s&volume_name=%s&new_volume_name=%s",
+		//	esc_t_name, esc_v_name, esc_nv_name);
+		std::string query = format_string("op=update_volume&volume_name=%s&new_volume_name=%s",
+			esc_v_name, esc_nv_name);
+
+		rc = query_conductor(cfg, query, reply);
+		if (rc != 0)
+		{
+			S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+			return rc;
+		}
+
+
+		S5LOG_INFO("Succeeded rename volume %s", vol_name);
+		return 0;
+	}
+	catch (std::exception& e)
+	{
+		S5LOG_ERROR("Exception in rename volume:%s", e.what());
+	}
+	return -1;
+}
+
+int pf_delete_volume(const char* vol_name,  const char* cfg_filename)
+{
+	int rc = 0;
+
+	S5LOG_INFO("delete volume %s ", vol_name);
+	try
+	{
+		GeneralReply reply;
+
+		if (cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
+		conf_file_t cfg = conf_open(cfg_filename);
+		if (cfg == NULL)
+		{
+			S5LOG_ERROR("Failed open config file:%s, rc:%d", cfg_filename, -errno);
+			return -errno;
+		}
+		DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+		//char* esc_t_name = curl_easy_escape(NULL, tenant_name, 0);
+		//if (!esc_t_name)
+		//{
+		//	S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+		//	return -ENOMEM;
+		//}
+		//DeferCall _1([esc_t_name]() { curl_free(esc_t_name); });
+
+		char* esc_v_name = curl_easy_escape(NULL, vol_name, 0);
+		if (!esc_v_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed. ENOMEM");
+			return -ENOMEM;
+		}
+		DeferCall _2([esc_v_name]() { curl_free(esc_v_name); });
+
+		
+		std::string query = format_string("op=delete_volume&volume_name=%s", esc_v_name);
+
+		rc = query_conductor(cfg, query, reply);
+		if (rc != 0)
+		{
+			S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+			return rc;
+		}
+
+
+		S5LOG_INFO("Succeeded delete volume %s", vol_name);
+		return 0;
+	}
+	catch (std::exception& e)
+	{
+		S5LOG_ERROR("Exception in delete volume:%s", e.what());
+	}
+	return -1;
+}

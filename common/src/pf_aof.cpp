@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <nlohmann/json.hpp>
 #include <curl/curl.h>
+#include <vector>
 #include "pf_aof.h"
 #include "pf_utils.h"
 #include "pf_log.h"
@@ -30,6 +31,20 @@ extern const char* default_cfg_file; //defined in pf_client_api.cpp
 
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write);
 
+class LsAofReply : public GeneralReply
+{
+public:
+	std::vector<string> files;
+};
+void from_json(const json& j, LsAofReply& reply)
+{
+	j.at("op").get_to(reply.op);
+	j.at("ret_code").get_to(reply.ret_code);
+	if (reply.ret_code != 0)
+		j.at("reason").get_to(reply.reason);
+	else
+		j.at("files").get_to(reply.files);
+}
 
 PfAof::PfAof(ssize_t append_buf_size)
 {
@@ -87,7 +102,6 @@ int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename
 		return -ENOMEM;
 	}
 	DeferCall _1([esc_vol_name]() { curl_free(esc_vol_name); });
-	
 	std::string query = format_string("op=create_aof&volume_name=%s&size=%ld&rep_cnt=%d",
 		esc_vol_name, 128LL<<30, rep_cnt);
 	GeneralReply r;
@@ -205,7 +219,7 @@ int PfAof::open()
 	}
 	file_len = head->length;
 	if(file_len % 4096){
-		rc = (int)sync_io(volume, append_buf, 4096, file_len&(~4095LL), 0);
+		rc = (int)sync_io(volume, append_buf, 4096, (file_len&(~4095LL))+4096, 0);
 		if(rc<0){
 			S5LOG_ERROR("Failed to read aof:%s", volume->volume_name);
 			return -EIO;
@@ -281,7 +295,7 @@ void PfAof::sync()
 			S5LOG_FATAL("IO has failed, rc:%d",  arg.rc);
 			break;
 		}
-		S5LOG_INFO("Write at off:0x%lx len:0x%lx", cur_vol_tail, aligned_io_size);
+		//S5LOG_INFO("Write at off:0x%lx len:0x%lx", cur_vol_tail, aligned_io_size);
 		rc = pf_io_submit_write(volume, (char*)append_buf+ buf_off, aligned_io_size, cur_vol_tail, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_FATAL("Failed to submit io, rc:%d", rc);
@@ -356,8 +370,8 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 			in_buf_off = offset + len - (file_len - append_tail) - in_buf_len;
 		}
 		memcpy((char*)buf + len - in_buf_len, (const char*)append_buf + in_buf_off, in_buf_len);
-		S5LOG_INFO("Copy to user buf:%p+0x%lx, from append_buf, len:0x%lx, first QWORD:0x%lx",
-			buf, len - in_buf_len, in_buf_len, *(long*)( (char*)buf + len - in_buf_len));
+		//S5LOG_INFO("Copy to user buf:%p+0x%lx, from append_buf, len:0x%lx, first QWORD:0x%lx",
+		//	buf, len - in_buf_len, in_buf_len, *(long*)( (char*)buf + len - in_buf_len));
 		if (len == in_buf_len)
 			return len;//all in append buffer
 		vol_end = vol_off + (len - in_buf_len);
@@ -381,7 +395,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	//in read buf, first 4K is unaligned head, second 4K is unaligned tail
 	if(vol_off%4096 != 0) {
 		sem_wait(&arg.sem);
-		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned head", aligned_off, 4096);
+		//S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned head", aligned_off, 4096);
 		rc = pf_io_submit_read(volume, read_buf, 4096, aligned_off, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
@@ -394,7 +408,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		&&  ( DOWN_ALIGN_4K(vol_end) != DOWN_ALIGN_4K(vol_off) //unaligned end is in different 4K with head
 			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
 		sem_wait(&arg.sem);
-		S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
+		//S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
 		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
@@ -414,7 +428,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 			S5LOG_ERROR("IO has failed, rc:%d", arg.rc);
 			return -EIO;
 		}
-		S5LOG_INFO("Read at off:0x%lx len:0x%lx", aligned_off, aligned_io_size);
+		//S5LOG_INFO("Read at off:0x%lx len:0x%lx", aligned_off, aligned_io_size);
 		rc = pf_io_submit_read(volume, (char*)buf + buf_off, aligned_io_size, aligned_off, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
@@ -475,4 +489,37 @@ int pf_aof_access(const char* volume_name, const char* cfg_filename)
 	if (rc != 0)
 		return rc;
 	return r.ret_code;
+}
+
+
+ int pf_ls_aof_children(const char* tenant_name, const char* cfg_filename, std::vector<std::string>* result)
+{
+	int rc = 0;
+	conf_file_t cfg = conf_open(cfg_filename);
+	if (cfg == NULL)
+	{
+		S5LOG_ERROR("Failed open config file:%s", cfg_filename);
+		return -errno;
+	}
+	DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+
+	char* esc_t_name = curl_easy_escape(NULL, tenant_name, 0);
+	if (!esc_t_name)
+	{
+		S5LOG_ERROR("Curl easy escape failed.");
+		return -ENOMEM;
+	}
+	DeferCall _1([esc_t_name]() { curl_free(esc_t_name); });
+	std::string query = format_string("op=ls_children&tenant_name=%s", esc_t_name);
+
+	LsAofReply reply;
+	rc = query_conductor(cfg, query, reply, true);
+	if (rc != 0)
+	{
+		S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+		return rc;
+	}
+	*result = std::move(reply.files);
+	return reply.ret_code == 0 ? 0 : -ENOENT;
 }
