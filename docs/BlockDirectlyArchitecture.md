@@ -73,7 +73,7 @@ PureFlash采用了这样的方法：
 笔者的观点是，系统的最大性能是有极限的，我们只需要准备足够极限性能条件下使用的内存资源就可以了。
 那么系统极限性能条件下使用的内存资源怎么确定呢？可以通过下面的公式计算：
 
-![1](http://latex.codecogs.com/svg.latex?\\M=K\times%20B\times%20L)
+![1](https://latex.codecogs.com/svg.latex?\\M=K\times%20B\times%20L "K*B*L")
 
 其中， K系统的最大性能，iops ； B是系统支持的最大单IO大小； L 是在系统达到最大性能时的延迟（以秒为单位）。
 
@@ -88,7 +88,7 @@ PureFlash采用了这样的方法：
 
 
 6. 基于AOF的EC方案
-   可以参加文件![架构图](./aof.md "AOF架构")
+   可以参加文件![AOF架构](./aof.md "AOF架构")
 7. 基于LSM tree的文件系统
    LSM tree 有很多优势，在rocksdb为代表的应用中得到了充分证明。LSM tree在文件系统要求的随机小块IO和块设备提供的大块IO之间架起了一座桥梁。
    
