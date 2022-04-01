@@ -97,9 +97,12 @@ static int clean_meta_area(int fd, size_t size)
 	for(off_t off = 0; off < size; off += buf_len) {
 		if(pwrite(fd, buf, buf_len, off) == -1){
 			S5LOG_ERROR("Failed write zero to meta area, rc:%d", errno);
+			free(buf);
 			return -errno;
 		}
 	}
+
+	free(buf);
 	return 0;
 }
 /**
