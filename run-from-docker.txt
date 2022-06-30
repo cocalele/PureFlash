@@ -2,8 +2,8 @@
 ============================
 
 ```
-# docker pull pureflash/pureflash:1.0
-# docker run -it --rm pureflash/pureflash:1.0
+# docker pull pureflash/pureflash:latest
+# docker run -it --rm pureflash/pureflash:latest
 ```
 For first run, this may take about 60 seconds to initialize a fake disk file.
 
