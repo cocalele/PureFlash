@@ -36,21 +36,21 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
                                                        |    |  (HA DB)      |
                              +------------------+      |    +---------------+
                              |                  +------+
-                             | S5conductor      |           +---------------+
+                             | pfconductor      |           +---------------+
                         +---->  (Max 5 nodes)   +----------->               |
                         |    +--------+---------+           | Zookeeper     |
                         |             |                     | (3 nodes)     |
                         |             |                     +------^--------+
 +-------------------+   |             |                            |
 |                   +---+    +--------v---------+                  |
-| S5bd  S5kd        |        |                  |                  |
-| (User and kernel  +------->+ S5afs            +------------------+
+| pfbd  tcmu        |        |                  |                  |
+| (User and         +------->+ pfs              +------------------+
 | space client)     |        | (Max 1024 nodes) |
 +-------------------+        +------------------+
 
 </pre>
 
-## 3.1 S5afs, S5 All Flash System
+## 3.1 pfs, S5 All Flash System
   This module is the server daemon, provide all data service on store. include:
    1) SSD disk management
    2) Networ interface (RDMA and TCP protocol)
@@ -58,9 +58,10 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
   
   There're at most 1024 S5afs nodes in a cluster. All s5afs works in acitve mode, since every s5afs need to provide data service.
   
-## 3.2 S5conductor
+## 3.2 pfconductor
   This is the control module to conduct all players in storage cluster. A cluster should has at least 2 s5conductor nodes and at most 5 are supported.
-  S5conductor works in active-standby mode. only one conductor is active. All others in standby.
+  pfconductor works in active-standby mode. only one conductor is active. All others in standby.
+  This module is programed in Java and reside in repository: https://github.com/cocalele/pfconductor
   
 ## 3.3 Zookeeper
   All conductor and afs nodes(instance) register themself to zookeeper, so the active conductor can discovery services in cluster.
@@ -68,8 +69,8 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
 ## 3.4 MetaDB
   MetaDB is a MariaDB cluster with HA.   
   
-## 3.5 S5bd and S5kd
-  S5bd is user space client. Qemu   
+## 3.5 pfbd 
+  pfbd is user space client. also a virtio-block Qemu driver is provided in https://github.com/cocalele/qemu/tree/pfbd
 
 # networks ports
 49162  store node TCP port
