@@ -135,7 +135,7 @@ public:
 	int prepare_volume(PfVolume* vol);
 	int dispatch_io(PfServerIocb *iocb);
 	int dispatch_complete(SubTask*);
-	virtual int process_event(int event_type, int arg_i, void* arg_p);
+	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 
 	int init(int disp_idx);
 	int init_mempools(int disp_idx);

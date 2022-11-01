@@ -4,10 +4,13 @@
 #include <thread>
 #include <nlohmann/json.hpp>
 #include <unistd.h>
+#include <list>
+#include <mutex>
 #include "pf_mempool.h"
 #include "pf_event_thread.h"
 #include "pf_buffer.h"
 #include "pf_client_api.h"
+#include "pf_app_ctx.h"
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 
 class PfPoller;
@@ -35,13 +38,14 @@ class PfPoller;
 
 class PfClientVolume;
 class PfConnectionPool;
+class PfClientAppCtx;
 
 class PfVolumeEventProc : public PfEventThread
 {
 public:
-	PfVolumeEventProc(PfClientVolume* _volume) : volume(_volume) {};
-	PfClientVolume* volume;
-	virtual int process_event(int event_type, int arg_i, void* arg_p);
+	PfVolumeEventProc(PfClientAppCtx* _ctx) : context(_ctx) {};
+	PfClientAppCtx* context;
+	virtual int process_event(int event_type, int arg_i, void* arg_p,  void* arg_q);
 };
 
 class PfClientIocb
@@ -97,7 +101,7 @@ public:
 	}
 };
 
-
+class PfClientAppCtx;
 class PfClientShardInfo
 {
 public:
@@ -139,7 +143,6 @@ public:
 	std::vector<PfClientShardInfo> shards;
 
 	//following are internal data constructed by client
-	PfConnectionPool* conn_pool;
 	std::string cfg_file;
 	int io_depth;
 	int io_timeout; //timeout in second
@@ -151,19 +154,16 @@ public:
 	BufferPool reply_pool;
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
-	PfVolumeEventProc *vol_proc;
-	std::thread timeout_thread;
 
 	int next_heartbeat_idx;
-
-	PfPoller* tcp_poller;
+	PfClientAppCtx* runtime_ctx;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
 	int do_open(bool reopen=false, bool is_aof=false);
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(PfClientIocb* io);
-	void timeout_check_proc();
+	void check_io_timeout();
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){
 		//TODO: check cmd_seq
 		return &iocb_pool.data[cid];
@@ -234,5 +234,24 @@ int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply
 	return -1;
 }
 
+class PfClientAppCtx : public PfAppCtx
+{
+public:
+	~PfClientAppCtx();
+	PfPoller* tcp_poller;
+	PfConnectionPool* conn_pool;
+	PfVolumeEventProc* vol_proc;
+	std::thread timeout_thread;
+	std::mutex opened_volumes_lock;
+	std::list<PfClientVolume*> opened_volumes;
+
+
+	void remove_volume(PfClientVolume* vol);
+	void add_volume(PfClientVolume* vol);
+
+	int init(int io_depth, int max_vol_cnt);
+
+	void timeout_check_proc();
+};
 #endif // pf_client_priv_h__
 

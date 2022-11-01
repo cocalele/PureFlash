@@ -55,12 +55,12 @@ void PfEventQueue::destroy()
 	close(event_fd);
 }
 
-int PfEventQueue::post_event(int type, int arg_i, void* arg_p)
+int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
 {
 	//S5LOG_INFO("post_event %s into:%s", EventTypeToStr((S5EventType)type), name);
 	{
 		AutoSpinLock _l(&lock);
-		int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p });
+		int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p , arg_q});
 		if(rc)
 			return rc;
 	}

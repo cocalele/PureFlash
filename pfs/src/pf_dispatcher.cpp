@@ -49,7 +49,7 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	}
 	return 0;
 }
-int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p)
+int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
 	int rc = 0;
 	switch(event_type) {

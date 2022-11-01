@@ -827,7 +827,7 @@ int PfFlashStore::read_store_head()
 }
 
 
-int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p)
+int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
 	switch (event_type) {
 	case EVT_IO_REQ:

@@ -34,7 +34,7 @@ class PfReplicator : public PfEventThread
 
 public:
 	int init(int index);
-	int process_event(int event_type, int arg_i, void* arg_p);
+	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 	int begin_replicate_io(IoSubTask* t);
 	int begin_recovery_read_io(RecoverySubTask* t);
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){

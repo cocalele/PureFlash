@@ -75,7 +75,7 @@ void *PfEventThread::thread_proc(void* arg)
 					return NULL;
 				}
 				default:
-					pThis->process_event(t->type, t->arg_i, t->arg_p);
+					pThis->process_event(t->type, t->arg_i, t->arg_p, t->arg_q);
 			}
 		}
 	}

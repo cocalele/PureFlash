@@ -204,7 +204,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	return rc;
 }
 
-int PfReplicator::process_event(int event_type, int arg_i, void *arg_p)
+int PfReplicator::process_event(int event_type, int arg_i, void *arg_p, void*)
 {
 	switch(event_type) {
 		case EVT_IO_REQ:

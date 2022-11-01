@@ -15,7 +15,7 @@ public:
 	PfEventThread();
 	void destroy();
 	virtual ~PfEventThread();
-	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
+	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q) = 0;
 	int start();
 	void stop();
 	static void *thread_proc(void* arg);

@@ -145,7 +145,7 @@ public:
 	 */
 	int init(const char* dev_name);
 
-	int process_event(int event_type, int arg_i, void* arg_p);
+	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 	int preocess_io_event(IoSubTask* io);
 
 	PfIoEngine* ioengine;

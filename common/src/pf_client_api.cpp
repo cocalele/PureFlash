@@ -137,7 +137,7 @@ struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_
 		if (rc)	{
 			return NULL;
 		}
-
+		volume->runtime_ctx->add_volume(volume);
 
 		S5LOG_INFO("Succeeded open volume %s@%s(0x%lx), meta_ver=%d, io_depth=%d", volume->volume_name.c_str(),
 			volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->volume_id, volume->meta_ver, volume->io_depth);
@@ -262,7 +262,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			}
 		}
 	}
-	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd);
+	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, conn->volume);
 }
 
 static void client_on_tcp_close(PfConnection* c)
@@ -270,7 +270,80 @@ static void client_on_tcp_close(PfConnection* c)
 	//c->dec_ref(); //Don't dec_ref here, only dec_ref when connection removed from pool
 
 }
+static inline PfClientAppCtx* get_client_ctx()
+{
+	return (PfClientAppCtx * )g_app_ctx;
+}
+static int init_app_ctx(int io_depth, int max_vol_cnt)
+{
+	static int inited = 0;
+	static std::mutex _m;
+	const std::lock_guard<std::mutex> lock(_m);
+	if (inited)
+		return 0;
+	int rc = 0;
+	Cleaner clean;
+	PfClientAppCtx* ctx = new PfClientAppCtx();
+	clean.push_back([ctx]() { delete ctx; });
+	rc = ctx->init(io_depth, max_vol_cnt);
+	if(rc == 0)
+		clean.cancel_all();
+	g_app_ctx = ctx;
+	inited = 1;
+	return rc;
+}
+int PfClientAppCtx::init(int io_depth, int max_vol_cnt)
+{
+	Cleaner clean;
+	int rc = 0;
+	tcp_poller = new PfPoller();
+	if (tcp_poller == NULL) {
+		S5LOG_ERROR("No memory to alloc poller");
+		return -ENOMEM;
+	}
+	clean.push_back([this]() {delete this->tcp_poller; });
+	//TODO: max_fd_count in poller->init should depend on how many server this volume layed on
+	rc = tcp_poller->init("pf_client", 256);
+	if (rc != 0) {
+		S5LOG_ERROR("tcp_poller init failed, rc:%d", rc);
+		return rc;
+	}
+	conn_pool = new PfConnectionPool();
+	if (conn_pool == NULL) {
+		S5LOG_ERROR("No memory to alloc connection pool");
+		return -ENOMEM;
+	}
+	clean.push_back([this] {delete conn_pool;  });
+	rc = conn_pool->init(256, tcp_poller, this, -1, io_depth, TCP_TYPE,
+		client_on_tcp_network_done, client_on_tcp_close);
+	if (rc != 0) {
+		S5LOG_ERROR("conn_pool init failed, rc:%d", rc);
+		return rc;
+	}
+	vol_proc = new PfVolumeEventProc(this);
+	if(vol_proc == NULL){
+		S5LOG_ERROR("No memory to alloc PfVolumeEventProc");
+		return -ENOMEM;
+	}
+	clean.push_back([this] {delete this->vol_proc;  });
+	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt);
+	if (rc != 0) {
+		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
+		return rc;
+	}
 
+	rc = vol_proc->start();
+	if (rc != 0) {
+		S5LOG_ERROR("vol_proc start failed, rc:%d", rc);
+		return rc;
+	}
+	timeout_thread = std::thread([this]() {
+		timeout_check_proc();
+	});
+
+	clean.cancel_all();
+	return 0;
+}
 int PfClientVolume::do_open(bool reopen, bool is_aof)
 {
 	int rc = 0;
@@ -313,25 +386,9 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 		return 0;
 	}
 	Cleaner clean;
-	tcp_poller = new PfPoller();
-	if(tcp_poller == NULL) {
-		S5LOG_ERROR("No memory to alloc poller");
-		return -ENOMEM;
-	}
-	clean.push_back([this](){delete tcp_poller; tcp_poller = NULL;});
-	//TODO: max_fd_count in poller->init should depend on how many server this volume layed on
-	rc = tcp_poller->init(volume_name.c_str(), 128);
-	if(rc != 0) {
-		S5LOG_ERROR("tcp_poller init failed, rc:%d", rc);
-		return rc;
-	}
-	conn_pool = new PfConnectionPool();
-	if (conn_pool == NULL) {
-		S5LOG_ERROR("No memory to alloc connection pool");
-		return -ENOMEM;
-	}
-	clean.push_back([this]{delete conn_pool; conn_pool=NULL;});
-	conn_pool->init((int) shards.size() * 2, tcp_poller, this, this->volume_id, io_depth, TCP_TYPE, client_on_tcp_network_done, client_on_tcp_close);
+
+
+	init_app_ctx(16, 32);
 	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
@@ -374,14 +431,9 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 		reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
-	timeout_thread = std::thread([this] (){
-		timeout_check_proc();
-	});
 
-	vol_proc = new PfVolumeEventProc(this);
-	vol_proc->init("vol_proc", io_depth);
-	vol_proc->start();
-	event_queue = &vol_proc->event_queue; //keep for quick reference
+	runtime_ctx = get_client_ctx();
+	event_queue = &get_client_ctx()->vol_proc->event_queue; //keep for quick reference
 	state = VOLUME_OPENED;
 	clean.cancel_all();
 	open_time = now_time_usec();
@@ -562,11 +614,11 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 				if (vol->meta_ver < reply->meta_ver)
 				{
 					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
-					vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()));
+					vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()), vol);
 				}
 				io->conn->dec_ref();
 				io->conn=NULL;
-				vol->event_queue->post_event(EVT_IO_REQ, 0, io);
+				vol->event_queue->post_event(EVT_IO_REQ, 0, io, vol);
 				reply_pool.free(wr_bd);
 				return;
 			}
@@ -659,7 +711,7 @@ int PfClientVolume::resend_io(PfClientIocb* io)
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	io->cmd_bd->cmd_bd->command_seq ++;
 	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
-	int rc = event_queue->post_event(EVT_IO_REQ, 0, io);
+	int rc = event_queue->post_event(EVT_IO_REQ, 0, io, this);
 	if (rc)
 		S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
 	return rc;
@@ -671,9 +723,10 @@ const char* show_ver()
 	return (const char*)pf_lib_ver;
 }
 
-int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p)
+int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p, void* arg_q)
 {
-	return volume->process_event(event_type, arg_i, arg_p);
+	PfClientVolume* vol = (PfClientVolume*)arg_q;
+	return vol->process_event(event_type, arg_i, arg_p);
 }
 
 int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
@@ -781,27 +834,26 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			if (state == VOLUME_OPENED || state == VOLUME_REOPEN_FAIL || state == VOLUME_DISCONNECTED)
 			{
 				S5LOG_WARN("send volume reopen request for:%s", volume_name.c_str());
-				conn_pool->close_all();
-				vol_proc->event_queue.post_event(EVT_REOPEN_VOLUME, 0, (void*)(now_time_usec()));
+				event_queue->post_event(EVT_REOPEN_VOLUME, 0, (void*)(now_time_usec()), this);
 			}
 		break;
 	}
 	case EVT_SEND_HEARTBEAT:
-	{
-		if (conn_pool->ip_id_map.size() == 0)
+	{//TODO: heartbeat should accord to app_context, not per volume. since connection pool is defined in PfClientAppCtx
+		if (runtime_ctx->conn_pool->ip_id_map.size() == 0)
 		{
 			break;
 		}
-		next_heartbeat_idx %= (int)conn_pool->ip_id_map.size();
+		next_heartbeat_idx %= (int)runtime_ctx->conn_pool->ip_id_map.size();
 		int hb_sent = 0;
 		int ht_idx = 0;
-		for (auto it = conn_pool->ip_id_map.begin(); it != conn_pool->ip_id_map.end();)
+		for (auto it = runtime_ctx->conn_pool->ip_id_map.begin(); it != runtime_ctx->conn_pool->ip_id_map.end();)
 		{
 
 			PfConnection* conn = it->second;
 			if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
 			{
-				conn_pool->ip_id_map.erase(it++);
+				runtime_ctx->conn_pool->ip_id_map.erase(it++);
 				S5LOG_ERROR("connection:%p:%s timeout", conn, conn->connection_info.c_str());
 				conn->close();
 			}
@@ -819,11 +871,6 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			ht_idx ++;
 		}
 		break;
-	}
-	case EVT_THREAD_EXIT://dead code, event already handled in parent class
-	{
-		S5LOG_INFO("EVT_THREAD_EXIT received, exit now...");
-		pthread_exit(0);
 	}
 	default:
 		S5LOG_ERROR("Volume get unknown event:%d", event_type);
@@ -844,7 +891,7 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 	PfClientShardInfo * shard = &shards[shard_index];
 	for (int i=0; i < shard->store_ips.size(); i++)
 	{
-		conn = conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip], TCP_TYPE);
+		conn = runtime_ctx->conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip], TCP_TYPE);
 		if (conn != NULL) {
 			return conn;
 		}
@@ -856,40 +903,29 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 	return NULL;
 }
 
-void PfClientVolume::timeout_check_proc()
+void PfClientVolume::check_io_timeout()
 {
-	prctl(PR_SET_NAME, "clnt_time_chk");
-	while (1)
+	uint64_t now = now_time_usec();
+	struct PfClientIocb* ios = iocb_pool.data;
+	int64_t io_timeout_us = io_timeout * 1000000LL;
+	for (int i = 0; i < iocb_pool.obj_count; i++)
 	{
-		if (sleep(CLIENT_TIMEOUT_CHECK_INTERVAL) != 0)
-			return ;
-		uint64_t now = now_time_usec();
-		struct PfClientIocb *ios = iocb_pool.data;
-		int64_t io_timeout_us = io_timeout * 1000000LL;
-		for (int i = 0; i < iocb_pool.obj_count; i++)
+		if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
 		{
-			if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
-			{
-				S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
-                            ((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, volume_name.c_str(), io_timeout_us);
-				vol_proc->event_queue.post_event(EVT_IO_TIMEOUT, 0, &ios[i]);
-				ios[i].is_timeout = 1;
-			}
+			S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
+				((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, volume_name.c_str(), io_timeout_us);
+			event_queue->post_event(EVT_IO_TIMEOUT, 0, &ios[i], this);
+			ios[i].is_timeout = 1;
 		}
 	}
-
 }
 
 void PfClientVolume::close() {
 	S5LOG_INFO("close volume:%s", volume_name.c_str());
 	state = VOLUME_CLOSED;
 
-	pthread_cancel(timeout_thread.native_handle());
-	timeout_thread.join();
 
-	vol_proc->stop();
-
-	conn_pool->close_all();
+	get_client_ctx()->remove_volume(this);
 	iocb_pool.destroy();
 	cmd_pool.destroy();
 	data_pool.destroy();
@@ -980,7 +1016,7 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 	cmd->offset = offset;
 	cmd->length = (uint32_t)length;
 	cmd->snap_seq = volume->snap_seq;
-	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io);
+	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io, volume);
 	if (rc)
 		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
 	return rc;
@@ -1022,7 +1058,7 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	cmd->offset = offset;
 	cmd->length = (uint32_t)length;
 	cmd->snap_seq = volume->snap_seq;
-	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io);
+	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io, volume);
 	if (rc)
 		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
 	return rc;
@@ -1203,4 +1239,39 @@ int pf_delete_volume(const char* vol_name,  const char* cfg_filename)
 		S5LOG_ERROR("Exception in delete volume:%s", e.what());
 	}
 	return -1;
+}
+
+
+void PfClientAppCtx::remove_volume(PfClientVolume* vol)
+{
+	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
+	opened_volumes.remove(vol);
+}
+void PfClientAppCtx::add_volume(PfClientVolume* vol)
+{
+	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
+	opened_volumes.push_back(vol);
+}
+PfClientAppCtx::~PfClientAppCtx()
+{
+	pthread_cancel(timeout_thread.native_handle());
+	timeout_thread.join();
+	vol_proc->stop();
+	conn_pool->close_all();
+}
+
+void PfClientAppCtx::timeout_check_proc()
+{
+	prctl(PR_SET_NAME, "clnt_time_chk");
+	while (1)
+	{
+		if (sleep(CLIENT_TIMEOUT_CHECK_INTERVAL) != 0)
+			return;
+		opened_volumes_lock.lock();
+		for(auto vol : opened_volumes){
+			vol->check_io_timeout();
+		}
+		opened_volumes_lock.unlock();
+	}
+
 }
