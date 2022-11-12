@@ -71,17 +71,20 @@ public:
 	std::map<uint64_t, PfVolume*> opened_volumes;
     PfErrorHandler* error_handler;
 
-	PfVolume* get_opened_volume(uint64_t vol_id);
-	int get_ssd_index(std::string ssd_uuid);
-	PfAfsAppContext();
-
-	PfDispatcher *get_dispatcher(uint64_t vol_id);
 
 	BigMemPool cow_buf_pool;
 	BigMemPool recovery_buf_pool;
 	BufferPool recovery_io_bd_pool;
 
 	BackgroundTaskManager bg_task_mgr;
+	int next_client_disp_id; //to assign shared client connection to dispatcher
+
+	PfVolume* get_opened_volume(uint64_t vol_id);
+	int get_ssd_index(std::string ssd_uuid);
+	PfAfsAppContext();
+
+	PfDispatcher *get_dispatcher(uint64_t vol_id);
+
 };
 extern PfAfsAppContext app_context;
 #endif

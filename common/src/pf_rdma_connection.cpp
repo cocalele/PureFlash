@@ -496,10 +496,12 @@ int PfRdmaConnection::post_write(BufferDescriptor* buf, uintptr_t raddr, uint32_
 
 int PfRdmaConnection::post_write(BufferDescriptor* buf)
 {
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 }
 
 int PfRdmaConnection::post_read(BufferDescriptor* buf)
 {
+	S5LOG_FATAL("%s not implemented", __FUNCTION__);
 }
 
 int PfRdmaConnection::do_close()

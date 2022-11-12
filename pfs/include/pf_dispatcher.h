@@ -87,7 +87,8 @@ public:
 	BufferDescriptor* reply_bd; //Used by dispatcher tasks
 
 	PfConnection *conn;
-	PfVolume* vol;
+	//PfVolume* vol;
+	uint64_t vol_id;
 	PfMessageStatus complete_status;
 	uint16_t  complete_meta_ver;
 	uint32_t task_mask;
@@ -154,7 +155,8 @@ inline void PfServerIocb::dec_ref() {
 //    	S5LOG_DEBUG("Iocb released:%p", this);
 	    complete_meta_ver=0;
 	    complete_status = MSG_STATUS_SUCCESS;
-	    vol = NULL;
+	    //vol = NULL;
+		vol_id=0;
 	    is_timeout = FALSE;
 	    task_mask = 0;
         conn->dispatcher->iocb_pool.free(this);

@@ -50,6 +50,17 @@ int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t m
 	struct iocb* ios[1] = { &io->aio_cb };
 	return io_submit(aio_ctx, 1, ios);
 }
+int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
+{
+	//S5LOG_DEBUG("Begin cow_io %d", io->opcode);
+	if (IS_READ_OP(io->opcode))
+		io_prep_pread(&io->aio_cb, fd, io->buf, media_len, media_offset);
+	else
+		io_prep_pwrite(&io->aio_cb, fd, io->buf, media_len, media_offset);
+	struct iocb* ios[1] = { &io->aio_cb };
+	return io_submit(aio_ctx, 1, ios);
+}
+
 void PfAioEngine::polling_proc()
 {
 #define MAX_EVT_CNT 100
@@ -76,7 +87,6 @@ void PfAioEngine::polling_proc()
 				case S5_OP_READ:
 				case S5_OP_WRITE:
 				case S5_OP_REPLICATE_WRITE:
-					//S5LOG_DEBUG("aio complete, cid:%d len:%d rc:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id, (int)len, (int)res);
 					if (unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
 						S5LOG_ERROR("aio error, len:%d rc:%d, op:%d off:0x%llx len:%d, logic offset:0x%llx, buf:%p", (int)len, (int)res,
 							aiocb->aio_lio_opcode, aiocb->u.c.offset, aiocb->u.c.nbytes, t->parent_iocb->cmd_bd->cmd_bd->offset,
@@ -167,7 +177,24 @@ int PfIouringEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64
 		S5LOG_ERROR("Failed io_uring_submit, rc:%d", rc);
 	return rc;
 }
+int PfIouringEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
+{
+	//TODO: use io_uring linked IO to perform cow read-write in one op
+	struct io_uring_sqe* sqe = io_uring_get_sqe(&uring);
 
+	//can't use fixed buffer , since cow buffer has not been registered
+	if (IS_READ_OP(io->opcode))
+		io_uring_prep_read(sqe, fd, io->buf, (unsigned)media_len, media_offset);
+	else
+		io_uring_prep_write(sqe, fd, io->buf, (unsigned)media_len, media_offset);
+	sqe->user_data = (uint64_t)io;
+	sqe->fd = disk->fd;
+	//sqe->flags |= IOSQE_FIXED_FILE;
+	int rc = io_uring_submit(&uring);
+	if (rc < 0)
+		S5LOG_ERROR("Failed io_uring_submit, rc:%d", rc);
+	return rc;
+}
 void PfIouringEngine::polling_proc()
 {
 	char name[32];

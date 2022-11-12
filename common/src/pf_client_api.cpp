@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "pf_connection_pool.h"
 #include "pf_connection.h"
@@ -62,6 +63,7 @@ void from_json(const json& j, PfClientVolume& p) {
 	j.at("meta_ver").get_to(p.meta_ver);
 	j.at("snap_seq").get_to(p.snap_seq);
 	j.at("shards").get_to(p.shards);
+	j.at("shard_lba_cnt_order").get_to(p.shard_lba_cnt_order);
 }
 void from_json(const json& j, PfClientVolumeInfo& p) {
 	string temp;
@@ -231,6 +233,23 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
+	if (unlikely(complete_status != TCP_WC_SUCCESS))
+	{
+		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", bd->wr_op, WcStatusToStr(WcStatus(complete_status)));
+		if(bd->wr_op == TCP_WR_SEND){
+			//for send request, we do nothing, just wait IO timeout and resend
+			return 0;
+		} else if(bd->wr_op == TCP_WR_RECV){
+			PfConnection* conn = bd->conn;
+			conn->client_ctx->reply_pool.free(bd);
+			//conn->close(); //connection should has been closed during do_send/do_recv
+			//IO not completed, it will be resend by timeout
+			return 0;
+
+		}
+	}
+	//S5LOG_INFO("Op complete opcode:%d, status:%s, len:%d", bd->wr_op, WcStatusToStr(WcStatus(complete_status)), bd->data_len);
+
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
 
 		if(bd->data_len == sizeof(PfMessageHead) && bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
@@ -238,11 +257,11 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			PfClientIocb* iocb = bd->client_iocb;
 			conn->add_ref(); //for start send data
 			iocb->data_bd->conn = conn;
-			conn->start_send(iocb->data_bd); //on client side, use use's buffer
+			conn->start_send(iocb->data_bd); //on client side, use user's buffer
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
 			//assert(bd->reply_bd->command_id<32);
-			PfClientIocb* iocb = conn->volume->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
+			PfClientIocb* iocb = conn->client_ctx->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
 			//In io timeout case, we just ignore this completion
 
 			if (unlikely(iocb == NULL)) {
@@ -260,9 +279,25 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->start_recv(iocb->data_bd); //on client side, use use's buffer
 				return 1;
 			}
+			return iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
+		} else  {
+			// this happens in condition
+			// a) message head send complete, for READ
+			// b) data send complete, for WRITE
+			// c) data receive complete, for READ
+
+			PfClientIocb* iocb = bd->client_iocb;
+			if(iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ){
+				//for READ, need to complete IO
+				PfClientIocb* iocb = bd->client_iocb;
+				return iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
+
+			}
+			return 0;
 		}
 	}
-	return conn->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, conn->volume);
+	S5LOG_ERROR("Unexpected status:%d, data_len=%d", complete_status, bd->data_len);
+	return -1;
 }
 
 static void client_on_tcp_close(PfConnection* c)
@@ -274,7 +309,7 @@ static inline PfClientAppCtx* get_client_ctx()
 {
 	return (PfClientAppCtx * )g_app_ctx;
 }
-static int init_app_ctx(int io_depth, int max_vol_cnt)
+static int init_app_ctx(int io_depth, int max_vol_cnt, int io_timeout)
 {
 	static int inited = 0;
 	static std::mutex _m;
@@ -285,17 +320,18 @@ static int init_app_ctx(int io_depth, int max_vol_cnt)
 	Cleaner clean;
 	PfClientAppCtx* ctx = new PfClientAppCtx();
 	clean.push_back([ctx]() { delete ctx; });
-	rc = ctx->init(io_depth, max_vol_cnt);
+	rc = ctx->init(io_depth, max_vol_cnt, 0 /* 0 for shared connection*/, io_timeout);
 	if(rc == 0)
 		clean.cancel_all();
 	g_app_ctx = ctx;
 	inited = 1;
 	return rc;
 }
-int PfClientAppCtx::init(int io_depth, int max_vol_cnt)
+int PfClientAppCtx::init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout)
 {
 	Cleaner clean;
 	int rc = 0;
+	this->io_timeout = io_timeout;
 	tcp_poller = new PfPoller();
 	if (tcp_poller == NULL) {
 		S5LOG_ERROR("No memory to alloc poller");
@@ -314,8 +350,8 @@ int PfClientAppCtx::init(int io_depth, int max_vol_cnt)
 		return -ENOMEM;
 	}
 	clean.push_back([this] {delete conn_pool;  });
-	rc = conn_pool->init(256, tcp_poller, this, -1, io_depth, TCP_TYPE,
-		client_on_tcp_network_done, client_on_tcp_close);
+	rc = conn_pool->init(256, tcp_poller, this, vol_id ,
+		io_depth, TCP_TYPE,	client_on_tcp_network_done, client_on_tcp_close);
 	if (rc != 0) {
 		S5LOG_ERROR("conn_pool init failed, rc:%d", rc);
 		return rc;
@@ -331,12 +367,54 @@ int PfClientAppCtx::init(int io_depth, int max_vol_cnt)
 		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
 		return rc;
 	}
+	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
+	if (rc != 0) {
+		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
+		return rc;
+	}
+	clean.push_back([this]() {data_pool.destroy(); });
 
+	rc = cmd_pool.init(sizeof(PfMessageHead), io_depth);
+	if (rc != 0) {
+		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
+		return rc;
+	}
+	clean.push_back([this]() {cmd_pool.destroy(); });
+
+	rc = reply_pool.init(sizeof(PfMessageReply), io_depth);
+	if (rc != 0) {
+		S5LOG_ERROR("Failed to init reply_pool, rc:%d", rc);
+		return rc;
+	}
+	clean.push_back([this]() {reply_pool.destroy(); });
+
+	rc = iocb_pool.init(io_depth);
+	if (rc != 0) {
+		S5LOG_ERROR("Failed to init iocb_pool, rc:%d", rc);
+		return rc;
+	}
 	rc = vol_proc->start();
 	if (rc != 0) {
 		S5LOG_ERROR("vol_proc start failed, rc:%d", rc);
 		return rc;
 	}
+	for (int i = 0; i < io_depth; i++)
+	{
+		PfClientIocb* io = iocb_pool.alloc();
+		io->cmd_bd = cmd_pool.alloc();
+		io->cmd_bd->cmd_bd->command_id = (uint16_t)i;
+		io->cmd_bd->data_len = io->cmd_bd->buf_capacity;
+		io->cmd_bd->client_iocb = io;
+		io->data_bd = data_pool.alloc();
+		io->data_bd->client_iocb = io;
+		io->reply_bd = NULL;
+		BufferDescriptor* rbd = reply_pool.alloc();
+		rbd->data_len = rbd->buf_capacity;
+		rbd->client_iocb = NULL;
+		reply_pool.free(rbd);
+		iocb_pool.free(io);
+	}
+
 	timeout_thread = std::thread([this]() {
 		timeout_check_proc();
 	});
@@ -355,7 +433,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 	}
 	DeferCall _cfg_r([cfg]() { conf_close(cfg); });
 	io_depth = conf_get_int(cfg, "client", "io_depth", 32, FALSE);
-	io_timeout = conf_get_int(cfg, "client", "io_timeout", 30, FALSE);
+	int io_timeout = conf_get_int(cfg, "client", "io_timeout", 30, FALSE);
 
 	char* esc_vol_name = curl_easy_escape(NULL, volume_name.c_str(), 0);
 	if (!esc_vol_name)
@@ -388,49 +466,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 	Cleaner clean;
 
 
-	init_app_ctx(16, 32);
-	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
-	if(rc != 0){
-		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
-		return rc;
-	}
-	clean.push_back([this](){data_pool.destroy();});
-
-	rc = cmd_pool.init(sizeof(PfMessageHead), io_depth);
-	if(rc != 0){
-		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
-		return rc;
-	}
-	clean.push_back([this](){cmd_pool.destroy();});
-
-	rc = reply_pool.init(sizeof(PfMessageReply), io_depth);
-	if(rc != 0){
-		S5LOG_ERROR("Failed to init reply_pool, rc:%d", rc);
-		return rc;
-	}
-	clean.push_back([this](){reply_pool.destroy();});
-
-	rc = iocb_pool.init(io_depth);
-	if(rc != 0){
-		S5LOG_ERROR("Failed to init iocb_pool, rc:%d", rc);
-		return rc;
-	}
-	for(int i=0;i<io_depth;i++)
-	{
-		PfClientIocb* io = iocb_pool.alloc();
-		io->cmd_bd = cmd_pool.alloc();
-		io->cmd_bd->cmd_bd->command_id = (uint16_t)i;
-		io->cmd_bd->data_len = io->cmd_bd->buf_capacity;
-		io->cmd_bd->client_iocb = io;
-		io->data_bd = data_pool.alloc();
-		io->data_bd->client_iocb = io;
-		io->reply_bd = NULL;
-		BufferDescriptor* rbd = reply_pool.alloc();
-		rbd->data_len = rbd->buf_capacity;
-		rbd->client_iocb = NULL;
-		reply_pool.free(rbd);
-		iocb_pool.free(io);
-	}
+	init_app_ctx(16, 32, io_timeout);
 
 	runtime_ctx = get_client_ctx();
 	event_queue = &get_client_ctx()->vol_proc->event_queue; //keep for quick reference
@@ -444,9 +480,31 @@ static inline int cmp(const void *a, const void *b)
 {
 	return strcmp(*(char * const *)a, *(char * const *)b);
 }
+struct conductor_entry{
+	uint64_t update_time;
+	std::string ip;
+};
+static std::map < std::string, conductor_entry> conductor_map;
+static std::mutex conductor_map_lock;
 
+#define CONDUCTOR_CACHE_TIMEOUT_US 60000000UL //60 seconds
+void invalidate_conductor_ip_cache(const char* zk_host, const char* cluster_name)
+{
+	string cond_key = format_string("%s_%s", zk_host, cluster_name);
+
+	const lock_guard<mutex> _l(conductor_map_lock);
+	conductor_map.erase(cond_key);
+}
 string get_master_conductor_ip(const char *zk_host, const char* cluster_name)
 {
+	string cond_key = format_string("%s_%s", zk_host, cluster_name);
+	{
+		const lock_guard<mutex> _l(conductor_map_lock);
+		auto it = conductor_map.find(cond_key);
+		if(it != conductor_map.end() && it->second.update_time > now_time_usec() - CONDUCTOR_CACHE_TIMEOUT_US){
+			return it->second.ip;
+		}
+	}
     struct String_vector condutors = {0};
     char **str = NULL;
     zoo_set_debug_level(ZOO_LOG_LEVEL_WARN);
@@ -485,24 +543,28 @@ string get_master_conductor_ip(const char *zk_host, const char* cluster_name)
 
 	char leader_path[256];
     int len = snprintf(leader_path, sizeof(leader_path), "%s/%s", zk_root.c_str(), str[0]);
-    if (len >= sizeof(leader_path) || len < 0)
-    {
+    if (len >= sizeof(leader_path) || len < 0) {
 		throw std::runtime_error(format_string("Cluster name is too long, max length is:%d", sizeof(leader_path)));
     }
 
 	char ip_str[256];
 	len = sizeof(ip_str);
 	rc = zoo_get(zkhandle, leader_path, 0, ip_str, &len, 0);
-    if (ZOK != rc)
-    {
+    if (ZOK != rc) {
 		throw std::runtime_error(format_string("Error when get pfconductor leader data:%d", rc));
     }
-    if(len == 0 || len >= sizeof(ip_str))
-	{
+    if(len == 0 || len >= sizeof(ip_str)) {
 		throw std::runtime_error(format_string("Error when get pfconductor leader data, invalid len:%d", len));
 	}
     ip_str[len] = 0;
     S5LOG_INFO("Get S5 conductor IP:%s", ip_str);
+
+	{
+		const lock_guard<mutex> _l(conductor_map_lock);
+		conductor_entry e={now_time_usec(), ip_str};
+		conductor_map[cond_key] = e;
+	}
+
     return std::string(ip_str);
 }
 
@@ -589,19 +651,16 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	const static int ms1 = 1000;
 	if (unlikely(wc_status != TCP_WC_SUCCESS))
-	{
-		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", wr_bd->wr_op, WcStatusToStr(WcStatus(wc_status)));
-		PfConnection* conn = wr_bd->conn;
-		reply_pool.free(wr_bd);
-		conn->close();
-		//IO not completed, it will be resend by timeout
+	{//network failure has been handled by client_on_tcp_network_done
+		S5LOG_ERROR("Internal error, Op complete unsuccessful opcode:%d, status:%s",
+			wr_bd->wr_op, WcStatusToStr(WcStatus(wc_status)));
 		return;
 	}
 
     if (wr_bd->wr_op == TCP_WR_RECV)
     {
 		PfConnection* conn = wr_bd->conn;
-		PfClientVolume* vol = conn->volume;
+
 	    PfClientIocb* io = wr_bd->client_iocb;
 		PfMessageReply* reply = io->reply_bd->reply_bd;
 
@@ -611,15 +670,15 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			{
 				S5LOG_WARN( "Get reopen from store, conn:%s status code:0x%x, req meta_ver:%d store meta_ver:%d",
 					conn->connection_info.c_str(), s, io->cmd_bd->cmd_bd->meta_ver, reply->meta_ver);
-				if (vol->meta_ver < reply->meta_ver)
+				if (meta_ver < reply->meta_ver)
 				{
-					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", vol->meta_ver, reply->meta_ver);
-					vol->event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()), vol);
+					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", meta_ver, reply->meta_ver);
+					event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()), io->volume);
 				}
 				io->conn->dec_ref();
 				io->conn=NULL;
-				vol->event_queue->post_event(EVT_IO_REQ, 0, io, vol);
-				reply_pool.free(wr_bd);
+				event_queue->post_event(EVT_IO_REQ, 0, io, this);
+				runtime_ctx->reply_pool.free(wr_bd);
 				return;
 			}
 
@@ -633,8 +692,8 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 				io->sent_time = 0;
 				io->conn->dec_ref();
 				io->conn = NULL;
-				free_iocb(io);
-				reply_pool.free(wr_bd);
+				runtime_ctx->free_iocb(io);
+				runtime_ctx->reply_pool.free(wr_bd);
 				return;
 			}
 
@@ -648,14 +707,14 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 				S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, vol:%s, since submit:%dms since send:%dms",
 						   io_cmd->offset >> SHARD_SIZE_ORDER,
 						   io_cmd->command_id,
-						   vol->volume_name.c_str(),
+						   volume_name.c_str(),
 						   io_elapse_time,
 						   (io_end_time-io->sent_time)/ms1
 					);
 			}
 
 
-	        reply_pool.free(io->reply_bd);
+			runtime_ctx->reply_pool.free(io->reply_bd);
 	        io->reply_bd = NULL;
 	        io->sent_time=0;
 	        io->conn->dec_ref();
@@ -666,7 +725,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 		        else
 		        	memcpy(io->user_buf, io->data_bd->buf, io->data_bd->data_len);
 	        }
-			free_iocb(io);
+			runtime_ctx->free_iocb(io);
 			h(arg, s);
 
     }
@@ -726,7 +785,17 @@ const char* show_ver()
 int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p, void* arg_q)
 {
 	PfClientVolume* vol = (PfClientVolume*)arg_q;
-	return vol->process_event(event_type, arg_i, arg_p);
+	int rc = vol->process_event(event_type, arg_i, arg_p);
+	if(rc == 0)
+		return rc;
+	switch(event_type){
+		case EVT_SEND_HEARTBEAT:
+			vol->runtime_ctx->heartbeat_once();
+			break;
+		default:
+			S5LOG_ERROR("Volume get unknown event:%d", event_type);
+	}
+	return 0;
 }
 
 int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
@@ -747,17 +816,17 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		{
 			io->ulp_handler(io->ulp_arg, -EIO);
 			S5LOG_ERROR("conn == NULL ,command id:%d task_sequence:%d, io_cmd :%d", io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
-			iocb_pool.free(io);
+			runtime_ctx->iocb_pool.free(io);
 			break;
 		}
 		io_cmd->meta_ver = (uint16_t)meta_ver;
 
-		BufferDescriptor* rbd = reply_pool.alloc();
+		BufferDescriptor* rbd = runtime_ctx->reply_pool.alloc();
 		if(unlikely(rbd == NULL))
 		{
 			S5LOG_ERROR("No reply bd available to do io now, requeue IO");
 			io->ulp_handler(io->ulp_arg, -EAGAIN);
-			iocb_pool.free(io);
+			runtime_ctx->iocb_pool.free(io);
 			break;
 		}
 		io->is_timeout = FALSE;
@@ -768,9 +837,9 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		if (rc)
 		{
 			S5LOG_ERROR("Failed to post_recv for reply");
-			reply_pool.free(rbd);
+			runtime_ctx->reply_pool.free(rbd);
 			io->ulp_handler(io->ulp_arg, -EAGAIN);
-			iocb_pool.free(io);
+			runtime_ctx->iocb_pool.free(io);
 			break;
 		}
 		rc = conn->post_send(cmd_bd);
@@ -778,7 +847,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			S5LOG_ERROR("Failed to post_send for cmd");
 			//reply_pool.free(rbd); //not reclaim rbd, since this bd has in connection's receive queue
 			io->ulp_handler(io->ulp_arg, -EAGAIN);
-			iocb_pool.free(io);
+			runtime_ctx->iocb_pool.free(io);
 			break;
 		}
 		break;
@@ -794,17 +863,17 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			break;
 		}
 		PfClientIocb* io = (PfClientIocb*)arg_p;
-		S5LOG_WARN("volume_proc timeout, cid:%d, conn:%s", io->cmd_bd->cmd_bd->command_id, io->conn);
+		S5LOG_WARN("volume_proc timeout, cid:%d, conn:%s", io->cmd_bd->cmd_bd->command_id, io->conn->connection_info.c_str());
 		/*
 		 * If time_recv is 0, io task:1)does not begin, 2)has finished.
 		 */
-		if (io->sent_time != 0 && now_time_usec() > io->sent_time + io_timeout)
+		if (io->sent_time != 0 && now_time_usec() > io->sent_time + runtime_ctx->io_timeout)
 		{
 			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
 			{
 				S5LOG_ERROR("heartbeat timeout for conn:%s", io->conn->connection_info.c_str());
-				iocb_pool.free(io);
+				runtime_ctx->iocb_pool.free(io);
 				break;
 			}
 			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
@@ -815,7 +884,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			io->conn = NULL;
 			int rc = resend_io(io);
 			if(rc) {
-				iocb_pool.free(io);
+				runtime_ctx->iocb_pool.free(io);
 			}
 		}
 		break;
@@ -830,7 +899,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 	}
 	case EVT_VOLUME_RECONNECT:
 	{
-		if (iocb_pool.remain() == iocb_pool.obj_count)
+		if (runtime_ctx->iocb_pool.remain() == runtime_ctx->iocb_pool.obj_count)
 			if (state == VOLUME_OPENED || state == VOLUME_REOPEN_FAIL || state == VOLUME_DISCONNECTED)
 			{
 				S5LOG_WARN("send volume reopen request for:%s", volume_name.c_str());
@@ -838,42 +907,8 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			}
 		break;
 	}
-	case EVT_SEND_HEARTBEAT:
-	{//TODO: heartbeat should accord to app_context, not per volume. since connection pool is defined in PfClientAppCtx
-		if (runtime_ctx->conn_pool->ip_id_map.size() == 0)
-		{
-			break;
-		}
-		next_heartbeat_idx %= (int)runtime_ctx->conn_pool->ip_id_map.size();
-		int hb_sent = 0;
-		int ht_idx = 0;
-		for (auto it = runtime_ctx->conn_pool->ip_id_map.begin(); it != runtime_ctx->conn_pool->ip_id_map.end();)
-		{
-
-			PfConnection* conn = it->second;
-			if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
-			{
-				runtime_ctx->conn_pool->ip_id_map.erase(it++);
-				S5LOG_ERROR("connection:%p:%s timeout", conn, conn->connection_info.c_str());
-				conn->close();
-			}
-			else
-			{
-				++it;
-
-				if (ht_idx >= next_heartbeat_idx && hb_sent < 4)
-				{
-					conn->send_heartbeat();
-					hb_sent++;
-					next_heartbeat_idx++;
-				}
-			}
-			ht_idx ++;
-		}
-		break;
-	}
 	default:
-		S5LOG_ERROR("Volume get unknown event:%d", event_type);
+		return 1;
 	}
 	return 0;
 }
@@ -889,35 +924,18 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 		return NULL;
 	}
 	PfClientShardInfo * shard = &shards[shard_index];
-	for (int i=0; i < shard->store_ips.size(); i++)
+	for (int i=0; i < shard->parsed_store_ips.size(); i++)
 	{
 		conn = runtime_ctx->conn_pool->get_conn(shard->parsed_store_ips[shard->current_ip], TCP_TYPE);
 		if (conn != NULL) {
 			return conn;
 		}
-		shard->current_ip = (shard->current_ip + 1) % (int)shard->store_ips.size();
+		shard->current_ip = (shard->current_ip + 1) % (int)shard->parsed_store_ips.size();
 	}
 	S5LOG_ERROR("Failed to get an usable IP for vol:%s shard:%d, change volume state to VOLUME_DISCONNECTED ",
 			 volume_name.c_str(), shard_index);
 	state = VOLUME_DISCONNECTED;
 	return NULL;
-}
-
-void PfClientVolume::check_io_timeout()
-{
-	uint64_t now = now_time_usec();
-	struct PfClientIocb* ios = iocb_pool.data;
-	int64_t io_timeout_us = io_timeout * 1000000LL;
-	for (int i = 0; i < iocb_pool.obj_count; i++)
-	{
-		if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
-		{
-			S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
-				((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, volume_name.c_str(), io_timeout_us);
-			event_queue->post_event(EVT_IO_TIMEOUT, 0, &ios[i], this);
-			ios[i].is_timeout = 1;
-		}
-	}
 }
 
 void PfClientVolume::close() {
@@ -926,10 +944,6 @@ void PfClientVolume::close() {
 
 
 	get_client_ctx()->remove_volume(this);
-	iocb_pool.destroy();
-	cmd_pool.destroy();
-	data_pool.destroy();
-	reply_pool.destroy();
 
 //	for(int i=0;i<volume->shards.size();i++)
 //	{
@@ -992,12 +1006,12 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 			        is_write?"WRITE":"READ", offset, length, unalign_io_print_cnt);
 		}
 	}
-	auto io = volume->iocb_pool.alloc();
+	auto io = volume->runtime_ctx->iocb_pool.alloc();
 	if (io == NULL)
 		return -EAGAIN;
 	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
 	//assert(io->data_bd->client_iocb != NULL);
-
+	io->volume = volume;
 	io->ulp_handler = callback;
 	io->ulp_arg = cbk_arg;
 
@@ -1036,12 +1050,12 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 			           is_write ? "WRITE" : "READ", offset, length, unalign_io_print_cnt);
 		}
 	}
-	auto io = volume->iocb_pool.alloc();
+	auto io = volume->runtime_ctx->iocb_pool.alloc();
 	if (io == NULL)
 		return -EAGAIN;
 	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
 	//assert(io->data_bd->client_iocb != NULL);
-
+	io->volume = volume;
 	io->ulp_handler = callback;
 	io->ulp_arg = cbk_arg;
 
@@ -1258,6 +1272,10 @@ PfClientAppCtx::~PfClientAppCtx()
 	timeout_thread.join();
 	vol_proc->stop();
 	conn_pool->close_all();
+	iocb_pool.destroy();
+	cmd_pool.destroy();
+	data_pool.destroy();
+	reply_pool.destroy();
 }
 
 void PfClientAppCtx::timeout_check_proc()
@@ -1267,11 +1285,60 @@ void PfClientAppCtx::timeout_check_proc()
 	{
 		if (sleep(CLIENT_TIMEOUT_CHECK_INTERVAL) != 0)
 			return;
-		opened_volumes_lock.lock();
-		for(auto vol : opened_volumes){
-			vol->check_io_timeout();
+
+		uint64_t now = now_time_usec();
+		struct PfClientIocb* ios = iocb_pool.data;
+		int64_t io_timeout_us = io_timeout * 1000000LL;
+		for (int i = 0; i < iocb_pool.obj_count; i++)
+		{
+			if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
+			{
+				S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
+					((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, ios[i].volume->volume_name.c_str(), io_timeout_us);
+				ios[i].volume->event_queue->post_event(EVT_IO_TIMEOUT, 0, &ios[i], ios[i].volume);
+				ios[i].is_timeout = 1;
+			}
 		}
-		opened_volumes_lock.unlock();
+		//opened_volumes_lock.lock();
+		//for(auto vol : opened_volumes){
+		//	vol->check_io_timeout();
+		//}
+		//opened_volumes_lock.unlock();
 	}
 
+}
+
+void PfClientAppCtx::heartbeat_once()
+{
+	if (conn_pool->ip_id_map.size() == 0)
+	{
+		return;
+	}
+	next_heartbeat_idx %= (int)conn_pool->ip_id_map.size();
+	int hb_sent = 0;
+	int ht_idx = 0;
+	for (auto it = conn_pool->ip_id_map.begin(); it != conn_pool->ip_id_map.end();)
+	{
+
+		PfConnection* conn = it->second;
+		if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
+		{
+			conn_pool->ip_id_map.erase(it++);
+			S5LOG_ERROR("connection:%p:%s timeout", conn, conn->connection_info.c_str());
+			conn->close();
+		}
+		else
+		{
+			++it;
+
+			if (ht_idx >= next_heartbeat_idx && hb_sent < 4)
+			{
+				conn->send_heartbeat();
+				hb_sent++;
+				next_heartbeat_idx++;
+			}
+		}
+		ht_idx++;
+	}
+	
 }

@@ -852,14 +852,14 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	{
 		struct CowTask *req = (struct CowTask*)arg_p;
 		req->opcode = S5_OP_COW_READ;
-		ioengine->submit_io(req, req->src_offset, req->size);
+		ioengine->submit_cow_io(req, req->src_offset, req->size);
 	}
 	break;
 	case EVT_COW_WRITE:
 	{
 		struct CowTask *req = (struct CowTask*)arg_p;
 		req->opcode = S5_OP_COW_WRITE;
-		ioengine->submit_io(req, req->dst_offset, req->size);
+		ioengine->submit_cow_io(req, req->dst_offset, req->size);
 	}
 	break;
 	default:
@@ -880,7 +880,7 @@ void PfFlashStore::begin_cow(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEn
 
 
 void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEntry)
-{
+{//this function called in thread pool, not the store's event thread
 	CowTask r;
 	r.src_offset = srcEntry->offset;
 	r.dst_offset = dstEntry->offset;

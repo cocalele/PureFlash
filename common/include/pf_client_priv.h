@@ -63,6 +63,7 @@ public:
 	void* ulp_arg;
 
 	PfConnection *conn;
+	PfClientVolume* volume;
 	BOOL is_timeout;
 
 	uint64_t sent_time; //time the io sent to server
@@ -145,17 +146,11 @@ public:
 	//following are internal data constructed by client
 	std::string cfg_file;
 	int io_depth;
-	int io_timeout; //timeout in second
 	PfVolumeState state;
 	PfEventQueue* event_queue;
-	ObjectMemoryPool<PfClientIocb> iocb_pool;
-	BufferPool cmd_pool;
-	BufferPool data_pool;
-	BufferPool reply_pool;
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
 
-	int next_heartbeat_idx;
 	PfClientAppCtx* runtime_ctx;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
@@ -163,14 +158,6 @@ public:
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p);
 	int resend_io(PfClientIocb* io);
-	void check_io_timeout();
-	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq){
-		//TODO: check cmd_seq
-		return &iocb_pool.data[cid];
-	}
-	inline void free_iocb(PfClientIocb* io)	{
-		iocb_pool.free(io);
-	}
 
 	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
@@ -197,6 +184,7 @@ void from_json(const nlohmann::json& j, GeneralReply& reply);
 
 void* pf_http_get(std::string& url, int timeout_sec, int retry_times);
 std::string get_master_conductor_ip(const char *zk_host, const char* cluster_name);
+void invalidate_conductor_ip_cache(const char* zk_host, const char* cluster_name);
 
 template<typename ReplyT>
 int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply, bool no_exception=false)
@@ -224,6 +212,7 @@ int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply
 			j.get_to<ReplyT>(reply);
 			return 0;
 		}
+		invalidate_conductor_ip_cache(zk_ip, cluster_name);
 		if (i < retry_times - 1)
 		{
 			S5LOG_ERROR("Failed query %s, will retry", url.c_str());
@@ -244,14 +233,29 @@ public:
 	std::thread timeout_thread;
 	std::mutex opened_volumes_lock;
 	std::list<PfClientVolume*> opened_volumes;
+	ObjectMemoryPool<PfClientIocb> iocb_pool;
+	BufferPool cmd_pool;
+	BufferPool data_pool;
+	BufferPool reply_pool;
+	int next_heartbeat_idx;
+	int io_timeout; //timeout in second
 
+
+	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
+		//TODO: check cmd_seq
+		return &iocb_pool.data[cid];
+	}
+	inline void free_iocb(PfClientIocb* io) {
+		iocb_pool.free(io);
+	}
 
 	void remove_volume(PfClientVolume* vol);
 	void add_volume(PfClientVolume* vol);
 
-	int init(int io_depth, int max_vol_cnt);
+	int init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
 
 	void timeout_check_proc();
+	void heartbeat_once();
 };
 #endif // pf_client_priv_h__
 

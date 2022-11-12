@@ -79,10 +79,10 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 
 	if (io_elapse_time > 2000)
 	{
-		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol:%s, since received:%dms",
+		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol_id:0x%lx, since received:%dms",
 		           iocb->cmd_bd->cmd_bd->offset >> SHARD_SIZE_ORDER,
 		           iocb->cmd_bd->cmd_bd->command_id,
-		           iocb->vol->name,
+		           iocb->vol_id,
 		           io_elapse_time
 		);
 	}
@@ -174,7 +174,7 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 		return 1;
 	}
 	iocb->setup_subtask(s, cmd->opcode);
-	for (int i = 0; i < iocb->vol->rep_count; i++) {
+	for (int i = 0; i < vol->rep_count; i++) {
 		if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 			int rc = 0;
 			iocb->subtasks[i]->rep_id = s->replicas[i]->id;

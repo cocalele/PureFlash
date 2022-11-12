@@ -18,6 +18,7 @@ class PfClientVolume;
 class PfDispatcher;
 class PfVolume;
 class PfReplicator;
+class PfClientAppCtx;
 
 enum connection_type {
 	TCP_TYPE = 0,
@@ -32,7 +33,7 @@ public:
 	work_complete_handler on_work_complete;
 
 	union {
-		PfClientVolume* volume; //used in client side
+		PfClientAppCtx* client_ctx; //used in client side
 		PfVolume* srv_vol; //used in server side
 		PfReplicator* replicator;
 		void* master;

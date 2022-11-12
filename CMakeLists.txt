@@ -12,6 +12,7 @@ if(NOT ANT)
 endif()
 endif(LINUX)
 
+set(BUILD_ROOT_DIR ${CMAKE_BINARY_DIR})
 set(CMAKE_BINARY_DIR ${CMAKE_BINARY_DIR}/bin)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -75,6 +76,7 @@ add_custom_target(scripts ALL
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/scripts ${CMAKE_BINARY_DIR}
 #    COMMAND cp -rpfu ${ZOOKEEPER_SOURCE}/.libs/libzookeeper_mt.a ${CMAKE_BINARY_DIR}
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..
+    COMMAND cp -rp ${CMAKE_CURRENT_SOURCE_DIR}/testing ${BUILD_ROOT_DIR}
 )
 
 if (DEFINED FIO_DIR)

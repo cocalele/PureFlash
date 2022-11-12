@@ -23,20 +23,6 @@ extern "C" {
 #include "s5conf.h"
 #include "s5errno.h"
 
-/**
- * Conductor entry stores each conductor info configured in s5 configuration file.
- *
- * It is used to construct conductor list, which contains all conductors info configured. Conductor info
- * here includes index of conductor, front ip and front port for s5 client to connect with socket.
- */
-typedef struct conductor_entry
-{
-	s5_dlist_entry_t	list;						///< list hook, with which conductor entry can link together to compose a list
-	uint32_t			index;						///< index of conductor, also can be taken as id of conductor
-	char				front_ip[IPV4_ADDR_LEN];	///< front ip of conductor, s5 client can communicate with conductor with it and front port
-	int					front_port;					///< front port of conductor, s5 client can communicate with conductor with it and front ip
-	int					spy_port;					///< spy port of conductor, s5 client will send statistic data to conductor by this port
-} s5conductor_entry_t;
 
 /**
  * Object used to record info of s5 context.

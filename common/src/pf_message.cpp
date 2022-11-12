@@ -8,9 +8,9 @@ const char* PfOpCode2Str(PfOpCode op)
 	switch (op)
 	{
 	case S5_OP_READ:
-		return "MSG_TYPE_READ";
+		return "S5_OP_READ";
 	case S5_OP_WRITE:
-		return "MSG_TYPE_WRITE";
+		return "S5_OP_WRITE";
 	case S5_OP_REPLICATE_WRITE:
 		return "S5_OP_REPLICATE_WRITE";
 	case S5_OP_COW_READ:

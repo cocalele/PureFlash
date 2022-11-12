@@ -311,6 +311,7 @@ int PfTcpConnection::do_receive()
 		rc = rcv_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
+			S5LOG_ERROR("TCP receive failed, rc:%d conn:%p (%s)", rc, this, connection_info.c_str());
 			close();
 			return -ECONNABORTED;
 		}
@@ -367,7 +368,7 @@ int PfTcpConnection::send_with_error_handle()
 			}
 			else
 			{
-				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
+				S5LOG_ERROR("send return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
 				writeable = FALSE;
 				need_reconnect = TRUE;
 				return -errno;
@@ -399,6 +400,7 @@ int PfTcpConnection::do_send()
 		rc = send_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
+			S5LOG_ERROR("TCP send failed, rc:%d conn:%p (%s)", rc, this, connection_info.c_str());
 			close();
 			return -ECONNABORTED;
 		}

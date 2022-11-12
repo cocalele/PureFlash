@@ -30,6 +30,8 @@ public:
 	PfIoEngine(PfFlashStore* d);
 	virtual int init()=0;
 	virtual int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len) = 0;
+	virtual int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len) = 0;
+
 };
 
 class PfAioEngine : public PfIoEngine
@@ -41,6 +43,7 @@ public:
 	PfAioEngine(PfFlashStore* disk) :PfIoEngine(disk) {};
 	int init();
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);
+	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len);
 
 	std::thread aio_poller;
 	void polling_proc();
@@ -55,7 +58,7 @@ public:
 	PfIouringEngine(PfFlashStore* disk) :PfIoEngine(disk) {};
 	int init();
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);
-
+	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len);
 	std::thread iouring_poller;
 	void polling_proc();
 };

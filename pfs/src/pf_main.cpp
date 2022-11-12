@@ -293,7 +293,7 @@ PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE), recovery_buf_po
 	if(rc) {
 		S5LOG_FATAL("Failed to init recovery_buf_pool");
 	}
-
+	next_client_disp_id = 0;
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
@@ -306,7 +306,12 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 	return pos->second;
 }
 
-PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) {
+PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) 
+{
+	if(vol_id == 0){
+		next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
+		return disps[next_client_disp_id];
+	}
 	return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
 }
 

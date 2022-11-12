@@ -7,6 +7,7 @@ LABEL version="1.5"
 #COPY apache-zookeeper-3.5.9-bin /opt/pureflash/apache-zookeeper-3.5.9-bin
 RUN rm -rf /tmp/zookeeper
 RUN mkdir /tmp/zookeeper
+RUN mkdir /var/crash
 
 RUN rm -rf /opt/pureflash/jconductor
 COPY jconductor /opt/pureflash/jconductor

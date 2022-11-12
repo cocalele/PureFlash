@@ -171,9 +171,9 @@ release0:
 int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection* conn_, void* cbk_data)
 {
 	int rc = 0;
-	PfVolume * vol;
 	PfTcpConnection* conn = (PfTcpConnection*)conn_;
 	PfHandshakeMessage* hs_msg = (PfHandshakeMessage*)bd->buf;
+	PfVolume* vol;
 	S5LOG_INFO("Receive handshake for conn:%s, io_depth:%d", conn->connection_info.c_str(), hs_msg->hsqsize);
 	conn->state = CONN_OK;
 	hs_msg->hs_result = 0;
@@ -192,19 +192,23 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		vol = app_context.get_opened_volume(hs_msg->vol_id);
 		if (vol == NULL) {
 			S5LOG_ERROR("Request volume:0x%lx not opened", hs_msg->vol_id);
-			hs_msg->hs_result = (int16_t) EINVAL;
+			hs_msg->hs_result = (int16_t)EINVAL;
 			conn->state = CONN_CLOSING;
 			rc = -EINVAL;
 			goto release0;
 		}
 		conn->srv_vol = vol;
 		conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+	} else if (hs_msg->vol_id != -1ULL) {
+		conn->dispatcher = app_context.get_dispatcher(0);
+		S5LOG_DEBUG("get shared client connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), conn->dispatcher->disp_index);
+		conn->srv_vol = NULL;
 	} else {
 		static int rep_disp_id  = 0;
 		S5LOG_INFO("get replicating connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), rep_disp_id);
-		conn->srv_vol = NULL;
 		conn->dispatcher = app_context.disps[rep_disp_id];
 		rep_disp_id = (int) ((rep_disp_id+1)%app_context.disps.size());
+		conn->srv_vol = NULL;
 	}
 //	rc = conn->init_mempools();
 //	if(rc != 0)
@@ -245,7 +249,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
 				struct PfServerIocb *iocb = bd->server_iocb;
-				iocb->vol = conn->srv_vol;
+				iocb->vol_id = bd->cmd_bd->vol_id;
 				iocb->data_bd->data_len = bd->cmd_bd->length;
 				if (IS_WRITE_OP(bd->cmd_bd->opcode)) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
