@@ -17,7 +17,11 @@ PfTcpConnection::PfTcpConnection(bool _is_client) :socket_fd(0), poller(NULL), r
                                     recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
                                     readable(FALSE), writeable(FALSE),need_reconnect(FALSE), is_client(_is_client)
                                     {}
-PfTcpConnection::~PfTcpConnection()    { }
+PfTcpConnection::~PfTcpConnection()
+{
+	send_q.destroy();
+	recv_q.destroy();
+}
 int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int recv_q_depth)
 {
 	int rc = 0;
@@ -77,8 +81,6 @@ int PfTcpConnection::do_close()
 			this->flush_wr();
 			return 0;
 		});
-	send_q.destroy();
-	recv_q.destroy();
 	return 0;
 }
 
@@ -206,6 +208,11 @@ void PfTcpConnection::start_send(BufferDescriptor* bd, void* buf)
 void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)c;
+
+	//send_q, recv_q is valid after connection close
+	//if(conn->state == CONN_CLOSED){
+	//	S5LOG_WARN("connection:%p (%s) has been closed!", conn, conn->connection_info.c_str());
+	//}
 	if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
 	{
 		if (events & EPOLLERR)

@@ -307,6 +307,7 @@ static void client_on_tcp_close(PfConnection* c)
 }
 static inline PfClientAppCtx* get_client_ctx()
 {
+	((PfClientAppCtx*)g_app_ctx)->add_ref();
 	return (PfClientAppCtx * )g_app_ctx;
 }
 static int init_app_ctx(int io_depth, int max_vol_cnt, int io_timeout)
@@ -319,7 +320,9 @@ static int init_app_ctx(int io_depth, int max_vol_cnt, int io_timeout)
 	int rc = 0;
 	Cleaner clean;
 	PfClientAppCtx* ctx = new PfClientAppCtx();
-	clean.push_back([ctx]() { delete ctx; });
+	assert(ctx->ref_count == 1);
+	clean.push_back([ctx]() { ctx->dec_ref(); });
+	S5LOG_INFO("Init global app context, iodepth=%d max_vol_cnt=%d", io_depth, max_vol_cnt);
 	rc = ctx->init(io_depth, max_vol_cnt, 0 /* 0 for shared connection*/, io_timeout);
 	if(rc == 0)
 		clean.cancel_all();
@@ -465,11 +468,19 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 	}
 	Cleaner clean;
 
+	if(runtime_ctx == NULL) {
+		if(is_aof){
+			init_app_ctx(16, 32, io_timeout);
 
-	init_app_ctx(16, 32, io_timeout);
-
-	runtime_ctx = get_client_ctx();
-	event_queue = &get_client_ctx()->vol_proc->event_queue; //keep for quick reference
+			runtime_ctx = get_client_ctx();
+		} else {
+			runtime_ctx = new PfClientAppCtx();
+			runtime_ctx->init(io_depth, 1, volume_id, io_timeout);
+			assert(runtime_ctx->ref_count == 1);
+			clean.push_back([this]() { runtime_ctx->dec_ref(); });
+		}
+	}
+	event_queue = &runtime_ctx->vol_proc->event_queue; //keep for quick reference
 	state = VOLUME_OPENED;
 	clean.cancel_all();
 	open_time = now_time_usec();
@@ -863,11 +874,11 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			break;
 		}
 		PfClientIocb* io = (PfClientIocb*)arg_p;
-		S5LOG_WARN("volume_proc timeout, cid:%d, conn:%s", io->cmd_bd->cmd_bd->command_id, io->conn->connection_info.c_str());
+		//S5LOG_WARN("volume_proc timeout, cid:%d, conn:%s", io->cmd_bd->cmd_bd->command_id, io->conn->connection_info.c_str());
 		/*
 		 * If time_recv is 0, io task:1)does not begin, 2)has finished.
 		 */
-		if (io->sent_time != 0 && now_time_usec() > io->sent_time + runtime_ctx->io_timeout)
+		if (io->sent_time != 0 && now_time_usec() > io->sent_time + runtime_ctx->io_timeout * 1000000LL)
 		{
 			PfMessageHead *io_cmd = (PfMessageHead *)io->cmd_bd->buf;
 			if (unlikely(io_cmd->opcode == S5_OP_HEARTBEAT))
@@ -943,8 +954,8 @@ void PfClientVolume::close() {
 	state = VOLUME_CLOSED;
 
 
-	get_client_ctx()->remove_volume(this);
-
+	runtime_ctx->remove_volume(this);
+	runtime_ctx->dec_ref();
 //	for(int i=0;i<volume->shards.size();i++)
 //	{
 //		delete volume->shards[i];
@@ -1293,8 +1304,9 @@ void PfClientAppCtx::timeout_check_proc()
 		{
 			if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
 			{
-				S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
-					((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, ios[i].volume->volume_name.c_str(), io_timeout_us);
+			//IO may has been timeout, but not accurate, send to volume thread to judge again
+				//S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
+				//	((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, ios[i].volume->volume_name.c_str(), io_timeout_us);
 				ios[i].volume->event_queue->post_event(EVT_IO_TIMEOUT, 0, &ios[i], ios[i].volume);
 				ios[i].is_timeout = 1;
 			}

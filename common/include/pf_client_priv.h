@@ -146,12 +146,12 @@ public:
 	//following are internal data constructed by client
 	std::string cfg_file;
 	int io_depth;
-	PfVolumeState state;
-	PfEventQueue* event_queue;
+	PfVolumeState state = PfVolumeState::VOLUME_CLOSED;
+	PfEventQueue* event_queue = NULL; // brace-or-equal-initializer since C++ 11
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
 
-	PfClientAppCtx* runtime_ctx;
+	PfClientAppCtx* runtime_ctx = NULL;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 public:
 	int do_open(bool reopen=false, bool is_aof=false);
@@ -226,7 +226,6 @@ int query_conductor(conf_file_t cfg, const std::string& query_str, ReplyT& reply
 class PfClientAppCtx : public PfAppCtx
 {
 public:
-	~PfClientAppCtx();
 	PfPoller* tcp_poller;
 	PfConnectionPool* conn_pool;
 	PfVolumeEventProc* vol_proc;
@@ -239,7 +238,7 @@ public:
 	BufferPool reply_pool;
 	int next_heartbeat_idx;
 	int io_timeout; //timeout in second
-
+	int ref_count = 1;
 
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
 		//TODO: check cmd_seq
@@ -256,6 +255,19 @@ public:
 
 	void timeout_check_proc();
 	void heartbeat_once();
+	inline void add_ref() {
+		__sync_fetch_and_add(&ref_count, 1);
+		//S5LOG_INFO("add_ref conn:0x%x ref_cnt:%d", this, ref_count);
+	}
+	inline void dec_ref() {
+		if (__sync_sub_and_fetch(&ref_count, 1) == 0)
+		{
+			delete this;
+		}
+	}
+private:
+	~PfClientAppCtx();
+
 };
 #endif // pf_client_priv_h__
 
