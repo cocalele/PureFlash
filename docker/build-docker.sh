@@ -12,16 +12,29 @@ function assert()
         fatal "Failed to run:$cmd"
     fi
 }
+COND_HOME=$1
+PFS_BUILD=$2
+QEMU_BUILD=$3
+FIO_BUILD=$4
 
+if [[ "$COND_HOME" == "" || "$PFS_BUILD" == ""  || "$QEMU_BUILD" == "" || "$FIO_BUILD" == "" ]]; then
+    echo "Usage: build-docker.sh <JCONDUCTOR_DIR> <PFS_BUILD_DIR> <QEMU_BUILD_DIR> <FIO_BUILD_DIR>"
+    exit 1;
+fi
+
+#COND_HOME=/root/v2/jconductor
+#PFS_BUILD=/root/v2/ViveNAS/PureFlash/build
 
 rm -rf jconductor/com
 mkdir jconductor
-assert cp -rp ../../jconductor/out/production/jconductor/com jconductor/
-assert cp -rp ../../jconductor/res/init_s5metadb.sql  mariadb/
-assert cp -rp ../../jconductor/pfcli  .
-assert cp -rp ../build_deb/bin/pfs .
-assert cp -rp ../build_deb/bin/pfdd .
-assert cp -rp ../../qemu/build/qemu-img .
-assert cp -rp ../../fio/fio .
+assert cp -rp $COND_HOME/out/production/jconductor/com jconductor/
+assert cp -rp $COND_HOME/lib jconductor/
 
-docker build .
+assert cp -rp $COND_HOME/res/init_s5metadb.sql  mariadb/
+assert cp -rp $COND_HOME/pfcli  .
+assert cp -rp $PFS_BUILD/bin/pfs .
+assert cp -rp $PFS_BUILD/bin/pfdd .
+assert cp -rp $QEMU_BUILD/qemu-img .
+assert cp -rp $FIO_BUILD/fio .
+
+docker build -f Dockerfile.all -t pureflash/pureflash:1.8 .

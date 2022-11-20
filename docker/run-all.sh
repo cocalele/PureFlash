@@ -46,6 +46,7 @@ if [ $status -ne 0 ]; then
   echo "Failed to start jconductor: $status"
   exit $status
 fi
+sleep 3
 
 echo "Start PureFlash store..."
 $DIR/pfs -c /etc/pureflash/pfs.conf &> /var/log/pfs.log &
