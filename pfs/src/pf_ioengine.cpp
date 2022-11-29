@@ -47,8 +47,14 @@ int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t m
 		io_prep_pread(&io->aio_cb, fd, data_bd->buf, media_len, media_offset);
 	else
 		io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, media_len, media_offset);
-	struct iocb* ios[1] = { &io->aio_cb };
-	return io_submit(aio_ctx, 1, ios);
+	batch_iocb[batch_io_cnt++] = &io->aio_cb;
+	if(batch_io_cnt >= (BATCH_IO_CNT>>1)){
+		if (batch_io_cnt >= BATCH_IO_CNT) {
+			S5LOG_FATAL("Too many fails to submit IO on ssd:%s", this->disk->name);
+		}
+		return submit_batch();
+	}
+	return 0;
 }
 int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
 {
@@ -60,7 +66,18 @@ int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t
 	struct iocb* ios[1] = { &io->aio_cb };
 	return io_submit(aio_ctx, 1, ios);
 }
-
+int PfAioEngine::submit_batch()
+{
+	if(batch_io_cnt == 0)
+		return 0;
+	int rc = io_submit(aio_ctx, batch_io_cnt, batch_iocb);
+	if (rc != batch_io_cnt) {
+		S5LOG_ERROR("Failed to submit %d IO, rc:%d", batch_io_cnt, rc);
+		return rc;
+	}
+	batch_io_cnt = 0;
+	return 0;
+}
 void PfAioEngine::polling_proc()
 {
 #define MAX_EVT_CNT 100

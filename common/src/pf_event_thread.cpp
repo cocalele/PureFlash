@@ -78,6 +78,7 @@ void *PfEventThread::thread_proc(void* arg)
 					pThis->process_event(t->type, t->arg_i, t->arg_p, t->arg_q);
 			}
 		}
+		pThis->commit_batch();
 	}
 	return NULL;
 }

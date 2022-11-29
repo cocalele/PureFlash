@@ -618,7 +618,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	io_depth = hmsg->hsqsize;
 	PfTcpConnection* conn = new PfTcpConnection(true);
 	clean.push_back([conn]() {delete conn; });
-	rc = conn->init(socket_fd, poller, io_depth, io_depth);
+	rc = conn->init(socket_fd, poller, io_depth*2, io_depth*2);
 	if (rc != 0)
 		throw runtime_error(format_string("Failed call connection init, rc:%d", rc));
 	conn->state = CONN_OK;

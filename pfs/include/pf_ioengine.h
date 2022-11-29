@@ -31,20 +31,22 @@ public:
 	virtual int init()=0;
 	virtual int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len) = 0;
 	virtual int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len) = 0;
-
+	virtual int submit_batch(){return 0;};
 };
 
+#define BATCH_IO_CNT  512
 class PfAioEngine : public PfIoEngine
 {
 public:
 	io_context_t aio_ctx;
-
+	struct iocb* batch_iocb[BATCH_IO_CNT];
+	int batch_io_cnt=0;
 public:
 	PfAioEngine(PfFlashStore* disk) :PfIoEngine(disk) {};
 	int init();
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);
 	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len);
-
+	int submit_batch();
 	std::thread aio_poller;
 	void polling_proc();
 };

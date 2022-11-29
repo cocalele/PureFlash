@@ -21,6 +21,6 @@ public:
 	static void *thread_proc(void* arg);
 
 	int sync_invoke(std::function<int(void)> _f);
-
+	virtual int commit_batch(){return 0;};
 };
 #endif // pf_event_thread_h__
