@@ -591,6 +591,8 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 
 	fcntl(socket_fd, F_SETFL, fdopt);
 	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
+	DeferCall _d([hmsg]() {delete hmsg; });
+	
 	memset(hmsg, 0, sizeof(PfHandshakeMessage));
 	hmsg->hsqsize = (int16_t)io_depth;
 	hmsg->vol_id = vol_id;

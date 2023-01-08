@@ -42,10 +42,10 @@ public:
 			free_obj_queue.enqueue(&data[i]);
 		}
 		return 0;
-	release1:
-		pthread_spin_destroy(&lock);
 	release2:
 		free_obj_queue.destroy();
+	release1:
+		pthread_spin_destroy(&lock);
 		return rc;
 	}
 

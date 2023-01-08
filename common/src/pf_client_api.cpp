@@ -324,8 +324,11 @@ static int init_app_ctx(int io_depth, int max_vol_cnt, int io_timeout)
 	clean.push_back([ctx]() { ctx->dec_ref(); });
 	S5LOG_INFO("Init global app context, iodepth=%d max_vol_cnt=%d", io_depth, max_vol_cnt);
 	rc = ctx->init(io_depth, max_vol_cnt, 0 /* 0 for shared connection*/, io_timeout);
-	if(rc == 0)
-		clean.cancel_all();
+	if(rc != 0){
+		S5LOG_ERROR("Failed to init global app context");
+		return rc;
+	}
+	clean.cancel_all();
 	g_app_ctx = ctx;
 	inited = 1;
 	return rc;
