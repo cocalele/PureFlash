@@ -740,6 +740,9 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 		        	memcpy(io->user_buf, io->data_bd->buf, io->data_bd->data_len);
 	        }
 			runtime_ctx->free_iocb(io);
+			if(s!=0){
+				S5LOG_ERROR("IO complete in error:%d", s);
+			}
 			h(arg, s);
 
     }
@@ -1282,6 +1285,12 @@ void PfClientAppCtx::add_volume(PfClientVolume* vol)
 }
 PfClientAppCtx::~PfClientAppCtx()
 {
+	while (iocb_pool.obj_count != vol_proc->sync_invoke([this]() {
+		return iocb_pool.free_obj_queue.count();
+		})) {
+		S5LOG_INFO("Waiting infligh IO to complete...");
+		usleep(10000);
+	}
 	pthread_cancel(timeout_thread.native_handle());
 	timeout_thread.join();
 	vol_proc->stop();

@@ -262,11 +262,14 @@ public:
 	inline void dec_ref() {
 		if (__sync_sub_and_fetch(&ref_count, 1) == 0)
 		{
+			S5LOG_DEBUG("Releasing runtime context:%p", this);
+
 			delete this;
 		}
 	}
 private:
 	~PfClientAppCtx();
+
 
 };
 #endif // pf_client_priv_h__
