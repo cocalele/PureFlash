@@ -198,6 +198,11 @@ void PfPoller::run()
 		for (int i = 0; i < nfds; i++)
 		{
 			PollerFd* desc = (PollerFd*)rev[i].data.ptr;
+			if(desc->fd == 0){
+				//some event may already in poller ready list, though fd has been removed from interest list
+				S5LOG_WARN("Get event on removed fd"/*, rev[i].data.fd*/);
+				continue;
+			}
 			desc->handler(desc->fd, rev[i].events, desc->cbk_arg);
 		}
 	}
