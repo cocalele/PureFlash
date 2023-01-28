@@ -120,7 +120,16 @@ inline int enqueue(/*in*/const T& element)
 	pthread_spin_unlock(&lock);
 	return 0;
 }
-
+inline int enqueue_nolock(/*in*/const T& element)
+{
+	if (is_full()) {
+		S5LOG_ERROR("Event queue: full");
+		return -EAGAIN;
+	}
+	data[tail] = element;
+	tail = (tail + 1) % queue_depth;
+	return 0;
+}
 /**
  * Dequeue an element from the head of the queue.
  *
@@ -134,16 +143,21 @@ inline int enqueue(/*in*/const T& element)
  * after dequeue return, data[i] may has changed its value by other call to enqueue before
  * caller consume dequeue's return value
  */
-inline T dequeue()
+inline T dequeue_nolock()
 {
-	AutoSpinLock l(&lock);
 	if (unlikely(is_empty())) {
 		throw std::logic_error(format_string("queue:%s is empty", "noname"));
 	}
 	T t = data[head];
-	head = (head+1)% queue_depth;
+	head = (head + 1) % queue_depth;
 	return t;
 }
+inline T dequeue()
+{
+	AutoSpinLock l(&lock);
+	return dequeue_nolock();
+}
+
 /**
  * Returns whether the queue is empty(i.e. whether its size is 0).
  *

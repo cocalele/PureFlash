@@ -20,6 +20,7 @@ int PfEventQueue::init(const char* name, int size, BOOL semaphore_mode)
 		S5LOG_ERROR("Failed create eventfd for EventQueue:%s, rc:%d", name, -errno);
 		return -errno;
 	}
+	S5LOG_DEBUG("Create event queue:%s with fd:%d", name, event_fd);
 	int rc = 0;
 	rc = queue1.init(size);
 	if(rc)
@@ -50,9 +51,9 @@ PfEventQueue::~PfEventQueue()
 void PfEventQueue::destroy()
 {
 	current_queue = NULL;
+	close(event_fd);
 	queue1.destroy();
 	queue2.destroy();
-	close(event_fd);
 }
 
 int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
@@ -60,7 +61,7 @@ int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
 	//S5LOG_INFO("post_event %s into:%s", EventTypeToStr((S5EventType)type), name);
 	{
 		AutoSpinLock _l(&lock);
-		int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p , arg_q});
+		int rc = current_queue->enqueue_nolock(S5Event{ type, arg_i, arg_p , arg_q});
 		if(rc)
 			return rc;
 	}
