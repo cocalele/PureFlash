@@ -182,6 +182,10 @@ void PfPoller::run()
 {
 	prctl(PR_SET_NAME, name);
 	struct epoll_event rev[max_fd];
+	struct sched_param sp;
+	memset(&sp, 0, sizeof(sp));
+	sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
 	while (1)
 	{
 

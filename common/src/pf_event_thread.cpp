@@ -36,6 +36,11 @@ int PfEventThread::start()
 		S5LOG_ERROR("Failed create thread:%s, rc:%d", name, rc);
 		return rc;
 	}
+	struct sched_param sp;
+	memset(&sp, 0, sizeof(sp));
+	sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(tid, SCHED_FIFO, &sp);
+
 	return 0;
 }
 void PfEventThread::stop()
