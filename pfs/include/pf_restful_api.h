@@ -92,7 +92,13 @@ public:
 	};
 	std::string md5;
 };
+class PerfReply : public RestfulReply {
+public:
+	PerfReply() : RestfulReply("perf_reply") {
 
+	};
+	std::string line;
+};
 void from_json(const nlohmann::json& j, RestfulReply& p) ;
 void from_json(const nlohmann::json& j, ReplicaArg& p);
 void from_json(const nlohmann::json& j, ShardArg& p);
@@ -102,6 +108,7 @@ void to_json(nlohmann::json& j, const RestfulReply& r);
 void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
 void from_json(const nlohmann::json& j, ErrorReportReply& p);
 void to_json(nlohmann::json& j, const CalcMd5Reply& r);
+void to_json(nlohmann::json& j, const PerfReply& r);
 
 struct mg_connection;
 struct http_message;
@@ -123,4 +130,5 @@ void handle_query_task(struct mg_connection *nc, struct http_message * hm);
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
 void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm);
+void handle_perf_stat(struct mg_connection* nc, struct http_message* hm);
 #endif // pf_restful_api_h__

@@ -98,7 +98,14 @@ void to_json(nlohmann::json& j, const CalcMd5Reply& r)
 	         {"md5",      r.md5},
 	};
 }
-
+void to_json(nlohmann::json& j, const PerfReply& r)
+{
+	j = json{ {"ret_code", r.ret_code},
+			 {"reason",   r.reason},
+			 {"op",       r.op},
+			 {"perf_stat",      r.line},
+	};
+}
 template <typename R>
 void send_reply_to_client(R& r, struct mg_connection *nc) {
 
@@ -621,4 +628,18 @@ void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm)
 	RestfulReply r(arg.op + "_reply");
 	send_reply_to_client(r, nc);
 
+}
+void handle_perf_stat(struct mg_connection* nc, struct http_message* hm)
+{
+	int len=0;
+	char buf[512];
+	PerfReply reply;
+	for (auto d : app_context.disps)
+	{
+		len += snprintf(buf+len, sizeof(buf)-len-1, "disl_%d:%d ", 
+				d->disp_index, d->event_queue.current_queue->count());
+	
+	}
+	reply.line = std::move(std::string(buf, len));
+	send_reply_to_client(reply, nc);
 }

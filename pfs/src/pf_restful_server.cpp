@@ -85,6 +85,8 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 		else if(strcmp(opcode, "clean_disk") == 0){
 			handle_clean_disk(nc, hm);
 		}
+		else if (strcmp(opcode, "perf") == 0)
+			handle_perf_stat(nc, hm);
 		else
 		{
 			S5LOG_ERROR("Unknown debug op:%s", opcode);
