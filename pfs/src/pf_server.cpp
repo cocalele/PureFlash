@@ -254,7 +254,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				if (IS_WRITE_OP(bd->cmd_bd->opcode)) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
 					conn->add_ref();
-					conn->start_recv(iocb->data_bd); //for write, let's continue to recevie data
+					conn->start_recv(iocb->data_bd); //for write, let's continue to receive data [href:data_recv]
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
@@ -262,7 +262,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				}
 			}
 			else {
-				//data received
+				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
 				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
@@ -329,6 +329,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 int PfTcpServer::accept_connection()
 {
 	int const1 = 1;
+	int sz = 1 << 20;
 	sockaddr_in client_addr;
 	socklen_t addr_len = sizeof(client_addr);
 	int rc = 0;
@@ -358,6 +359,14 @@ int PfTcpServer::accept_connection()
 	if (rc)
 	{
 		S5LOG_ERROR("Failed to setsockopt TCP_NODELAY, rc:%d", rc);
+	}
+	rc = setsockopt(connfd, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set RCVBUF, rc:%d", rc);
+	}
+	rc = setsockopt(connfd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set SNDBUF, rc:%d", rc);
 	}
 	conn->state = CONN_INIT;
 

@@ -530,6 +530,16 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	{
 		throw runtime_error("set SO_REUSEPORT failed!");
 	}
+	int sz = 1 << 20;
+	rc = setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set RCVBUF, rc:%d", errno);
+	}
+
+	rc = setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set SNDBUF to size:%d, rc:%d", sz, errno);
+	}
 
 	struct sockaddr_in addr;
 	rc = parse_net_address(ip.c_str(), (uint16_t)port, &addr);
@@ -590,6 +600,9 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	}
 
 	fcntl(socket_fd, F_SETFL, fdopt);
+
+
+
 	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
 	DeferCall _d([hmsg]() {delete hmsg; });
 	
