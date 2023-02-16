@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <list>
 #include <mutex>
+#include "pf_message.h"
 #include "pf_mempool.h"
 #include "pf_event_thread.h"
 #include "pf_buffer.h"
@@ -241,8 +242,12 @@ public:
 	int ref_count = 1;
 
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
-		//TODO: check cmd_seq
-		return &iocb_pool.data[cid];
+		PfClientIocb* io = &iocb_pool.data[cid];
+		if(io->cmd_bd->cmd_bd->command_seq != cmd_seq) {
+			S5LOG_WARN("IO staled, ID:%d seq:%d", cid, cmd_seq);
+			return NULL;
+		}
+		return io;
 	}
 	inline void free_iocb(PfClientIocb* io) {
 		iocb_pool.free(io);

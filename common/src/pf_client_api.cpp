@@ -252,12 +252,14 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 
 	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
 
-		if(bd->data_len == sizeof(PfMessageHead) && bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
-			//message head sent complete
-			PfClientIocb* iocb = bd->client_iocb;
-			conn->add_ref(); //for start send data
-			iocb->data_bd->conn = conn;
-			conn->start_send(iocb->data_bd); //on client side, use user's buffer
+		if(bd->data_len == sizeof(PfMessageHead) ) {
+			if(bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
+				//message head sent complete, continue to send data for write OP
+				PfClientIocb* iocb = bd->client_iocb;
+				conn->add_ref(); //for start send data
+				iocb->data_bd->conn = conn;
+				conn->start_send(iocb->data_bd); //on client side, use user's buffer
+			}
 			return 1;
 		} else if(bd->data_len == sizeof(PfMessageReply) ) {
 			//assert(bd->reply_bd->command_id<32);
@@ -276,18 +278,18 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->add_ref(); //for start recv data
 				iocb->data_bd->conn = conn;
 				//S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
+				assert(iocb->data_bd->data_len == iocb->cmd_bd->cmd_bd->length);
 				conn->start_recv(iocb->data_bd); //on client side, use use's buffer
 				return 1;
 			}
 			return iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
-		} else  {
+		} else  {//this is for data receive or data send complete
 			// this happens in condition
-			// a) message head send complete, for READ
 			// b) data send complete, for WRITE
 			// c) data receive complete, for READ
 
 			PfClientIocb* iocb = bd->client_iocb;
-			if(iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ){
+			if(iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ){ //case c
 				//for READ, need to complete IO
 				PfClientIocb* iocb = bd->client_iocb;
 				return iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
@@ -786,7 +788,7 @@ int PfClientVolume::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	io->cmd_bd->cmd_bd->command_seq ++;
-	__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
+	//__sync_fetch_and_add(&io->cmd_bd->cmd_bd->command_seq, 1);
 	int rc = event_queue->post_event(EVT_IO_REQ, 0, io, this);
 	if (rc)
 		S5LOG_ERROR("Failed to resend_io io, rc:%d", rc);
