@@ -1,0 +1,20 @@
+FROM ubuntu:20.04
+LABEL version="1.8"
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/ShangHai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+RUN apt update
+RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 libjsoncpp1 librdmacm1 libreadline5 libstdc++6 libtool liburcu6 libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk
+
+##To install mariadb-server
+#RUN apt install -y apt-transport-https curl
+#RUN curl -o /etc/apt/trusted.gpg.d/mariadb_release_signing_key.asc 'https://mariadb.org/mariadb_release_signing_key.asc'
+#RUN sh -c "echo 'deb https://mirrors.aliyun.com/mariadb/repo/10.5/ubuntu focal main' >>/etc/apt/sources.list"
+#RUN apt update
+#RUN apt install -y mariadb-server
+#
+
+## to install ant
+
+

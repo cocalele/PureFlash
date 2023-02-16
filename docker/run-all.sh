@@ -14,11 +14,24 @@ if [ $status -ne 0 ]; then
   echo "Failed to start mysql: $status"
   exit $status
 fi
-
-if [ ! -f /opt/pureflash/disk1.dat ]; then
-  echo "Create disk file ..."
-  truncate -s 20G /opt/pureflash/disk1.dat
+if [ "$PFS_DISKS" != "" ]; then
+	echo "Use disk $PFS_DISKS specified from environment variable PFS_DISKS";
+else
+	echo "Use data file /opt/pureflash/disk1.dat as disk, only for testing"
+	if [ ! -f /opt/pureflash/disk1.dat ]; then
+	  echo "Create disk file ..."
+	  truncate -s 20G /opt/pureflash/disk1.dat
+	fi
+	export PFS_DISKS="/opt/pureflash/disk1.dat"
 fi
+	
+i=0
+for d in ${PFS_DISKS//,/ }; do
+	sed -i "/__TRAY_PLACEHOLDER__/i [tray.$i]\n\tdev = $d" /etc/pureflash/pfs.conf
+	i=$((i+1))
+done
+ sed -i "/__TRAY_PLACEHOLDER__/d" /etc/pureflash/pfs.conf
+
 echo "Waiting mysql start ..."
 sleep 3
 if  ! mysql -e "use s5" ; then
@@ -40,7 +53,7 @@ sleep 2
 while !  lsof -i -P -n | grep 2181  ; do echo waiting zk; sleep 1; done
 echo "Start PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-$JAVA_HOME/bin/java  -classpath $JCROOT:$JCROOT/lib/*  -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf &> /var/log/pfc.log &
+java  -classpath $JCROOT:$JCROOT/lib/*  -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf &> /var/log/pfc.log &
 status=$?
 if [ $status -ne 0 ]; then
   echo "Failed to start jconductor: $status"
