@@ -78,6 +78,8 @@ echo "Disk ready"
 
 echo "Welcome to PureFlash(https://github.com/cocalele/PureFlash) all-in-one box!"
 cd
+if [ "NOBASH" == "" ] ; then
+	bash
+fi
 
-bash
 
