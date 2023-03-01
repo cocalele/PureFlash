@@ -278,7 +278,6 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->add_ref(); //for start recv data
 				iocb->data_bd->conn = conn;
 				//S5LOG_DEBUG("To recv %d bytes data payload", iocb->data_bd->data_len);
-				assert(iocb->data_bd->data_len == iocb->cmd_bd->cmd_bd->length);
 				conn->start_recv(iocb->data_bd); //on client side, use use's buffer
 				return 1;
 			}
@@ -475,7 +474,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 
 	if(runtime_ctx == NULL) {
 		if(is_aof){
-			init_app_ctx(16, 32, io_timeout);
+			init_app_ctx(AOF_IODEPTH, 32, io_timeout);
 
 			runtime_ctx = get_client_ctx();
 		} else {

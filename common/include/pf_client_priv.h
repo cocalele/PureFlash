@@ -13,6 +13,7 @@
 #include "pf_client_api.h"
 #include "pf_app_ctx.h"
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
+#define AOF_IODEPTH 24
 
 class PfPoller;
 
