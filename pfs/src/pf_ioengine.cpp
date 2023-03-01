@@ -38,9 +38,12 @@ int PfAioEngine::init()
 	aio_poller = std::thread(&PfAioEngine::polling_proc, this);
 	return 0;
 }
-
+//#define SKIP_DISK 1
 int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len)
 {
+#ifdef SKIP_DISK
+	io->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
+#else
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 	//below is the most possible case
 	if(IS_READ_OP(io->opcode))
@@ -54,6 +57,7 @@ int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t m
 		}
 		return submit_batch();
 	}
+#endif
 	return 0;
 }
 int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
@@ -70,6 +74,7 @@ int PfAioEngine::submit_batch()
 {
 	if(batch_io_cnt == 0)
 		return 0;
+	//S5LOG_DEBUG("batch size:%d", batch_io_cnt);
 	int rc = io_submit(aio_ctx, batch_io_cnt, batch_iocb);
 	if (rc != batch_io_cnt) {
 		S5LOG_ERROR("Failed to submit %d IO, rc:%d", batch_io_cnt, rc);
