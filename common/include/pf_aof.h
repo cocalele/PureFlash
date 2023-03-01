@@ -1,6 +1,7 @@
 #ifndef pf_aof_h__
 #define pf_aof_h__
 
+#include <semaphore.h>
 #include "pf_client_api.h"
 class PfAof;
 
@@ -10,12 +11,13 @@ int pf_ls_aof_children(const char* tenant_name, const char* cfg_filename, std::v
 
 class  PfAof
 {
-private:
+public:
 	PfClientVolume* volume;
+private:
 	void* append_buf;
 	off_t append_tail;//append tail in buffer
 	ssize_t file_len;
-	mutable void* read_buf;//a small buffer to read unaligned part
+//	mutable void* read_buf;//a small buffer to read unaligned part
 	union{
 	void* head_buf;
 	struct PfAofHead* head;
@@ -23,16 +25,29 @@ private:
 	ssize_t append_buf_size;
 public:
 	PfAof(ssize_t append_buf_size = 2 << 20);
-	~PfAof();
 	ssize_t append(const void* buf, ssize_t len);
 	ssize_t read(void* buf, ssize_t len, off_t offset) const;
 	void sync();
 	inline ssize_t file_length() { return file_len; }
+	int reader_cnt = 0;
+	int writer_cnt = 0;
+	int ref_count = 1;
+	inline void add_ref() {
+		__sync_fetch_and_add(&ref_count, 1);
+	}
+	inline void dec_ref() {
+		if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
+			delete this;
+		}
+	}
+
 private:
+	~PfAof();
 	int open();
 	//ssize_t sync_write(const void* buf, size_t count, off_t offset);
 	//ssize_t sync_read(const void* buf, size_t count, off_t offset);
 	friend PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
+	mutable sem_t io_throttle;
 };
 
 struct PfAofHead

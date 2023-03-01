@@ -55,23 +55,35 @@ PfAof::PfAof(ssize_t append_buf_size)
 	append_buf = aligned_alloc(4096, append_buf_size);
 	if(append_buf == NULL)
 		throw std::runtime_error(format_string("Failed alloc append buf"));
-	read_buf = aligned_alloc(4096, 8192);
-	if (read_buf == NULL)
-		throw std::runtime_error(format_string("Failed alloc read_buf"));
+	//read_buf = aligned_alloc(4096, 8192);
+	//if (read_buf == NULL)
+	//	throw std::runtime_error(format_string("Failed alloc read_buf"));
 
 	this->append_buf_size = append_buf_size;
 	this->append_tail = 0;
 	this->volume = NULL;
+
+	sem_init(&io_throttle, 0, AOF_IODEPTH);
+
 	file_len = 0;
 }
+static std::map<std::string, PfAof*> opened_aof;
+static std::mutex aof_lock;
+
 PfAof::~PfAof()
 {
 	sync();
+	S5LOG_DEBUG("close aof:%s len:%ld", volume->volume_name.c_str(), this->file_length());
+	free(append_buf);
+	{
+		std::lock_guard<std::mutex> _l(aof_lock);
+		opened_aof.erase(volume->volume_name);
+	}
 	if (volume != NULL) {
 		volume->close();
 		delete volume;
 	}
-	free(append_buf);
+
 }
 struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver, bool is_aof); //defined in pf_client_api
@@ -138,8 +150,21 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 		S5LOG_ERROR("Caller lib version:%d mismatch lib:%d", lib_ver, S5_LIB_VER);
 		return NULL;
 	}
+	std::lock_guard<std::mutex> _l(aof_lock);
+	auto pos = opened_aof.find(volume_name);
+	if (pos != opened_aof.end()) {
+		S5LOG_INFO("AOF '%s' has already opened!", volume_name);
+		PfAof *f = pos->second;
+		f->add_ref();
+		return f;
+	}
+	
+
+	
+
 	if(pf_aof_access(volume_name, cfg_filename) != 0) {
 		if(flags & O_CREAT) {
+			S5LOG_INFO("create aof:%s", volume_name);
 			rc = pf_create_aof(volume_name, 1, cfg_filename, lib_ver);
 			if(rc != 0){
 				S5LOG_ERROR("Failed to create aof:%s rc:%d", volume_name, rc);
@@ -194,7 +219,7 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 			return NULL;
 		}
 		
-
+		opened_aof[volume_name] = aof;
 		_clean.cancel_all();
 		return aof;
 	}
@@ -219,18 +244,21 @@ int PfAof::open()
 	}
 	file_len = head->length;
 	if(file_len % 4096){
-		rc = (int)sync_io(volume, append_buf, 4096, (file_len&(~4095LL))+4096, 0);
+		rc = (int)sync_io(volume, append_buf, 4096, (file_len&(~4095LL)) + 4096 /*4096 is head length*/, 0);
 		if(rc<0){
 			S5LOG_ERROR("Failed to read aof:%s", volume->volume_name);
 			return -EIO;
 		}
 		append_tail = file_len % 4096;
 	}
+	S5LOG_DEBUG("opened aof:%s len:%ld", volume->volume_name.c_str(), this->file_length());
+
 	return 0;
 }
 struct io_waiter
 {
 	sem_t sem;
+	sem_t *throttle;
 	int rc;
 };
 
@@ -240,6 +268,15 @@ static void io_cbk(void* cbk_arg, int complete_status)
 	if(w->rc != 0)
 		w->rc = complete_status;
 	sem_post(&w->sem);
+	sem_post(w->throttle);
+}
+static void io_cbk_no_throttle(void* cbk_arg, int complete_status)
+{
+	struct io_waiter* w = (struct io_waiter*)cbk_arg;
+	if (w->rc != 0)
+		w->rc = complete_status;
+	sem_post(&w->sem);
+
 }
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write)
 {
@@ -248,7 +285,7 @@ static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset,
 	w.rc = 0;
 	sem_init(&w.sem, 0, 0);
 
-	rc = pf_io_submit(v, buf, count, offset, io_cbk, &w, is_write);
+	rc = pf_io_submit(v, buf, count, offset, io_cbk_no_throttle, &w, is_write);
 	if (rc)
 		return rc;
 	sem_wait(&w.sem);
@@ -273,10 +310,15 @@ void PfAof::sync()
 	const uint64_t seg_align_mask = ~(write_seg_size - 1);
 	ssize_t cur_file_tail = file_len - append_tail;
 	ssize_t cur_vol_tail = cur_file_tail + 4096;
+	if (file_len > volume->volume_size) {
+		S5LOG_ERROR("AOF size:%ld exceed volume size:%ld", file_len, volume->volume_size);
+	}
+
 
 	io_waiter arg;
 	arg.rc = 0;
-	int iodepth = 24;
+	arg.throttle = &io_throttle;
+	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 
 	ssize_t buf_off = 0;
@@ -290,6 +332,7 @@ void PfAof::sync()
 			aligned_io_size = (io_size + 4095) & (~4095LL);//upround to 4096
 			memset((char*)append_buf + append_tail, 0, aligned_io_size - io_size);
 		}
+		sem_wait(arg.throttle);
 		sem_wait(&arg.sem);
 		if(arg.rc != 0) {
 			S5LOG_FATAL("IO has failed, rc:%d",  arg.rc);
@@ -307,16 +350,17 @@ void PfAof::sync()
 		buf_off += io_size;
 	}
 	for(int i=0;i<iodepth;i++){
-		sem_wait(&arg.sem);
+		sem_wait(&arg.sem);	
 		if (arg.rc != 0) {
 			S5LOG_FATAL("IO has failed, rc:%d", arg.rc);
 		}
 	}
 
+	sem_wait(arg.throttle);
 	//write file head
 	head->length = file_len;
 	rc = pf_io_submit_write(volume, head_buf, 4096, 0, io_cbk, &arg);
-	sem_wait(&arg.sem);
+	sem_wait(&arg.sem); 
 	if (arg.rc != 0) {
 		S5LOG_FATAL("IO has failed for aof sync, rc:%d", arg.rc);
 	}
@@ -387,19 +431,27 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 
 	io_waiter arg;
 	arg.rc = 0;
-	int iodepth = 24;
+	arg.throttle = &io_throttle;
+	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 
 	bool copy_head = false;
 	bool copy_tail = false;
+	void* read_buf=NULL;
+	ssize_t buf_off = 0;
+	if (vol_off % 4096 != 0 || vol_end % 4096 != 0) {
+		read_buf = aligned_alloc(4096, 8192);
+	}
 	//in read buf, first 4K is unaligned head, second 4K is unaligned tail
 	if(vol_off%4096 != 0) {
+		sem_wait(&io_throttle);
 		sem_wait(&arg.sem);
 		//S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned head", aligned_off, 4096);
 		rc = pf_io_submit_read(volume, read_buf, 4096, aligned_off, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
-			return -EIO;
+			rc = -EIO;
+			goto errout1;
 		}
 		aligned_off += 4096;//unaligned part is 4K
 		copy_head = true;
@@ -407,32 +459,36 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	if(vol_end % 4096 != 0 /*unaligned end*/  
 		&&  ( DOWN_ALIGN_4K(vol_end) != DOWN_ALIGN_4K(vol_off) //unaligned end is in different 4K with head
 			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
-		sem_wait(&arg.sem);
-		//S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned tail", DOWN_ALIGN_4K(vol_end), 4096);
+		sem_wait(&io_throttle);
+		sem_wait(&arg.sem);	
 		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
-			return -EIO;
+			rc = -EIO;
+			goto errout1;
 		}
 		aligned_end -= 4096;
 		copy_tail = true;
 	}
 
-	ssize_t buf_off = offset & 4095; //skip unaligned part in buffer
+	buf_off = offset & 4095; //skip unaligned part in buffer
 	while (aligned_off < aligned_end) {
 		off_t next_64K_end_in_vol = (aligned_off + read_seg_size) & seg_align_mask;
 
 		ssize_t aligned_io_size = min(aligned_end, next_64K_end_in_vol) - aligned_off;
-		sem_wait(&arg.sem);
+		sem_wait(&io_throttle);
+		sem_wait(&arg.sem);	
 		if (arg.rc != 0) {
 			S5LOG_ERROR("IO has failed, rc:%d", arg.rc);
-			return -EIO;
+			rc = -EIO;
+			goto errout1;
 		}
 		//S5LOG_INFO("Read at off:0x%lx len:0x%lx", aligned_off, aligned_io_size);
 		rc = pf_io_submit_read(volume, (char*)buf + buf_off, aligned_io_size, aligned_off, io_cbk, &arg);
 		if (rc != 0) {
 			S5LOG_ERROR("Failed to submit io, rc:%d", rc);
-			return -EIO;
+			rc = -EIO;
+			goto errout1;
 		}
 
 		aligned_off += aligned_io_size;
@@ -444,7 +500,8 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		sem_wait(&arg.sem);
 		if (arg.rc != 0) {
 			S5LOG_ERROR("IO has failed, rc:%d", arg.rc);
-			return -EIO;
+			rc = -EIO;
+			goto errout1;
 		}
 	}
 	if (copy_head) {
@@ -459,6 +516,9 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 
 	//S5LOG_INFO("Read buf:%p first QWORD:0x%lx",buf, *(long*)buf);
 	return len;
+errout1:
+	free(read_buf);
+	return rc;
 }
 /**
  * @return 0 if volume exists; -1 other otherwise
