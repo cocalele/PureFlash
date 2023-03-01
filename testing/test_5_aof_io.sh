@@ -11,7 +11,7 @@ AOF_OUT_DAT=/tmp/aof_out.dat
 function aof_len()
 {
 	assert pfdd --rw read --of /tmp/pfhead -v $1
-	read LO HI <<< $(hexdump -n 8 -s 8 -e '/4 "%d "'  /tmp/pfhead)
+	read LO HI <<< $(hexdump -n 8 -s 8 -v -e '/4 "%d "'  /tmp/pfhead)
 	echo $(( (HI<<16) + LO))
 }
 function cleanup {
