@@ -161,7 +161,7 @@ after build finish, all binary should be found under  * bin * dir
    # cp ${PUREFLASH_HOME}/build_deb/bin/libs5common.a /usr/lib/libs5common.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper.a /usr/lib/libzookeeper.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libhashtable.a /usr/lib/libhashtable.a
-   # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  && ninja
+   # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
 ```
 ## 2) run qemu-img 
 ```
