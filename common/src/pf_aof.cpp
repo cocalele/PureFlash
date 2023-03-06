@@ -31,6 +31,10 @@ extern const char* default_cfg_file; //defined in pf_client_api.cpp
 
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write);
 
+#ifdef _DATA_DBG
+#define LOCAL_DIR "/tmp"
+#endif
+
 class LsAofReply : public GeneralReply
 {
 public:
@@ -83,7 +87,10 @@ PfAof::~PfAof()
 		volume->close();
 		delete volume;
 	}
-
+#ifdef _DATA_DBG
+	close(localfd);
+	localfd=0;
+#endif
 }
 struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver, bool is_aof); //defined in pf_client_api
@@ -137,6 +144,24 @@ int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename
 		S5LOG_ERROR("Failed write aof head, rc:%d", -errno);
 		return rc;
 	}
+#ifdef _DATA_DBG
+	char tmp[256];
+
+	sprintf(tmp, "%s%.*s", LOCAL_DIR, (int)(strrchr(volume_name, '/') - volume_name), volume_name);
+
+	rc = mkdir(tmp, 0777);
+	if(rc != 0 && errno != EEXIST){
+		S5LOG_ERROR("Failed create dir:%s, rc:%d", tmp, errno);
+		return -errno;
+	}
+	sprintf(tmp, "%s%s", LOCAL_DIR, volume_name);
+	rc = creat(tmp, 0666);
+	if (rc < 0) {
+		S5LOG_ERROR("Failed create file:%s, rc:%d", tmp, errno);
+		return rc;
+	}
+	close(rc);
+#endif
 	return 0;
 }
 
@@ -252,7 +277,18 @@ int PfAof::open()
 		append_tail = file_len % 4096;
 	}
 	S5LOG_DEBUG("opened aof:%s len:%ld", volume->volume_name.c_str(), this->file_length());
+#ifdef _DATA_DBG
+	char tmp[256];
 
+	sprintf(tmp, "%s%s", LOCAL_DIR,  volume->volume_name.c_str());
+
+	localfd = ::open(tmp, O_RDWR|O_APPEND );
+	if (localfd < 0) {
+		S5LOG_ERROR("Failed open file:%s, rc:%d", tmp, errno);
+		return rc;
+	}
+
+#endif
 	return 0;
 }
 struct io_waiter
@@ -267,9 +303,10 @@ static void io_cbk(void* cbk_arg, int complete_status)
 	struct io_waiter* w = (struct io_waiter*)cbk_arg;
 	if(w->rc != 0)
 		w->rc = complete_status;
-	sem_post(&w->sem);
 	sem_post(w->throttle);
+	sem_post(&w->sem);
 }
+
 static void io_cbk_no_throttle(void* cbk_arg, int complete_status)
 {
 	struct io_waiter* w = (struct io_waiter*)cbk_arg;
@@ -387,6 +424,9 @@ ssize_t PfAof::append(const void* buf, ssize_t len)
 		if (append_tail == append_buf_size)
 			sync();
 	}
+#ifdef _DATA_DBG
+	write(localfd, buf, len);
+#endif
 	return len;
 }
 
@@ -400,7 +440,13 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
  *          +---------+---------------
  * So:    offset_in_vol = offset_in_file + 4K
  */
+	if(offset >= file_len){
+		S5LOG_WARN("Read offset:%ld exceed file len:%ld", offset, file_len);
+
+		return 0;
+	}
 	if(offset + len > file_len){
+		S5LOG_WARN("Read exceed file end, set len from %ld to %ld", len, file_len - offset);
 		len = file_len - offset;
 	}
 	ssize_t vol_off = offset + 4096;
@@ -470,8 +516,8 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		aligned_end -= 4096;
 		copy_tail = true;
 	}
-
-	buf_off = offset & 4095; //skip unaligned part in buffer
+	if(copy_head)
+		buf_off = 4096 - (offset & 4095); //skip unaligned part in buffer
 	while (aligned_off < aligned_end) {
 		off_t next_64K_end_in_vol = (aligned_off + read_seg_size) & seg_align_mask;
 
@@ -505,15 +551,34 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		}
 	}
 	if (copy_head) {
-		memcpy(buf, (char*)read_buf + (vol_off & 4095LL), min(4096 - (vol_off & 4095LL), (long long)len) );
+		size_t copy_off = (vol_off & 4095LL);
+		size_t copy_len = min(4096 - (vol_off & 4095LL), (long long)len);
+		memcpy(buf, (char*)read_buf + copy_off, copy_len );
+		S5LOG_DEBUG("Copy unaligned head, from read_buf off:0x%lx to user buf: 0 len:0x%lx", copy_off, copy_len);
 	}
 	if (copy_tail) {
-		memcpy((char*)buf + len - (len & 4095LL), (const char*)read_buf + 4096, len & 4095LL);
+		memcpy((char*)buf + len - (vol_end & 4095LL), (const char*)read_buf + 4096, vol_end & 4095LL);
 		//                         ^^^^^^^^^^^^^         ^^^^^^^^^^^^^^^
 		//                                |                   + second 4K is unaligned data of tail
 		//                                +  this is unaligned part length in tail
+		S5LOG_DEBUG("Copy unaligned tail, from read_buf off: 4096 to user buf: 0x%lx len:0x%lx", len - (vol_end & 4095LL), vol_end & 4095LL);
 	}
-
+#ifdef _DATA_DBG
+	{
+		void* buf2 = malloc(len);
+		size_t r = pread(localfd, buf2, len, offset);
+		if (r != len) {
+			S5LOG_ERROR("Failed read local file, rc:%d", errno);
+		}
+		if (memcmp(buf, buf2, len) != 0) {
+			S5LOG_ERROR("Data error ,file:%s offset:%ld, len:%ld", volume->volume_name.c_str(), offset, len);
+			int fd = ::open("/tmp/errdata.dat", O_RDWR|O_TRUNC|O_CREAT, 0666);
+			::write(fd, buf, len);
+			::close(fd);
+		}
+		free(buf2);
+	}
+#endif
 	//S5LOG_INFO("Read buf:%p first QWORD:0x%lx",buf, *(long*)buf);
 	return len;
 errout1:
@@ -583,3 +648,58 @@ int pf_aof_access(const char* volume_name, const char* cfg_filename)
 	*result = std::move(reply.files);
 	return reply.ret_code == 0 ? 0 : -ENOENT;
 }
+
+ int pf_rename_aof(const char* volume_name, const char* new_name, const char* pf_cfg_file)
+ {
+	 std::lock_guard<std::mutex> _l(aof_lock);
+	 auto pos = opened_aof.find(volume_name);
+	 if (pos != opened_aof.end()) {
+		 S5LOG_INFO("AOF '%s' has already opened!", volume_name);
+		 PfAof* f = pos->second;
+		 f->volume->volume_name=new_name;
+		 opened_aof.erase(pos);
+		 if(opened_aof.find(new_name) != opened_aof.end()){
+			S5LOG_ERROR("target name '%s' still opened", new_name);
+		 }
+		 opened_aof[f->volume->volume_name] = f;
+	 }
+	 int rc = pf_rename_volume(volume_name, new_name, pf_cfg_file);
+#ifdef _DATA_DBG
+	 char tmp1[256], tmp2[256];
+
+	 sprintf(tmp1, "%s%s", LOCAL_DIR, volume_name);
+	 sprintf(tmp2, "%s%s", LOCAL_DIR, new_name);
+	 if(::access(tmp1,F_OK) == 0){
+		 ::rename(tmp1, tmp2);
+		 S5LOG_DEBUG("rename tmp file %s to %s, rc:%d", tmp1, tmp2, errno);
+	 } else {
+		S5LOG_ERROR("old file: %s not accessable, rc:%d", errno);
+	 }
+#endif
+	return rc;
+ }
+
+ int pf_delete_aof(const char* volume_name, const char* pf_cfg_file)
+ {
+	 std::lock_guard<std::mutex> _l(aof_lock);
+	 auto pos = opened_aof.find(volume_name);
+	 if (pos != opened_aof.end()) {
+		 S5LOG_INFO("AOF '%s' has already opened !", volume_name);
+		 opened_aof.erase(pos);
+	 }
+	 int rc = pf_delete_volume(volume_name, pf_cfg_file);
+#ifdef _DATA_DBG
+	 char tmp1[256];
+
+	 sprintf(tmp1, "%s%s", LOCAL_DIR, volume_name);
+	 if (::access(tmp1, F_OK) == 0) {
+		 ::unlink(tmp1);
+		 S5LOG_DEBUG("delete tmp file %s rc:%d", tmp1, errno);
+	 }
+	 else {
+		 S5LOG_ERROR("old file: %s not accessable, rc:%d", errno);
+	 }
+#endif
+	 return rc;
+ }
+

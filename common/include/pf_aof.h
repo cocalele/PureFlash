@@ -8,6 +8,10 @@ class PfAof;
 PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
 int pf_aof_access(const char* volume_name, const char* cfg_filename);
 int pf_ls_aof_children(const char* tenant_name, const char* cfg_filename, std::vector<std::string>* result);
+int pf_rename_aof(const char* volume_name, const char* new_name, const char* pf_cfg_file);
+int pf_delete_aof(const char* volume_name, const char* pf_cfg_file);
+
+//#define _DATA_DBG
 
 class  PfAof
 {
@@ -48,6 +52,11 @@ private:
 	//ssize_t sync_read(const void* buf, size_t count, off_t offset);
 	friend PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
 	mutable sem_t io_throttle;
+#ifdef _DATA_DBG
+	int localfd;
+#else
+	int _holder;
+#endif
 };
 
 struct PfAofHead

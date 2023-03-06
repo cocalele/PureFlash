@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <climits>
 
 #include "pf_utils.h"
 #include "pf_client_api.h"
@@ -136,12 +137,12 @@ int main(int argc, char** argv)
 		case 'r':
 			assert(args.size() == 5);
 			c.length = strtol(args[1].c_str(), NULL, 10);
-			assert(errno == 0);
+			assert(c.length > 0 && c.length != LONG_MAX);
 			c.vol_offset = strtol(args[2].c_str(), NULL, 10);
-			assert(errno == 0);
+			assert(c.vol_offset >= 0 && c.vol_offset != LONG_MAX);
 			c.src_file = args[3];
 			c.src_offset = strtol(args[4].c_str(), NULL, 10);
-			assert(errno == 0);
+			assert(c.src_offset >= 0 && c.src_offset != LONG_MAX);
 			rc = do_read(c);
 			break;
 		case 'q':
