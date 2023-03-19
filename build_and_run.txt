@@ -168,3 +168,11 @@ after build finish, all binary should be found under  * bin * dir
 
    # qemu/build/qemu-img dd bs=4k count=1  if=pfbd:test_v1 of=./test.dat 
 ```
+
+6. build  tcmu
+   tcmu is a LIO module to export pfbd volume via iSCSI. You need this only if you want.
+   1) git clone https://gitee.com/cocalele/tcmu-runner.git
+   2) apt install libkmod-dev libkmod2 libnl-3-dev libnl-genl-3-dev
+   3) mkdir build && cd build && cmake .. -GNinja && ninja
+  
+  

@@ -632,6 +632,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 */
 int PfFlashStore::save_meta_data()
 {
+	S5LOG_INFO("Begin to save metadata");
 	int buf_size = 1 << 20;
 	void* buf = aligned_alloc(LBA_LENGTH, buf_size);
 	if (!buf)
@@ -646,6 +647,7 @@ int PfFlashStore::save_meta_data()
 	MD5Stream stream(fd);
 	rc = stream.init();
 	if (rc) return rc;
+	S5LOG_DEBUG("Save free_obj_queue to pos:%ld", head.free_list_position);
 	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, head.free_list_position, (char*)buf, buf_size);
 	if(rc != 0)
 	{
@@ -690,6 +692,7 @@ int PfFlashStore::save_meta_data()
 	rc = ser.flush_buffer();
 	stream.finalize(head.metadata_md5_position, 0);
 	redolog->discard();
+	S5LOG_INFO("Successed save metadata");
 	return 0;
 }
 

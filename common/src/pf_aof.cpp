@@ -231,7 +231,7 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 		if (snap_name)
 			aof->volume->snap_name = snap_name;
 
-		rc = aof->volume->do_open(false, true);
+		rc = aof->volume->do_open(false, false);
 		if (rc) {
 			return NULL;
 		}
@@ -354,7 +354,7 @@ void PfAof::sync()
 
 	io_waiter arg;
 	arg.rc = 0;
-	arg.throttle = &io_throttle;
+	arg.throttle = &io_throttle; //TODO: throttle should be global per AppContext, not per volume
 	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 
@@ -554,14 +554,14 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		size_t copy_off = (vol_off & 4095LL);
 		size_t copy_len = min(4096 - (vol_off & 4095LL), (long long)len);
 		memcpy(buf, (char*)read_buf + copy_off, copy_len );
-		S5LOG_DEBUG("Copy unaligned head, from read_buf off:0x%lx to user buf: 0 len:0x%lx", copy_off, copy_len);
+		//S5LOG_DEBUG("Copy unaligned head, from read_buf off:0x%lx to user buf: 0 len:0x%lx", copy_off, copy_len);
 	}
 	if (copy_tail) {
 		memcpy((char*)buf + len - (vol_end & 4095LL), (const char*)read_buf + 4096, vol_end & 4095LL);
 		//                         ^^^^^^^^^^^^^         ^^^^^^^^^^^^^^^
 		//                                |                   + second 4K is unaligned data of tail
 		//                                +  this is unaligned part length in tail
-		S5LOG_DEBUG("Copy unaligned tail, from read_buf off: 4096 to user buf: 0x%lx len:0x%lx", len - (vol_end & 4095LL), vol_end & 4095LL);
+		//S5LOG_DEBUG("Copy unaligned tail, from read_buf off: 4096 to user buf: 0x%lx len:0x%lx", len - (vol_end & 4095LL), vol_end & 4095LL);
 	}
 #ifdef _DATA_DBG
 	{

@@ -7,6 +7,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt update
 RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 libjsoncpp1 librdmacm1 libreadline5 libstdc++6 libtool liburcu6 libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk
 
+#RUN apt install -y openssh-server
+#RUN mkdir /run/sshd;  chmod 700 /run/sshd
+#RUN passwd root
+
 ##To install mariadb-server
 #RUN apt install -y apt-transport-https curl
 #RUN curl -o /etc/apt/trusted.gpg.d/mariadb_release_signing_key.asc 'https://mariadb.org/mariadb_release_signing_key.asc'
