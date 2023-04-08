@@ -22,17 +22,25 @@ set(ZOOKEEPER_SOURCE ${THIRDPARTY}/zookeeper/zookeeper-client/zookeeper-client-c
 set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
 set(ZOOKEEPER_BIN ${ZOOKEEPER_SOURCE}/.libs)
 
+set(ZOOKEEPER_PREBUILDED 1)
+execute_process(COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/osname.sh   OUTPUT_VARIABLE  OS_NAME)
+message("os is ${OS_NAME}")
+
 macro(USE_ZOOKEEPER)
-    if(UNIX)
-    foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
-        if(NOT EXISTS "${f}")
-            execute_process(COMMAND ant clean
-                    WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
-            execute_process(COMMAND ant compile_jute
-                    WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
-        endif()
-    endforeach()
-    endif(UNIX)
+    if(ZOOKEEPER_PREBUILDED)
+        set(ZOOKEEPER_BIN ${CMAKE_CURRENT_SOURCE_DIR}/pre_build_libs/${OS_NAME})
+        include_directories(${CMAKE_CURRENT_SOURCE_DIR}/pre_build_libs/${OS_NAME})
+
+    elseif(UNIX)
+        foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
+            if(NOT EXISTS "${f}")
+                execute_process(COMMAND ant clean
+                        WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
+                execute_process(COMMAND ant compile_jute
+                        WORKING_DIRECTORY ${THIRDPARTY}/zookeeper)
+            endif()
+        endforeach()
+    endif(ZOOKEEPER_PREBUILDED)
     add_definitions(-DTHREADED)# to use zookeeper multi thread library
     include_directories(${ZOOKEEPER_INC})
     link_directories(${ZOOKEEPER_BIN})
@@ -68,7 +76,9 @@ ENDIF (HAVE_RDMA_H)
 USE_ZOOKEEPER()
 USE_ISA_L()
 add_compile_options (-fdiagnostics-color=always)
-add_subdirectory(${ZOOKEEPER_SOURCE})
+if(NOT ZOOKEEPER_PREBUILDED)
+    add_subdirectory(${ZOOKEEPER_SOURCE})
+endif()
 
 add_subdirectory(pfs)
 add_subdirectory(common)

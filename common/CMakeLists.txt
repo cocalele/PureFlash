@@ -83,7 +83,7 @@ set_target_properties(s5common PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 TARGET_LINK_LIBRARIES(s5common dl rdmacm ibverbs pthread  ${GCOV})
 
 add_executable(pfdd ${PFDD_SRC})
-TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs pthread uuid zookeeper curl ${GCOV})
+TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs pthread uuid zookeeper hashtable curl ${GCOV})
 
 add_executable(aof_helper src/pf_aof_test_helper.cpp)
-TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ibverbs pthread uuid zookeeper curl ${GCOV})
+TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ibverbs pthread uuid zookeeper hashtable curl ${GCOV})
