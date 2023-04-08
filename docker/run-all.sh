@@ -53,7 +53,11 @@ sleep 2
 while !  lsof -i -P -n | grep 2181  ; do echo waiting zk; sleep 1; done
 echo "Start PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-java  -classpath $JCROOT:$JCROOT/lib/*  -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf &> /var/log/pfc.log &
+java  -classpath $JCROOT:$JCROOT/lib/*  \
+      -Dorg.slf4j.simpleLogger.showDateTime=true \
+	  -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
+	  -XX:+HeapDumpOnOutOfMemoryError   \
+	  com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf &> /var/log/pfc.log &
 status=$?
 if [ $status -ne 0 ]; then
   echo "Failed to start jconductor: $status"

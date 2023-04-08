@@ -17,6 +17,7 @@ JCROOT=$DIR/jconductor
 nohup $JAVA_HOME/bin/java  -classpath $JCROOT:$JCROOT/lib/*  \
    -Dorg.slf4j.simpleLogger.showDateTime=true \
    -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
+   -XX:+HeapDumpOnOutOfMemoryError \
    com.netbric.s5.conductor.Main -c /etc/pureflash/pfc.conf > /var/log/pfc.log 2>&1 &
 status=$?
 if [ $status -ne 0 ]; then
