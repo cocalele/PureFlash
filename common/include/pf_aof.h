@@ -51,7 +51,6 @@ private:
 	//ssize_t sync_write(const void* buf, size_t count, off_t offset);
 	//ssize_t sync_read(const void* buf, size_t count, off_t offset);
 	friend PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, const char* cfg_filename, int lib_ver);
-	mutable sem_t io_throttle;
 #ifdef _DATA_DBG
 	int localfd;
 #else

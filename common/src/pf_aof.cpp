@@ -67,7 +67,6 @@ PfAof::PfAof(ssize_t append_buf_size)
 	this->append_tail = 0;
 	this->volume = NULL;
 
-	sem_init(&io_throttle, 0, AOF_IODEPTH);
 
 	file_len = 0;
 }
@@ -231,7 +230,7 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 		if (snap_name)
 			aof->volume->snap_name = snap_name;
 
-		rc = aof->volume->do_open(false, false);
+		rc = aof->volume->do_open(false, true);
 		if (rc) {
 			return NULL;
 		}
@@ -354,7 +353,7 @@ void PfAof::sync()
 
 	io_waiter arg;
 	arg.rc = 0;
-	arg.throttle = &io_throttle; //TODO: throttle should be global per AppContext, not per volume
+	arg.throttle = &volume->runtime_ctx->io_throttle; //TODO: throttle should be global per AppContext, not per volume
 	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 
@@ -449,6 +448,12 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		S5LOG_WARN("Read exceed file end, set len from %ld to %ld", len, file_len - offset);
 		len = file_len - offset;
 	}
+	static int _cnt;
+	if((offset&4095) || (len & 4095)) {
+		if(_cnt % 1000 == 0){
+			S5LOG_WARN("unaligned read at off:0x%lx len:0x%lx, cnt:%d", offset, len, ++_cnt);
+		}
+	}
 	ssize_t vol_off = offset + 4096;
 	ssize_t vol_end = vol_off + len;
 
@@ -477,7 +482,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 
 	io_waiter arg;
 	arg.rc = 0;
-	arg.throttle = &io_throttle;
+	arg.throttle = &volume->runtime_ctx->io_throttle;
 	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 
@@ -490,7 +495,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	}
 	//in read buf, first 4K is unaligned head, second 4K is unaligned tail
 	if(vol_off%4096 != 0) {
-		sem_wait(&io_throttle);
+		sem_wait(&volume->runtime_ctx->io_throttle);
 		sem_wait(&arg.sem);
 		//S5LOG_INFO("Read at off:0x%lx len:0x%lx for unaligned head", aligned_off, 4096);
 		rc = pf_io_submit_read(volume, read_buf, 4096, aligned_off, io_cbk, &arg);
@@ -505,7 +510,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	if(vol_end % 4096 != 0 /*unaligned end*/  
 		&&  ( DOWN_ALIGN_4K(vol_end) != DOWN_ALIGN_4K(vol_off) //unaligned end is in different 4K with head
 			|| vol_off % 4096 == 0 /*no unaligned head*/) ){
-		sem_wait(&io_throttle);
+		sem_wait(&volume->runtime_ctx->io_throttle);
 		sem_wait(&arg.sem);	
 		rc = pf_io_submit_read(volume, (char*) read_buf + 4096, 4096, DOWN_ALIGN_4K(vol_end), io_cbk, &arg);
 		if (rc != 0) {
@@ -522,7 +527,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		off_t next_64K_end_in_vol = (aligned_off + read_seg_size) & seg_align_mask;
 
 		ssize_t aligned_io_size = min(aligned_end, next_64K_end_in_vol) - aligned_off;
-		sem_wait(&io_throttle);
+		sem_wait(&volume->runtime_ctx->io_throttle);
 		sem_wait(&arg.sem);	
 		if (arg.rc != 0) {
 			S5LOG_ERROR("IO has failed, rc:%d", arg.rc);
@@ -580,6 +585,8 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	}
 #endif
 	//S5LOG_INFO("Read buf:%p first QWORD:0x%lx",buf, *(long*)buf);
+	if(read_buf)
+		free(read_buf);
 	return len;
 errout1:
 	free(read_buf);

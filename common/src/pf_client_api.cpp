@@ -339,6 +339,8 @@ int PfClientAppCtx::init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_
 	Cleaner clean;
 	int rc = 0;
 	this->io_timeout = io_timeout;
+	sem_init(&io_throttle, 0, io_depth);
+
 	tcp_poller = new PfPoller();
 	if (tcp_poller == NULL) {
 		S5LOG_ERROR("No memory to alloc poller");
@@ -1284,6 +1286,7 @@ void PfClientAppCtx::add_volume(PfClientVolume* vol)
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
 	opened_volumes.push_back(vol);
 }
+
 PfClientAppCtx::~PfClientAppCtx()
 {
 	while (iocb_pool.obj_count != vol_proc->sync_invoke([this]() {
@@ -1292,14 +1295,17 @@ PfClientAppCtx::~PfClientAppCtx()
 		S5LOG_INFO("Waiting infligh IO to complete...");
 		usleep(10000);
 	}
+	
 	pthread_cancel(timeout_thread.native_handle());
 	timeout_thread.join();
 	vol_proc->stop();
 	conn_pool->close_all();
+	delete tcp_poller; //will call destroy inside
 	iocb_pool.destroy();
 	cmd_pool.destroy();
 	data_pool.destroy();
 	reply_pool.destroy();
+	sem_destroy(&io_throttle);
 }
 
 void PfClientAppCtx::timeout_check_proc()

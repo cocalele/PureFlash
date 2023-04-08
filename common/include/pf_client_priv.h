@@ -13,7 +13,7 @@
 #include "pf_client_api.h"
 #include "pf_app_ctx.h"
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
-#define AOF_IODEPTH 24
+#define AOF_IODEPTH 100
 
 class PfPoller;
 
@@ -241,6 +241,7 @@ public:
 	int next_heartbeat_idx;
 	int io_timeout; //timeout in second
 	int ref_count = 1;
+	mutable sem_t io_throttle; //used by AOF
 
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
 		PfClientIocb* io = &iocb_pool.data[cid];
