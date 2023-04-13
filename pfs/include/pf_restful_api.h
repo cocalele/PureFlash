@@ -131,4 +131,6 @@ void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
 void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm);
 void handle_perf_stat(struct mg_connection* nc, struct http_message* hm);
+void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm);
+
 #endif // pf_restful_api_h__

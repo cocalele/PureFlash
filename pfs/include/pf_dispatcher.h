@@ -13,6 +13,7 @@
 #include "pf_mempool.h"
 #include "pf_volume.h"
 #include "pf_message.h"
+#include "pf_stat.h" //for class DispatchStat
 #ifdef WITH_RDMA
 #include <rdma/rdma_cma.h>
 #include "pf_rdma_connection.h"
@@ -132,6 +133,8 @@ public:
 	std::unordered_map<uint64_t, PfVolume*> opened_volumes;
 	int disp_index;
 
+	DispatchStat stat;
+
 	//PfDispatcher(const std::string &name);
 	int prepare_volume(PfVolume* vol);
 	int dispatch_io(PfServerIocb *iocb);
@@ -149,6 +152,7 @@ public:
 	int set_meta_ver(int64_t volume_id, int meta_ver);
 	int prepare_shards(PfVolume* vol);
 };
+
 
 inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {

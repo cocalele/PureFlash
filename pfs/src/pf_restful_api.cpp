@@ -15,6 +15,7 @@
 #include "pf_main.h"
 #include "pf_replica.h"
 #include "pf_scrub.h"
+#include "pf_stat.h"
 
 using nlohmann::json;
 using namespace std;
@@ -636,10 +637,28 @@ void handle_perf_stat(struct mg_connection* nc, struct http_message* hm)
 	PerfReply reply;
 	for (auto d : app_context.disps)
 	{
-		len += snprintf(buf+len, sizeof(buf)-len-1, "disl_%d:%d ", 
+		len += snprintf(buf+len, sizeof(buf)-len-1, "disp_%d:%d ", 
 				d->disp_index, d->event_queue.current_queue->count());
 	
 	}
 	reply.line = std::move(std::string(buf, len));
 	send_reply_to_client(reply, nc);
+}
+
+void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm)
+{
+	int len = 0;
+	char buf[512];
+	PerfReply reply;
+	DispatchStat total_stat={0};
+	for (auto d : app_context.disps)
+	{
+		len += snprintf(buf + len, sizeof(buf) - len - 1, "disp_%d:wr_cnt:%ld rd_cnt:%ld rep_cnt:%ld wr_bytes:%ld rd_bytes:%ld rep_bytes:%ld\n ",
+			d->disp_index,
+			d->stat.wr_cnt, d->stat.rd_cnt, d->stat.rep_wr_cnt,
+			d->stat.wr_bytes, d->stat.rd_bytes, d->stat.rep_wr_bytes);
+	}
+	reply.line = std::move(std::string(buf, len));
+	send_reply_to_client(reply, nc);
+
 }

@@ -145,13 +145,19 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 //	}
 	switch(cmd->opcode) {
 		case S5_OP_WRITE:
+			stat.wr_cnt++;
+			stat.wr_bytes += cmd->length;
 			return dispatch_write(iocb, vol, s);
 			break;
 		case S5_OP_READ:
 		case S5_OP_RECOVERY_READ:
+			stat.rd_cnt++;
+			stat.rd_bytes += cmd->length;
 			return dispatch_read(iocb, vol, s);
 			break;
 		case S5_OP_REPLICATE_WRITE:
+			stat.rep_wr_cnt++;
+			stat.rep_wr_bytes += cmd->length;
 			return dispatch_rep_write(iocb, vol, s);
 			break;
 		default:

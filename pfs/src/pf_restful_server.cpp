@@ -87,6 +87,8 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 		}
 		else if (strcmp(opcode, "perf") == 0)
 			handle_perf_stat(nc, hm);
+		else if (strcmp(opcode, "disp_io"))
+			handle_disp_io_stat(nc, hm);
 		else
 		{
 			S5LOG_ERROR("Unknown debug op:%s", opcode);
