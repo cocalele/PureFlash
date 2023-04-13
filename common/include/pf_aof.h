@@ -2,6 +2,7 @@
 #define pf_aof_h__
 
 #include <semaphore.h>
+#include <vector>
 #include "pf_client_api.h"
 class PfAof;
 
@@ -12,6 +13,7 @@ int pf_rename_aof(const char* volume_name, const char* new_name, const char* pf_
 int pf_delete_aof(const char* volume_name, const char* pf_cfg_file);
 
 //#define _DATA_DBG
+class SimpleCache;
 
 class  PfAof
 {
@@ -67,5 +69,4 @@ struct PfAofHead
 	uint64_t access_time;
 	uint64_t create_time;
 };
-
 #endif // pf_aof_h__

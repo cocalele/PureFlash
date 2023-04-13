@@ -306,22 +306,15 @@ static void io_cbk(void* cbk_arg, int complete_status)
 	sem_post(&w->sem);
 }
 
-static void io_cbk_no_throttle(void* cbk_arg, int complete_status)
-{
-	struct io_waiter* w = (struct io_waiter*)cbk_arg;
-	if (w->rc != 0)
-		w->rc = complete_status;
-	sem_post(&w->sem);
-
-}
 static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write)
 {
 	int rc = 0;
 	io_waiter w;
+	w.throttle = &v->runtime_ctx->io_throttle;
 	w.rc = 0;
 	sem_init(&w.sem, 0, 0);
-
-	rc = pf_io_submit(v, buf, count, offset, io_cbk_no_throttle, &w, is_write);
+	sem_wait(w.throttle);
+	rc = pf_io_submit(v, buf, count, offset, io_cbk, &w, is_write);
 	if (rc)
 		return rc;
 	sem_wait(&w.sem);
@@ -353,7 +346,7 @@ void PfAof::sync()
 
 	io_waiter arg;
 	arg.rc = 0;
-	arg.throttle = &volume->runtime_ctx->io_throttle; //TODO: throttle should be global per AppContext, not per volume
+	arg.throttle = &volume->runtime_ctx->io_throttle;
 	int iodepth = AOF_IODEPTH;
 	sem_init(&arg.sem, 0, iodepth);
 

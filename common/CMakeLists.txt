@@ -50,6 +50,7 @@ set (S5COMMON_SRC
 	src/pf_client_api.cpp
 	src/pf_connection_pool.cpp
 	src/pf_aof.cpp
+	src/pf_aof_cache.cpp
 	)
 IF (HAVE_RDMA_H)
 	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
