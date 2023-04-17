@@ -335,7 +335,7 @@ void PfAof::sync()
  *          +---------+---------------
  * So:    offset_in_vol = offset_in_file + 4K
  */
-	const uint64_t write_seg_size = 64 << 10;//Pureflash allow 64KB for each write
+	const uint64_t write_seg_size = PF_MAX_IO_SIZE;
 	const uint64_t seg_align_mask = ~(write_seg_size - 1);
 	ssize_t cur_file_tail = file_len - append_tail;
 	ssize_t cur_vol_tail = cur_file_tail + 4096;
@@ -438,7 +438,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 		return 0;
 	}
 	if(offset + len > file_len){
-		S5LOG_WARN("Read exceed file end, set len from %ld to %ld", len, file_len - offset);
+		//S5LOG_WARN("Read exceed file end, set len from %ld to %ld", len, file_len - offset);
 		len = file_len - offset;
 	}
 	static int _cnt;
@@ -469,7 +469,7 @@ ssize_t PfAof::read(void* buf, ssize_t len, off_t offset) const
 	ssize_t aligned_end = UP_ALIGN_4K(vol_end);
 
 
-	const uint64_t read_seg_size = 64 << 10;//Pureflash allow 64KB for each read
+	const uint64_t read_seg_size = PF_MAX_IO_SIZE;
 	const uint64_t seg_align_mask = ~(read_seg_size - 1);
 
 

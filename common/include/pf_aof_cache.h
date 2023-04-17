@@ -6,9 +6,9 @@
 
 class PfAof;
 
-#define SLOT_CNT 4
-#define SLOT_SIZE (PF_MAX_IO_SIZE * 4) //i.e. 128K x 4 = 512K
-
+#define SLOT_CNT 8
+//#define SLOT_SIZE (PF_MAX_IO_SIZE )
+#define SLOT_SIZE (64<<10)
 
 class CacheLine
 {
@@ -19,9 +19,12 @@ public:
 	PfAof* aof;
 	std::shared_mutex lock;
 
+	int hit_cnt;
+
 	int init(PfAof* aof);
-	size_t pread(void* buf, size_t len, off_t offset);
+	size_t pread(void* buf, size_t len, off_t offset/*, int* disk_accessed*/);
 	int fetch_data(off_t offset);
+	int bg_fetch_data(off_t offset);
 };
 
 class AofWindowCache
@@ -31,10 +34,11 @@ public:
 	CacheLine slots[SLOT_CNT]; //a 2M buffer
 	PfAof* aof;
 
-	int init(PfAof* aof);
+	bool prefetch;
+
+	int init(PfAof* aof, bool prefetch=false);
 	size_t pread(void* buf, size_t len, off_t offset);
-private:
-	int prefetch_one_slot();
+
 
 };
 #endif // pf_aof_cache_h__
