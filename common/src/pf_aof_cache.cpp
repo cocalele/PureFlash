@@ -81,7 +81,6 @@ retry_read:
 			S5LOG_ERROR("Failed to fetch data, rc:%d", rc);
 			return rc;
 		}
-		hit_cnt = 0;
 		//*disk_accessed = 1;
 		goto retry_read;
 	}
@@ -104,7 +103,10 @@ int CacheLine::fetch_data(off_t offset)
 	int rc = (int)aof->read(buf, SLOT_SIZE, offset);
 	if(rc >= 0){
 		this->off_in_file = offset;
+		hit_cnt = 0;
+
 	} else {
+		this->off_in_file = -1;
 		S5LOG_ERROR("Failed fetch aof data, rc:%d", rc);
 		return rc;
 	}
