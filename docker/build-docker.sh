@@ -27,7 +27,7 @@ fi
 
 rm -rf jconductor/com
 mkdir jconductor
-assert cp -rp $COND_HOME/out/production/jconductor/com jconductor/
+assert cp -rp $COND_HOME/pfconductor.jar jconductor/
 assert cp -rp $COND_HOME/lib jconductor/
 
 tar xzf $COND_HOME/res/apache-zookeeper-3.5.9-bin.tar.gz 
