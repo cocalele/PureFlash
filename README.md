@@ -1,3 +1,5 @@
+For Chinese version, please visist [中文版README](./README_en.md)
+
 # 1. What's PureFlash
 
 PureFlash is an open source ServerSAN implementation, that is, through a large number of general-purpose servers, plus PureFlash software system, to construct a set of distributed SAN storage that can meet the various business needs of enterprises.
@@ -64,7 +66,7 @@ A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide se
 ## 3.4 MetaDB
   MetaDB is used to hold cluster metadata, and we use MariaDB here. Production deployment requires the Galaera DB plug-in to ensure it's HA.
   
-## client端支持
+## client application
   There are two types of client interfaces: user mode and kernel mode. User mode is accessed by applications in the form of APIs, which are located in libpfbd.
 
 ### 3.5.1 pfdd 
@@ -76,15 +78,15 @@ A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide se
 ### 3.5.3 qemu
   A qemu branch with PFBD enabled, support to access PureFlash volume from VM. repository URL: https://gitee.com/cocalele/qemu.git
 
-### 3.5.4 内核态驱动
+### 3.5.4 kernel driver
   PureFlash provides a free Linux kernel mode driver, which can directly access pfbd volumes as block devices on bare-metal machines, and then format them into arbitrary file systems, which can be accessed by any application without API adaptation.
   
   The kernel driver is ideal for Container PV and database scenarios.
 
-### 3.5.5 nbd对接
+### 3.5.5 nbd
   A nbd implementation to support access PureFlash volume as nbd device， repository URL： https://gitee.com/cocalele/pfs-nbd.git
 
-### 3.5.6 iSCSI对接
+### 3.5.6 iSCSI
   A LIO backend implementation to use PureFlash volume as LIO backend device，so it ban be accessed via iSCSI. repository URL：https://gitee.com/cocalele/tcmu-runner.git
  
 # networks ports
