@@ -76,7 +76,7 @@ A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide se
   A FIO branch that supports PFBD. Can be used to test PureFlash with direct access to PureFlash volume。repository URL：https://github.com/cocalele/fio.git 
 
 ### 3.5.3 qemu
-  A qemu branch with PFBD enabled, support to access PureFlash volume from VM. repository URL: https://gitee.com/cocalele/qemu.git
+  A qemu branch with PFBD enabled, support to access PureFlash volume from VM. repository URL: https://github.com/cocalele/qemu.git
 
 ### 3.5.4 kernel driver
   PureFlash provides a free Linux kernel mode driver, which can directly access pfbd volumes as block devices on bare-metal machines, and then format them into arbitrary file systems, which can be accessed by any application without API adaptation.
@@ -86,15 +86,20 @@ A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide se
 ### 3.5.5 nbd
   A nbd implementation to support access PureFlash volume as nbd device， repository URL： https://gitee.com/cocalele/pfs-nbd.git
 
+  After compile, you can attach a volume like bellow:
+``` 
+    # pfsnbd  /dev/nbd3 test_v1 
+```
+
 ### 3.5.6 iSCSI
   A LIO backend implementation to use PureFlash volume as LIO backend device，so it ban be accessed via iSCSI. repository URL：https://gitee.com/cocalele/tcmu-runner.git
  
-# networks ports
-49162  store node TCP port
-49160  store node RDMA port
+  # networks ports
+  - 49162  store node TCP port
+  - 49160  store node RDMA port
 
-49180  conductor HTTP port
-49181  store node HTTP port
+  - 49180  conductor HTTP port
+  - 49181  store node HTTP port
 
 # Try PureFlash
 the easiest way to try PureFlash is to use docker.

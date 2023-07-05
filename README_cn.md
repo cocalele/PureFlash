@@ -84,7 +84,11 @@ client接口分两类：用户态和内核态。用户态以API形式给应用�
 
 ### 3.5.5 nbd对接
   支持将PureFlash volume以nbd的形式挂载到主机端， 代码库在： https://gitee.com/cocalele/pfs-nbd.git
-
+  
+  编译后执行如下格式的命令挂载卷：
+```  
+    # pfsnbd  /dev/nbd3 test_v1 
+```
 ### 3.5.6 iSCSI对接
   支持将PureFlash volume作为LIO的后端设备，提供iSCSI接口。 代码库在：https://gitee.com/cocalele/tcmu-runner.git
 
