@@ -22,3 +22,13 @@ RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 lib
 ## to install ant
 
 
+#COPY mariadb/mariadb.cnf /etc/mysql/mariadb.cnf
+#COPY mariadb/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
+#COPY pfcli /opt/pureflash/pfcli
+#COPY pfdd /opt/pureflash/pfdd
+#COPY qemu-img /opt/pureflash/qemu-img
+#COPY pfs /opt/pureflash/pfs
+#COPY fio /opt/pureflash/fio
+#COPY run-all.sh /opt/pureflash/run-all.sh
+#COPY restart-pfc.sh /opt/pureflash/restart-pfc.sh
+#COPY restart-pfs.sh /opt/pureflash/restart-pfs.sh
