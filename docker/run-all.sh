@@ -53,7 +53,7 @@ sleep 2
 while !  lsof -i -P -n | grep 2181  ; do echo waiting zk; sleep 1; done
 echo "Start PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-$JAVA_HOME/bin/java  -classpath $DIR/pfconductor.jar:$JCROOT/lib/*  \
+$JAVA_HOME/bin/java  -classpath $JCROOT/pfconductor.jar:$JCROOT/lib/*  \
    -Dorg.slf4j.simpleLogger.showDateTime=true \
    -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
    -XX:+HeapDumpOnOutOfMemoryError \
