@@ -49,4 +49,4 @@ deb http://mirrors.aliyun.com/ubuntu/ focal-security main restricted
 deb http://mirrors.aliyun.com/ubuntu/ focal-security universe
 deb http://mirrors.aliyun.com/ubuntu/ focal-security multiverse" > sources.list
 
-docker build -f Dockerfile.pfs -t pureflash/pureflash:1.8.3 .
+docker build -f Dockerfile -t pureflash/pureflash:1.8.3 .
