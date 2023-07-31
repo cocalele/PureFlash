@@ -28,12 +28,15 @@
 #include "pf_poller.h"
 #include "pf_buffer.h"
 #include "pf_client_api.h"
+#include "pf_app_ctx.h"
 
 using namespace std;
 using nlohmann::json;
 size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *buf, size_t bytes);
 
 static const char* pf_lib_ver = "S5 client version:0x00010000";
+
+PfAppCtx client_app_context;
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
 const char* default_cfg_file = "/etc/pureflash/pf.conf";
@@ -427,7 +430,6 @@ int PfClientAppCtx::init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_
 	timeout_thread = std::thread([this]() {
 		timeout_check_proc();
 	});
-
 	clean.cancel_all();
 	return 0;
 }
@@ -486,7 +488,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 			clean.push_back([this]() { runtime_ctx->dec_ref(); });
 		}
 	}
-	event_queue = &runtime_ctx->vol_proc->event_queue; //keep for quick reference
+	event_queue = runtime_ctx->vol_proc->event_queue; //keep for quick reference
 	state = VOLUME_OPENED;
 	clean.cancel_all();
 	open_time = now_time_usec();
@@ -1275,7 +1277,6 @@ int pf_delete_volume(const char* vol_name,  const char* cfg_filename)
 	return -1;
 }
 
-
 void PfClientAppCtx::remove_volume(PfClientVolume* vol)
 {
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
@@ -1371,5 +1372,9 @@ void PfClientAppCtx::heartbeat_once()
 		}
 		ht_idx++;
 	}
+}
 	
+static void __attribute__((constructor)) spdk_engine_init(void)
+{
+	spdk_engine_set(false);
 }

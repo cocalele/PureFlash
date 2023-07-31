@@ -41,6 +41,7 @@ struct SubTask
 	PfMessageStatus complete_status;
 	virtual void complete(PfMessageStatus comp_status);
 	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
+	//virtual PfEventQueue* half_complete(PfMessageStatus comp_status);
 
 	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
 };
@@ -96,6 +97,7 @@ public:
 	uint32_t ref_count;
 	int disp_index;
 	BOOL is_timeout;
+
 
 	SubTask* subtasks[PF_MAX_SUBTASK_CNT];
 	IoSubTask io_subtasks[3];
@@ -171,13 +173,19 @@ inline void PfServerIocb::dec_ref() {
 
 inline void SubTask::complete(PfMessageStatus comp_status){
     complete_status = comp_status;
-    parent_iocb->conn->dispatcher->event_queue.post_event(EVT_IO_COMPLETE, 0, this);
+    parent_iocb->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, this);
 }
 inline void SubTask::complete(PfMessageStatus comp_status, uint16_t meta_ver){
 	if(meta_ver > parent_iocb->complete_meta_ver)
 		parent_iocb->complete_meta_ver = meta_ver;
 	complete(comp_status);
 }
+/*
+inline PfEventQueue* SubTask::half_complete(PfMessageStatus comp_status)
+{
+	complete_status = comp_status;
+}
+*/
 inline void IoSubTask::complete_read_with_zero() {
 //    PfMessageHead* cmd = parent_iocb->cmd_bd->cmd_bd;
     BufferDescriptor* data_bd = parent_iocb->data_bd;

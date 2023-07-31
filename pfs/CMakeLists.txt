@@ -28,6 +28,8 @@ set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-exten
 set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wno-variadic-macros -Wno-format-truncation -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
+set(SPDKLIBS spdk_nvme spdk_env_dpdk spdk_util spdk_log spdk_sock spdk_trace spdk_json spdk_jsonrpc spdk_rpc)
+set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring)
 add_definitions(-D_XOPEN_SOURCE)
 #set(CMAKE_CXX_COMPILER g++)
 
@@ -47,6 +49,8 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 add_subdirectory(nlohmann_json)
 
 INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include ${THIRDPARTY}/isa-l_crypto)
+include_directories(../thirdParty/spdk/include)
+include_directories(../thirdParty/spdk)
 
 set (S5AFS_SRC 
 	src/pf_cluster.cpp
@@ -80,11 +84,15 @@ file(GLOB INCS1  "../../rdma-include/rdma/*.h")
 file(GLOB INCS2  "../../rdma-include/infiniband/*.h")
 
 link_directories(${CMAKE_BINARY_DIR}/bin)
+link_directories(${THIRDPARTY}/spdk/build/lib)
+link_directories(${THIRDPARTY}/spdk/dpdk/build/lib)
 
 add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
-TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper hashtable uuid s5common nlohmann_json::nlohmann_json aio curl liburing.a ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a ${GCOV})
+
+TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper hashtable uuid ${SPDKLIBS} ${DPDKLIBS} s5common nlohmann_json::nlohmann_json aio curl uring ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a ${GCOV})
+
 
 add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so

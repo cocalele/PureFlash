@@ -25,7 +25,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	if (unlikely(io == NULL)) {
 		S5LOG_FATAL("Failed to allock IOCB for replicating");
 		usleep(100);
-		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		event_queue->post_event(EVT_IO_REQ, 0, t); //requeue the request
 		return -EAGAIN;
 	}
 	io->submit_time = now_time_usec();
@@ -61,7 +61,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, requeue IO", rep_index);
 		usleep(100);
-		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		event_queue->post_event(EVT_IO_REQ, 0, t); //requeue the request
 		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
@@ -70,7 +70,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d", rep_index, c->connection_info.c_str(), rc);
 		usleep(100);
-		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		event_queue->post_event(EVT_IO_REQ, 0, t); //requeue the request
 		mem_pool.reply_pool.free(rbd);
 		io->conn = NULL;
 		iocb_pool.free(io);
@@ -81,7 +81,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_send in replicator[%d], connection:%s, rc:%d", rep_index, c->connection_info.c_str(), rc);
 		usleep(100);
-		event_queue.post_event(EVT_IO_REQ, 0, t); //requeue the request
+		event_queue->post_event(EVT_IO_REQ, 0, t); //requeue the request
 		//cann't free reply bd, since it was post into connection
 		io->conn = NULL;
 		iocb_pool.free(io);
@@ -291,9 +291,9 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 				return 1;
 			}
 			//receive reply means IO completed for write
-			return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
+			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
 		} else if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) { //complete of receive data payload
-			return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
+			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
 		}
 		//for other status, like data write completion, lets continue wait for reply receive
 		return 0;
@@ -365,7 +365,7 @@ static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus comple
             conn->replicator->mem_pool.reply_pool.free(bd);
             return 0;
         }
-        return conn->replicator->event_queue.post_event(EVT_IO_COMPLETE, 0, iocb);
+        return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
     }
     return -1;
 }
@@ -375,7 +375,7 @@ void replicator_on_conn_close(PfConnection* conn)
 	if(conn->unclean_closed) {
 		conn->add_ref();//keep conn alive during process, dec_ref in handle_conn_close
 		//send a event cause Replicator::handle_conn_close call in replicator thread
-		conn->replicator->event_queue.post_event(EVT_CONN_CLOSED, 0, conn);
+		conn->replicator->event_queue->post_event(EVT_CONN_CLOSED, 0, conn);
 	}
 }
 
@@ -395,14 +395,14 @@ int PfReplicator::handle_conn_close(PfConnection *c)
 				io->data_bd = NULL;
 				io->conn = NULL;
 				iocb_pool.free(io);
-				event_queue.post_event(EVT_IO_REQ, 0, t);
+				event_queue->post_event(EVT_IO_REQ, 0, t);
 			} else if(op == PfOpCode::S5_OP_RECOVERY_READ) {
 				RecoverySubTask* t = (RecoverySubTask*)io->ulp_arg;
 				io->reply_bd = NULL;
 				io->data_bd = NULL;
 				io->conn = NULL;
 				iocb_pool.free(io);
-				event_queue.post_event(EVT_RECOVERY_READ_IO, 0, t);
+				event_queue->post_event(EVT_RECOVERY_READ_IO, 0, t);
 			} else if(op == PfOpCode::S5_OP_HEARTBEAT) {
 				io->reply_bd = NULL;
 				io->data_bd = NULL;

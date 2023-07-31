@@ -26,7 +26,6 @@
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
 #define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
 
-
 #define S5_VERSION 0x00020000
 
 class PfRedoLog;
@@ -93,6 +92,7 @@ struct lmt_hash
 	}
 };
 
+
 class PfFlashStore : public PfEventThread
 {
 public:
@@ -121,7 +121,10 @@ public:
 	};
 
 	//following are hot variables used by every IO. Put compact for cache hit convenience
-	int fd;
+	union {
+		int fd;
+		struct ns_entry *ns;
+	};
 	uint64_t in_obj_offset_mask; // := obj_size -1,
 
 	pthread_t polling_tid; //polling thread
@@ -147,6 +150,11 @@ public:
 
 	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 	int preocess_io_event(IoSubTask* io);
+
+	int spdk_nvme_init(const char *trid_str);
+
+	int register_controller(const char *trid_str);
+
 
 	PfIoEngine* ioengine;
 	void trimming_proc();

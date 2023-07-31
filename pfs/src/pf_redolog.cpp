@@ -20,11 +20,11 @@ int PfRedoLog::init(struct PfFlashStore* s)
 	this->current_offset = this->start_offset + LBA_LENGTH;
 	this->size = s->head.redolog_size;
 	this->phase = 1;
-	entry_buff = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
+	entry_buff = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
 	if (entry_buff == NULL)
 		return -ENOMEM;
 	memset(entry_buff, 0, LBA_LENGTH);
-	if (-1 == pwrite(disk_fd, entry_buff, LBA_LENGTH, current_offset)) {
+	if (-1 == store->ioengine->sync_write(entry_buff, LBA_LENGTH, current_offset)) {
 		rc = -errno;
 		goto release1;
 	}
@@ -32,7 +32,7 @@ int PfRedoLog::init(struct PfFlashStore* s)
 	p = (int64_t *) entry_buff;
 	p[0] = size;
 	p[1] = phase; //phase in head is 1, and the first item writen in above has phase=0, so redo log will consider it as obsoleted item
-	if (-1 == pwrite(disk_fd, entry_buff, LBA_LENGTH, start_offset)) {
+	if (-1 == store->ioengine->sync_write(entry_buff, LBA_LENGTH, start_offset)) {
 		rc = -errno;
 		goto release1;
 	}
@@ -40,7 +40,7 @@ int PfRedoLog::init(struct PfFlashStore* s)
 	return 0;
 
 release1:
-	free(entry_buff);
+	free_spdk(entry_buff);
 	entry_buff = NULL;
 	S5LOG_ERROR("Failed to init redo log, rc:%d", rc);
 	return rc;
@@ -54,14 +54,14 @@ int PfRedoLog::load(struct PfFlashStore* s)
 	this->disk_fd = s->fd;
 	this->start_offset = s->head.redolog_position;
 	this->size = s->head.redolog_size;
-	entry_buff = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
+	entry_buff = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
 	if (entry_buff == NULL)
 		return -ENOMEM;
 	memset(entry_buff, 0, LBA_LENGTH);
 	this->current_offset = this->start_offset + LBA_LENGTH;
 
 
-	if (-1 == pread(disk_fd, entry_buff, LBA_LENGTH, start_offset)) {
+	if (-1 == store->ioengine->sync_read(entry_buff, LBA_LENGTH, start_offset)) {
 		rc = -errno;
 		goto release1;
 	}
@@ -71,7 +71,7 @@ int PfRedoLog::load(struct PfFlashStore* s)
 	assert(p[2] == 0xeeeedddd);
 	return 0;
 release1:
-	free(entry_buff);
+	free_spdk(entry_buff);
 	entry_buff = NULL;
 	S5LOG_ERROR("Failed to load redo log, rc:%d", rc);
 	return rc;
@@ -103,7 +103,7 @@ int PfRedoLog::replay()
 	int64_t offset = start_offset + LBA_LENGTH;
 	while(1)
 	{
-		if (pread(disk_fd, entry_buff, LBA_LENGTH, offset) == -1) {
+		if (store->ioengine->sync_read(entry_buff, LBA_LENGTH, offset) == -1) {
 			S5LOG_ERROR("Failed to read redo log, rc:%d", -errno);
 			return -errno;
 		}
@@ -148,7 +148,7 @@ int PfRedoLog::discard()
 	p[0] = size;
 	p[1] = phase; //phase in head is 1, and the first item writen in above has phase=0, so redo log will consider it as obsoleted item
 	p[2] = 0xeeeedddd;
-	if (-1 == pwrite(disk_fd, entry_buff, LBA_LENGTH, start_offset)) {
+	if (-1 == store->ioengine->sync_write(entry_buff, LBA_LENGTH, start_offset)) {
 		S5LOG_ERROR("Failed to discard redolog, rc:%d", -errno);
 		return -errno;
 	}
@@ -232,7 +232,7 @@ int PfRedoLog::redo_free(Item* e)
 
 int PfRedoLog::write_entry()
 {
-	if (pwrite(disk_fd, entry_buff, LBA_LENGTH, current_offset) == -1)
+	if (store->ioengine->sync_write(entry_buff, LBA_LENGTH, current_offset) == -1)
 	{
 		S5LOG_ERROR("Failed to persist redo log, rc:%d", -errno);
 		return -errno;

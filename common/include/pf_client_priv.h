@@ -149,7 +149,7 @@ public:
 	std::string cfg_file;
 	int io_depth;
 	PfVolumeState state = PfVolumeState::VOLUME_CLOSED;
-	PfEventQueue* event_queue = NULL; // brace-or-equal-initializer since C++ 11
+	pfqueue *event_queue = NULL; // brace-or-equal-initializer since C++ 11
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
 

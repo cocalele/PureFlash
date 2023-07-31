@@ -186,4 +186,8 @@ public:
 			(*i)();
 	}
 };
+
+void * align_malloc_spdk(size_t align, size_t size, uint64_t *phys_addr);
+
+void free_spdk(void *buf);
 #endif

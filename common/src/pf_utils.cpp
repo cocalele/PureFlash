@@ -17,6 +17,8 @@
 
 #include "basetype.h"
 #include "pf_utils.h"
+#include "pf_app_ctx.h"
+#include "pf_event_queue.h"
 
 #define MAXLINE 4096
 void write_pid_file(const char* filename)
@@ -139,6 +141,21 @@ uint64_t now_time_usec()
 	return tp.tv_sec * 1000000LL + tp.tv_nsec/1000;
 }
 
+void * align_malloc_spdk(size_t align, size_t size, uint64_t *phys_addr)
+{
+	if (spdk_engine_used())
+		return pf_spdk_dma_zmalloc(size, align, phys_addr);
+	else
+		return aligned_alloc(align, size);
+}
+
+void free_spdk(void *buf)
+{
+	if (spdk_engine_used())
+		return pf_spdk_free(buf);
+	else
+		return free(buf);
+}
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
