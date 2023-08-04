@@ -1,4 +1,4 @@
-FROM pureflash/ubuntu-base:20.04
+FROM pureflash/ubuntu-base:22.04
 LABEL version="1.8.3"
 
 RUN mkdir /etc/pureflash
