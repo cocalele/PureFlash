@@ -281,13 +281,12 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
-				iocb->dec_ref();
-				PfServerIocb *new_iocb = conn->dispatcher->iocb_pool.alloc(); //alloc new IO
-				conn->add_ref();
-				new_iocb->conn = conn;
-				new_iocb->add_ref();
+				/* no re-send mechanism is using currently, so iocb->ref_count will be zero here.
+				 * re-use iocb to avoid frequently free/alloc
+				 */
+				iocb->re_init();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
-				conn->post_recv(new_iocb->cmd_bd);
+				conn->post_recv(iocb->cmd_bd);
 			}
 		}
 		else {

@@ -124,6 +124,7 @@ public:
 
 	inline void add_ref() { __sync_fetch_and_add(&ref_count, 1); }
     inline void dec_ref();
+	inline void re_init();
 
 };
 
@@ -158,17 +159,26 @@ public:
 
 inline void PfServerIocb::dec_ref() {
     if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
-//    	S5LOG_DEBUG("Iocb released:%p", this);
-	    complete_meta_ver=0;
+		//S5LOG_DEBUG("Iocb released:%p", this);
+		PfConnection *conn_tmp = conn;
+		complete_meta_ver=0;
 	    complete_status = MSG_STATUS_SUCCESS;
-	    //vol = NULL;
 		vol_id=0;
 	    is_timeout = FALSE;
 	    task_mask = 0;
-        conn->dispatcher->iocb_pool.free(this);
-	    conn->dec_ref();
-	    conn = NULL;
+		conn = NULL;
+        conn_tmp->dispatcher->iocb_pool.free(this);
+	    conn_tmp->dec_ref();
     }
+}
+
+inline void PfServerIocb::re_init()
+{
+	complete_meta_ver = 0;
+	complete_status = MSG_STATUS_SUCCESS;
+	vol_id=0;
+	is_timeout = FALSE;
+	task_mask = 0;
 }
 
 inline void SubTask::complete(PfMessageStatus comp_status){
