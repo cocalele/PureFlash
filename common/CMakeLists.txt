@@ -94,7 +94,8 @@ TARGET_LINK_LIBRARIES(s5common dl rdmacm ibverbs pthread  ${GCOV})
 
 add_executable(pfdd ${PFDD_SRC})
 
-TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs ${SPDKLIBS} ${DPDKLIBS} pthread uuid zookeeper hashtable curl ${GCOV})
+
+TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs ${SPDKLIBS} ${DPDKLIBS} pthread uuid zookeeper_mt hashtable curl ${GCOV})
 
 add_executable(aof_helper src/pf_aof_test_helper.cpp)
-TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper hashtable curl ${GCOV})
+TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper_mt hashtable curl ${GCOV})
