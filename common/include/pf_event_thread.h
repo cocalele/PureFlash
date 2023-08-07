@@ -2,7 +2,6 @@
 #define pf_event_thread_h__
 #include <functional>
 #include "pf_event_queue.h"
-#include "pf_spdk_ring.h"
 
 class PfEventThread
 {

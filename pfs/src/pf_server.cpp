@@ -259,16 +259,20 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
-					//conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
-					((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+					if (spdk_engine_used())
+						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+					else
+						conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
 			}
 			else {
 				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
-				//conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
-				((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+				if (spdk_engine_used())
+					((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+				else
+					conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
 		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){

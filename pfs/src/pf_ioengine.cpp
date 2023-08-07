@@ -515,10 +515,10 @@ int PfspdkEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t 
 	}
 
 	if (IS_READ_OP(io->opcode))
-		spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[0], data_bd->buf, NULL, lba, lba_cnt,
+		spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[1], data_bd->buf, NULL, lba, lba_cnt,
 			spdk_io_complete, io, 0, 0, 0);
 	else
-		spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[0], data_bd->buf, NULL, lba, lba_cnt, 
+		spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[1], data_bd->buf, NULL, lba, lba_cnt, 
 			spdk_io_complete, io, 0, 0, 0);
 
 
@@ -528,7 +528,7 @@ int PfspdkEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t 
 static void
 spdk_engine_disconnect_cb(struct spdk_nvme_qpair *qpair, void *ctx)
 {
-
+	// todo
 }
 
 int PfspdkEngine::poll_io(int *completions, void *arg)

@@ -1,9 +1,6 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
-
-#include "pf_spdk_ring.h"
-
 #include "pf_utils.h"
 #include "pf_event_queue.h"
 #include "pf_lock.h"
@@ -78,6 +75,8 @@ int PfSpdkQueue::init(const char* name, int size, enum spdk_ring_type mode)
 
 void PfSpdkQueue::destroy()
 {
+    spdk_mempool_free(msg_mempool);
+    spdk_ring_free(messages);
 }
 
 int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
@@ -98,8 +97,6 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
     msg->event.arg_i = arg_i;
     msg->event.arg_p = arg_p;
 
-
-    //S5LOG_ERROR("enqueu messages=====");
     rc = spdk_ring_enqueue(messages, (void **)&msg, 1, NULL);
     if (rc != 1){
         S5LOG_ERROR("failed to enqueue event");
@@ -123,8 +120,6 @@ int PfSpdkQueue::post_event_locked(int type, int arg_i, void* arg_p)
     msg->event.arg_i = arg_i;
     msg->event.arg_p = arg_p;
     msg->lock_cache_msg = true;
-
-    //S5LOG_ERROR("enqueu messages=====");
     rc = spdk_ring_enqueue(messages, (void **)&msg, 1, NULL);
     if (rc != 1){
         S5LOG_ERROR("failed to enqueue event");

@@ -106,7 +106,7 @@ public:
  *  first qpair is for sync IO
  *  
  */
-#define QPAIRS_CNT 1
+#define QPAIRS_CNT 2
 
 class PfspdkEngine : public PfIoEngine
 {
