@@ -38,7 +38,8 @@ class PfRdmaServer;
 #define MAX_PORT_COUNT 4
 #define MAX_DISPATCHER_COUNT 10
 #define MAX_REPLICATOR_COUNT 10
-#define IO_POOL_SIZE 4096
+#define IO_POOL_SIZE 256
+//#define IO_POOL_SIZE 128
 
 #define DATA_PORT 0
 #define REP_PORT 1
@@ -66,6 +67,8 @@ public:
 	std::vector<PfFlashStore*> trays;
 	std::vector<PfDispatcher*> disps;
 	std::vector<PfReplicator*> replicators;
+
+	int dis_index;
 
 	pthread_mutex_t lock;
 	std::map<uint64_t, PfVolume*> opened_volumes;

@@ -44,7 +44,7 @@ int PfTcpServer::init()
 {
 	int rc = 0;
 	conf_file_t conf=app_context.conf;
-	poller_cnt = conf_get_int(conf, "tcp_server", "poller_count", 4, FALSE);
+	poller_cnt = conf_get_int(conf, "tcp_server", "poller_count", 8, FALSE);
 	pollers = new PfPoller[poller_cnt];
 	for(int i=0;i<poller_cnt;i++)
 	{
@@ -149,6 +149,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 			io->add_ref();
 			conn->add_ref();
 			io->conn = conn;
+			S5LOG_INFO("io:%p, conn:%p", io, conn);
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{
@@ -258,14 +259,20 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
-					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+					if (spdk_engine_used())
+						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+					else
+						conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
 			}
 			else {
 				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
-				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
+				if (spdk_engine_used())
+					((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+				else
+					conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
 		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){

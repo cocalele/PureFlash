@@ -60,7 +60,7 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 		rc = dispatch_complete((SubTask*)arg_p);
 		break;
 	default:
-		S5LOG_FATAL("Unknown event:%d", event_type);
+		S5LOG_ERROR("Unknown event:%d", event_type);
 	}
 	return rc;
 }
@@ -278,6 +278,8 @@ int PfDispatcher::init_mempools(int disp_index)
 	if (rc)
 		goto release1;
 	S5LOG_INFO("Allocate data_pool with max IO size:%d, depth:%d", PF_MAX_IO_SIZE, pool_size * 2);
+	if (spdk_engine_used())
+		mem_pool.data_pool.dma_buffer_used = 1;
 	rc = mem_pool.data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;

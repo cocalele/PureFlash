@@ -88,14 +88,14 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
-					conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for read
+					conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
 			}
 			else {
 				//data received
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
-				conn->dispatcher->event_queue.post_event(EVT_IO_REQ, 0, iocb); //for write
+				conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_SEND){
@@ -250,7 +250,7 @@ int PfRdmaServer::init(int port)
     memset(&listen_addr, 0, sizeof(listen_addr));
     listen_addr.sin_family = AF_INET;
     listen_addr.sin_port = htons((uint16_t)port);
-
+	
     this->ec = rdma_create_event_channel();
     rc = rdma_create_id(this->ec, &this->cm_id, NULL, RDMA_PS_TCP);
     if(rc)

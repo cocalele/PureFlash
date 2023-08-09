@@ -27,6 +27,7 @@
 #include "pf_cluster.h"
 #include "pf_app_ctx.h"
 #include "pf_message.h"
+#include "pf_spdk.h"
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
@@ -34,6 +35,9 @@ void stop_app();
 PfAfsAppContext app_context;
 extern BufferPool* recovery_bd_pool;
 enum connection_type rep_conn_type = TCP_TYPE; //TCP:0  RDMA:1
+struct spdk_mempool * g_msg_mempool;
+
+static struct spdk_pci_addr g_allowed_pci_addr[MAX_ALLOWED_PCI_DEVICE_NUM];
 
 void sigroutine(int dunno)
 {
@@ -51,14 +55,31 @@ void sigroutine(int dunno)
 	return;
 }
 
-
-
 static void printUsage()
 {
 	S5LOG_ERROR("Usage: pfs -c <pfs_conf_file>");
 }
 
+static int spdk_setup_env()
+{
+	struct spdk_env_opts env_opts = {};
+	int rc;
 
+	spdk_env_opts_init(&env_opts);
+	env_opts.name = "prueflash";
+	env_opts.pci_allowed = g_allowed_pci_addr;
+
+	rc = spdk_env_init(&env_opts);
+	if (rc) {
+		S5LOG_ERROR("failed to init spdk env, rc:%d");
+	}
+
+	return rc;
+}
+
+
+
+#define WITH_RDMA
 
 int main(int argc, char *argv[])
 {
@@ -152,6 +173,27 @@ int main(int argc, char *argv[])
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
 	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
 		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
+
+	const char *engine = conf_get(fp, "engine", "name", NULL, false);
+	if (!engine) {
+		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);
+		return -S5_CONF_ERR;
+	}
+	if (strcmp(engine, "io_uring") == 0)
+		app_context.engine = IO_URING;
+	else if (strcmp(engine, "spdk") == 0)
+		app_context.engine = SPDK;
+	else
+		app_context.engine = AIO;
+
+	if (app_context.engine == SPDK) {
+		spdk_engine_set(true);
+		rc = spdk_setup_env();
+		if (rc)
+			S5LOG_FATAL("Failed to setup spdk");
+	}
+	spdk_unaffinitize_thread();
+	
 	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
 	app_context.disps.reserve(disp_count);
 	for (int i = 0; i < disp_count; i++)
@@ -175,7 +217,10 @@ int main(int argc, char *argv[])
 		if(devname == NULL)
 			break;
 		auto s = new PfFlashStore();
-		rc = s->init(devname);
+		if (app_context.engine == SPDK)
+			rc = s->spdk_nvme_init(devname);
+		else
+			rc = s->init(devname);
 		if(rc) {
 			S5LOG_ERROR("Failed init tray:%s, rc:%d", devname, rc);
 			continue;
@@ -185,6 +230,7 @@ int main(int argc, char *argv[])
 		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		s->start();
 	}
+
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("port.%d", i);
@@ -215,7 +261,6 @@ int main(int argc, char *argv[])
 
 	}
 
-
 	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
 	app_context.replicators.reserve(rep_count);
 	for(int i=0; i< rep_count; i++) {
@@ -244,6 +289,7 @@ int main(int argc, char *argv[])
 		S5LOG_ERROR("Failed to init tcp server:%d", rc);
 		return rc;
 	}
+
 #ifdef WITH_RDMA
 	app_context.rdma_server = new PfRdmaServer();
 	rc = app_context.rdma_server->init(RDMA_PORT_BASE);
@@ -345,7 +391,20 @@ void stop_app()
 	app_context.tcp_server->stop();
 	for(int i=0;i<app_context.trays.size();i++)
 	{
-		app_context.trays[i]->save_meta_data();
+		PfFlashStore *tray = app_context.trays[i];
+		tray->sync_invoke([tray]()->int {
+			tray->save_meta_data();
+		});
 		app_context.trays[i]->stop();
 	}
+	for (int i = 0; i < app_context.disps.size(); i++) {
+		app_context.disps[i]->destroy();
+	}
+
+	for (int i = 0; i < app_context.replicators.size(); i++) {
+		app_context.replicators[i]->destroy();
+	}
 }
+
+
+

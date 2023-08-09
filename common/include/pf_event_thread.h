@@ -6,9 +6,12 @@
 class PfEventThread
 {
 public:
-	PfEventQueue event_queue;
+	pfqueue *event_queue;
 	pthread_t tid;
 	char name[32];
+	int (*func_priv)(int *, void *);
+	void *arg_v;
+
 
 	bool inited;
 	int init(const char* name, int queue_depth);
@@ -18,7 +21,7 @@ public:
 	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q) = 0;
 	int start();
 	void stop();
-	static void *thread_proc(void* arg);
+	void * (*thread_proc)(void* arg);
 
 	int sync_invoke(std::function<int(void)> _f);
 	virtual int commit_batch(){return 0;};

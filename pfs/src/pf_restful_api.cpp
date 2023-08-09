@@ -324,7 +324,7 @@ void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) 
 		r.reason = format_string("ssd:%s not found", ssd_uuid.c_str());
 	} else {
 		PfFlashStore *disk = app_context.trays[ssd_idx];
-		disk->event_queue.sync_invoke([disk, rep_id,snap_seq, prev_seq, next_seq]()->int{
+		disk->event_queue->sync_invoke([disk, rep_id,snap_seq, prev_seq, next_seq]()->int{
 			disk->delete_snapshot(int64_to_shard_id(SHARD_ID(rep_id)),snap_seq, prev_seq, next_seq);
 			return 0;
 		});
@@ -436,7 +436,7 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
 	int cnt = 0;
 	for(auto disk : app_context.trays) {
-		cnt += disk->event_queue.sync_invoke([disk]()->int{
+		cnt += disk->event_queue->sync_invoke([disk]()->int{
 			return disk->free_obj_queue.space();
 		});
 	}
@@ -638,7 +638,7 @@ void handle_perf_stat(struct mg_connection* nc, struct http_message* hm)
 	for (auto d : app_context.disps)
 	{
 		len += snprintf(buf+len, sizeof(buf)-len-1, "disp_%d:%d ", 
-				d->disp_index, d->event_queue.current_queue->count());
+				d->disp_index, ((PfEventQueue *)(d->event_queue))->current_queue->count());
 	
 	}
 	reply.line = std::move(std::string(buf, len));

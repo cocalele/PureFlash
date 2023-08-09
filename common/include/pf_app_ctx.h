@@ -7,6 +7,12 @@
 
 #include "pf_client_api.h"
 
+enum {
+	AIO,
+	IO_URING,
+	SPDK,
+};
+
 class BufferDescriptor;
 class PfIoDesc
 {
@@ -33,7 +39,12 @@ public:
 
 	std::string conf_file_name;
 	conf_file_t conf;
+	int engine;
+	PfAppCtx():engine(AIO){}
 };
 
 extern PfAppCtx* g_app_ctx;
+
+bool spdk_engine_used();
+void spdk_engine_set(bool use_spdk);
 #endif // pf_app_ctx_h__

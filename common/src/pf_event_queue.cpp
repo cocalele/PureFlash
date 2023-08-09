@@ -6,8 +6,9 @@
 #include "pf_lock.h"
 
 static int64_t event_delta = 1;
-PfEventQueue::PfEventQueue():event_fd(0)
+PfEventQueue::PfEventQueue()
 {
+	event_fd  = 0;
 	current_queue = NULL;
 }
 int PfEventQueue::init(const char* name, int size, BOOL semaphore_mode)

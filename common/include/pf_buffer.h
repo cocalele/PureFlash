@@ -65,8 +65,10 @@ struct BufferDescriptor
 class BufferPool
 {
 public:
+	BufferPool(){dma_buffer_used = 0;}
 	size_t buf_size;
 	int buf_count;
+	int dma_buffer_used;
 	struct ibv_mr* mrs[4];
 	int init(size_t buffer_size, int count);
 	inline BufferDescriptor* alloc() { return free_bds.dequeue(); }
