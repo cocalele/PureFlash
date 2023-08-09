@@ -91,7 +91,6 @@ add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
 
-
 TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper_mt  hashtable uuid ${SPDKLIBS} ${DPDKLIBS} s5common nlohmann_json::nlohmann_json aio curl uring ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a)
 
 add_custom_command(TARGET pfs POST_BUILD 
