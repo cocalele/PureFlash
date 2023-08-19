@@ -30,7 +30,8 @@ mkdir jconductor
 assert cp -rp $COND_HOME/pfconductor.jar jconductor/
 assert cp -rp $COND_HOME/lib jconductor/
 
-tar xzf $COND_HOME/res/apache-zookeeper-3.5.9-bin.tar.gz 
+assert tar xzf $COND_HOME/res/apache-zookeeper-3.5.9-bin.tar.gz 
+assert mv apache-zookeeper-3.5.9-bin/conf/zoo_sample.cfg apache-zookeeper-3.5.9-bin/conf/zoo.cfg
 assert cp -rp $COND_HOME/res/init_s5metadb.sql  mariadb/
 assert cp -rp $COND_HOME/pfcli  .
 assert cp -rp $PFS_BUILD/bin/pfs .

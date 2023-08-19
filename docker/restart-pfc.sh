@@ -3,8 +3,8 @@ set -m
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-JAVA_HOME=/opt/pureflash/jdk-17.0.6
-export PATH=/opt/pureflash:$JAVA_HOME/bin:$PATH
+#JAVA_HOME=/opt/pureflash/jdk-17.0.6
+export PATH=/opt/pureflash:$PATH
 
 OLD_PID=$(ps -f |grep jconductor |grep java|awk '{print $2}')
 if [ "$OLD_PID" != "" ]; then
@@ -14,7 +14,7 @@ fi
 
 echo "Restart PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-nohup /usr/bin/java  -classpath $DIR/pfconductor.jar:$JCROOT/lib/*  \
+nohup java  -classpath $DIR/pfconductor.jar:$JCROOT/lib/*  \
    -Dorg.slf4j.simpleLogger.showDateTime=true \
    -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
    -XX:+HeapDumpOnOutOfMemoryError \
