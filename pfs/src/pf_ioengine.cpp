@@ -499,6 +499,7 @@ uint64_t PfspdkEngine::sync_read(void *buffer, uint64_t buf_size, uint64_t offse
 
 void PfspdkEngine::spdk_io_complete(void *ctx, const struct spdk_nvme_cpl *cpl)
 {
+	// todo: io error handle
 	struct IoSubTask* io = (struct IoSubTask*)ctx;
 
 	io->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
@@ -577,4 +578,67 @@ uint64_t PfspdkEngine::spdk_nvme_bytes_to_blocks(uint64_t offset_bytes, uint64_t
 		*num_blocks = num_bytes / block_size;
 		return (offset_bytes % block_size) | (num_bytes % block_size);
 	}
+}
+
+struct simple_copy_context
+{
+	void *arg;
+	void* (*func)(void *arg);
+};
+
+int PfspdkEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
+{
+	uint64_t lba, lba_cnt;
+
+	if (spdk_nvme_bytes_to_blocks(media_offset, &lba, media_len, &lba_cnt) != 0) {
+		return -EINVAL;
+	}
+
+	if (IS_READ_OP(io->opcode))
+		spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[1], io->buf, NULL, lba, lba_cnt,
+			spdk_cow_io_complete, io, 0, 0, 0);
+	else
+		spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[1], io->buf, NULL, lba, lba_cnt, 
+			spdk_cow_io_complete, io, 0, 0, 0);
+}
+
+void PfspdkEngine::spdk_cow_io_complete(void *ctx, const struct spdk_nvme_cpl *cpl)
+{
+	// todo: io error handle
+
+	sem_post(&((CowTask*)ctx)->sem);
+}
+
+
+int PfspdkEngine::submit_scc(uint64_t media_len, off_t src, off_t dest,
+	void* (*scc_cb)(void *ctx), void *arg)
+{
+	struct spdk_nvme_scc_source_range range;
+	uint64_t lba_src, lba_dest, lba_cnt;
+	struct simple_copy_context *context =
+		(struct simple_copy_context *)malloc(sizeof(struct simple_copy_context));
+
+	context->func = scc_cb;
+	context->arg = arg;
+
+	if (spdk_nvme_bytes_to_blocks(src, &lba_src, media_len, &lba_cnt) != 0) {
+		return -EINVAL;
+	}
+
+	if (spdk_nvme_bytes_to_blocks(dest, &lba_dest, media_len, &lba_cnt) != 0) {
+		return -EINVAL;
+	}
+
+	range.slba = lba_src;
+	range.nlb = lba_cnt;
+	spdk_nvme_ns_cmd_copy(ns->ns, qpair[1], &range, 1, lba_dest, scc_complete, context);
+}
+
+void PfspdkEngine::scc_complete(void *arg, const struct spdk_nvme_cpl *cpl)
+{
+	struct simple_copy_context *context = (struct simple_copy_context *)arg;
+
+	context->func(context->arg);
+
+	free(context);
 }

@@ -5,6 +5,7 @@
 
 #include "pf_fixed_size_queue.h"
 #include "pf_lock.h"
+#include "spdk/env.h"
 
 template <class U>
 class ObjectMemoryPool
@@ -91,8 +92,18 @@ public:
 class BigMemPool {
 public:
 	BigMemPool(size_t buf_size) { this->buf_size = buf_size; }
-	void* alloc(size_t s) { return memalign(4096, s);}
-	void free(void* p) { ::free(p); }
+	void* alloc(size_t s, bool dma_buf) {
+		if (dma_buf)
+			return spdk_dma_zmalloc(s, 4096, NULL);
+		else
+			return memalign(4096, s);
+	}
+	void free(void* p, bool dma_buf) {
+		if (dma_buf)
+			spdk_dma_free(p);
+		else
+			::free(p);
+	}
 private:
 	size_t buf_size;
 };

@@ -365,7 +365,10 @@ int PfFlashStore::do_write(IoSubTask* io)
 			io->next = cow_entry->waiting_io;
 			cow_entry->waiting_io = io; //insert io to waiting list
 			S5LOG_DEBUG("Call begin_cow for io:%p, src_entry:%p cow_entry:%p", io, entry, cow_entry);
-			begin_cow(&key, entry, cow_entry);
+			if (spdk_engine_used() && ns->scc)
+				begin_cow_scc(&key, entry, cow_entry);
+			else
+				begin_cow(&key, entry, cow_entry);
 			return 0;
 		}
 
@@ -875,8 +878,8 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 	r.dst_offset = dstEntry->offset;
 	r.size = COW_OBJ_SIZE;
 	sem_init(&r.sem, 0, 0);
-
-	r.buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE);
+	S5LOG_INFO("begin do_cow_entry");
+	r.buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE, spdk_engine_used());
 	event_queue->post_event(EVT_COW_READ, 0, &r);
 	sem_wait(&r.sem);
 	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
@@ -890,6 +893,7 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 		S5LOG_ERROR("COW write failed, status:%d", r.complete_status);
 		goto cowfail;
 	}
+	S5LOG_INFO("end do_cow_entry");
 	sync_invoke([key, srcEntry, dstEntry, this]()->int {
 		dstEntry->status = EntryStatus::NORMAL;
 		IoSubTask *t = dstEntry->waiting_io;
@@ -907,7 +911,7 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 		}
 		return 0;
 	});
-	app_context.cow_buf_pool.free(r.buf);
+	app_context.cow_buf_pool.free(r.buf, spdk_engine_used());
 	return;
 cowfail:
 	sync_invoke([dstEntry]()->int
@@ -921,8 +925,53 @@ cowfail:
 		}
 		return 0;
 	});
-	app_context.cow_buf_pool.free(r.buf);
+	app_context.cow_buf_pool.free(r.buf, spdk_engine_used());
 	return;
+}
+
+void PfFlashStore::begin_cow_scc(lmt_key* key, lmt_entry *objEntry, lmt_entry *dstEntry)
+{
+	struct scc_cow_context *sc = (struct scc_cow_context *)malloc(sizeof(struct scc_cow_context));
+	sc->key = key;
+	sc->srcEntry = objEntry;
+	sc->dstEntry = dstEntry;
+	sc->rc = 0;
+	sc->pfs = this;
+	S5LOG_INFO("begin scc");
+	((PfspdkEngine*)ioengine)->submit_scc(DEFAULT_OBJ_SIZE, objEntry->offset, dstEntry->offset,
+		end_cow_scc, sc);
+}
+
+void* PfFlashStore::end_cow_scc(void *ctx)
+{
+	struct scc_cow_context *sc = (struct scc_cow_context *)ctx;
+	lmt_entry *dstEntry = sc->dstEntry;
+	lmt_entry *srcEntry = sc->srcEntry;
+	lmt_key *key = sc->key;
+	IoSubTask *t = dstEntry->waiting_io;
+	dstEntry->waiting_io = NULL;
+
+	if (sc->rc == 0) {
+		while (t) {
+			if (unlikely(t->opcode != S5_OP_WRITE && t->opcode != S5_OP_REPLICATE_WRITE)) {
+				S5LOG_FATAL("Unexcepted op code:%d", t->opcode);
+			}
+			sc->pfs->do_write(t);
+			t = t->next;
+		}
+
+		if (srcEntry->status == DELAY_DELETE_AFTER_COW){
+			sc->pfs->delete_obj(key, srcEntry);
+		}
+	}else{
+		while (t) {
+			S5LOG_ERROR("return REOPEN for cowfail, cid:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id);
+			t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+			t = t->next;
+		}
+	}
+
+	return 0;
 }
 
 void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq) {
@@ -1389,8 +1438,8 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 		return 0;//done OK
 	if(rc == -ESTALE) {
 		//now begin do cow
-		void *cow_buf = app_context.recovery_buf_pool.alloc(this->head.objsize);
-		DeferCall _d([cow_buf] { app_context.recovery_buf_pool.free(cow_buf); });
+		void *cow_buf = app_context.recovery_buf_pool.alloc(this->head.objsize, spdk_engine_used());
+		DeferCall _d([cow_buf] { app_context.recovery_buf_pool.free(cow_buf, spdk_engine_used()); });
 
 		rc = ioengine->sync_read(cow_buf, this->head.objsize, cow_src_off);
 		if (rc != (int)this->head.objsize) {
@@ -1455,12 +1504,12 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	}
 	DeferCall _d([vol] {vol->dec_ref(); });
 
-	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize);
+	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize, false);
 	if(pendding_buf == NULL) {
 		S5LOG_ERROR("Failed to alloc pending buffer for recovery");
 		return -ENOMEM;
 	}
-	_clean.push_back([pendding_buf]{app_context.recovery_buf_pool.free(pendding_buf); });
+	_clean.push_back([pendding_buf]{app_context.recovery_buf_pool.free(pendding_buf, false); });
 	PfBitmap recov_bmp(int(head.objsize/SECTOR_SIZE));
 	int64_t read_bs = RECOVERY_IO_SIZE;
 
@@ -1772,6 +1821,10 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct ns_entry *entry)
 	entry->block_cnt = spdk_nvme_ns_get_num_sectors(ns);
 	entry->md_size = spdk_nvme_ns_get_md_size(ns);
 	entry->md_interleave = spdk_nvme_ns_supports_extended_lba(ns);
+	if (cdata->oncs.copy)
+		entry->scc = true;
+	else
+		entry->scc = false;
 
 	if (4096 % entry->block_size != 0) {
 		S5LOG_ERROR("IO size is not a multiple of nsid %u sector size %u", spdk_nvme_ns_get_id(ns), entry->block_size);
