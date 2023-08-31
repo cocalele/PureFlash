@@ -38,6 +38,8 @@ struct ns_entry {
 	 * Note that this field is valid only if there is metadata.
 	 */
 	bool md_interleave;
+
+	bool scc;
 };
 
 class PfIoEngine
@@ -119,8 +121,10 @@ public:
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);	
 	static int poll_io(int *completions, void *arg);
 	static void spdk_io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
-	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len) { return 0;};
-	//vector记录需要唤醒的dispatcher queue
+	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len);
+	static void spdk_cow_io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
+	int submit_scc(uint64_t media_len, off_t src, off_t dest, void* (*scc_cb)(void *ctx), void *arg);
+	static void scc_complete(void *arg, const struct spdk_nvme_cpl *cpl);
 
 	uint64_t sync_write(void *buffer, uint64_t buf_size, uint64_t offset);
 	uint64_t sync_read(void *buffer, uint64_t buf_size, uint64_t offset);

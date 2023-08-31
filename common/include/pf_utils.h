@@ -16,6 +16,7 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <stdexcept>
 
 #include "pf_conf.h"
 #include "pf_log.h"
