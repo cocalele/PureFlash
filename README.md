@@ -23,7 +23,7 @@ In addition, PureFlash "uses TCP in RDMA mode" on the network model, instead of 
 
 Here is the structure diagram of our system:
 
-The whole system include 3 modules (View graph with tabstop=4 and monospaced font)
+The whole system include 5 modules (View graph with tabstop=4 and monospaced font)
 <pre>			   
                                                             +---------------+
                                                             |               |

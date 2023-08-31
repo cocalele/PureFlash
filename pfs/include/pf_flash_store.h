@@ -24,7 +24,7 @@
 #include "pf_ioengine.h"
 
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
-#define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
+#define MIN_META_RESERVE_SIZE (4LL<<30) //4GB, can be config in conf
 
 #define S5_VERSION 0x00020000
 

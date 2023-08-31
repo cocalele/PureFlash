@@ -1376,7 +1376,7 @@ int PfFlashStore::recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_s
 	else {
 		rc = -errno;
 		S5LOG_ERROR("Failed write disk:%s on recovery_write, rc:%d", tray_name, rc);
-		return rc;
+		return (int)rc;
 	}
 }
 
@@ -1441,14 +1441,14 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 		void *cow_buf = app_context.recovery_buf_pool.alloc(this->head.objsize, spdk_engine_used());
 		DeferCall _d([cow_buf] { app_context.recovery_buf_pool.free(cow_buf, spdk_engine_used()); });
 
-		rc = ioengine->sync_read(cow_buf, this->head.objsize, cow_src_off);
+		rc = (int)ioengine->sync_read(cow_buf, this->head.objsize, cow_src_off);
 		if (rc != (int)this->head.objsize) {
 			rc = -errno;
 			S5LOG_ERROR("Failed cow sync read on disk:%s rc:%d", tray_name, rc);
 			return rc;
 		}
 
-		rc = ioengine->sync_write(cow_buf, this->head.objsize, cow_dst_off);
+		rc = (int)ioengine->sync_write(cow_buf, this->head.objsize, cow_dst_off);
 		if (rc != (int)this->head.objsize) {
 			rc = -errno;
 			S5LOG_ERROR("Failed cow sync write on disk:%s rc:%d", tray_name, rc);
@@ -1466,7 +1466,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 			if (head->recovery_bmp->is_set(i)) {
 				//TODO: write with sector size(512) is very low performance, need improvement
 				// if spdk support 512 write?
-				int rc = ioengine->sync_write((char *) head->recovery_buf + i * SECTOR_SIZE, SECTOR_SIZE, base_offset + i * SECTOR_SIZE );
+				int rc = (int)ioengine->sync_write((char *) head->recovery_buf + i * SECTOR_SIZE, SECTOR_SIZE, base_offset + i * SECTOR_SIZE );
 				if (rc != SECTOR_SIZE) {
 					rc = -errno;
 					S5LOG_ERROR("Failed write disk:%s on end_recovery, rc:%d", tray_name, rc);
