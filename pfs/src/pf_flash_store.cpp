@@ -46,6 +46,7 @@
 #include "pf_restful_api.h"
 #include "pf_client_priv.h"
 #include "pf_spdk.h"
+#include "pf_atslock.h"
 
 using namespace std;
 using nlohmann::json;
@@ -63,7 +64,7 @@ using nlohmann::json;
 #define OFFSET_REDO_LOG (2LL<<30)
 #define REDO_LOG_SIZE (512LL<<20) //512M
 static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_REDO_LOG exceed reserve area");
-
+#define OFFSET_GLOBAL_META_LOCK ((2<<30)+(512<<20)) //2G + 512M
 
 static BOOL is_disk_clean(PfIoEngine *eng)
 {
@@ -103,23 +104,190 @@ static int clean_meta_area(PfIoEngine *eng, size_t size)
 	free_spdk(buf);
 	return 0;
 }
-/**
- * init flash store from tray. this function will create meta data
- * and initialize the tray if a tray is not initialized.
- *
- * @return 0 on success, negative for error
- * @retval -ENOENT  tray not exist or failed to open
- */
+
+int  PfFlashStore::format_disk()
+{
+	int ret=0;
+	S5LOG_INFO("Begin to format disk:%s ...", tray_name);
+	size_t dev_cap = ioengine->get_device_cap();
+	if (dev_cap < (10LL << 30)) {
+		S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap >> 30);
+	}
+	ret = clean_meta_area(ioengine, app_context.meta_size);
+	if (ret) {
+		S5LOG_ERROR("Failed to clean meta area with zero, disk:%s, rc:%d", tray_name, ret);
+		return ret;
+
+	}
+	if ((ret = initialize_store_head()) != 0)
+	{
+		S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
+		return ret;
+	}
+	int obj_count = (int)((head.tray_capacity - head.meta_size) >> head.objsize_order);
+
+	ret = free_obj_queue.init(obj_count);
+	if (ret)
+	{
+		S5LOG_ERROR("free_obj_queue initialize failed ret(%d)", ret);
+		return ret;
+	}
+	DeferCall _1([this](){free_obj_queue.destroy();});
+	for (int i = 0; i < obj_count; i++)
+	{
+		free_obj_queue.enqueue(i);
+	}
+	ret = trim_obj_queue.init(obj_count);
+	if (ret)
+	{
+		S5LOG_ERROR("trim_obj_queue initialize failed ret(%d)", ret);
+		return ret;
+	}
+	DeferCall _2([this]() {trim_obj_queue.destroy(); });
+
+	obj_lmt.clear(); //ensure no entry in LMT
+	redolog = new PfRedoLog();
+	DeferCall _3([this]() {delete redolog; redolog=NULL; });
+	ret = redolog->init(this);
+	if (ret) {
+		S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
+		return ret;
+	}
+	save_meta_data();
+	char uuid_str[64];
+	uuid_unparse(head.uuid, uuid_str);
+	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%lld.", tray_name, uuid_str, obj_count, head.objsize);
+	return 0;
+}
+
+int PfFlashStore::shared_disk_init(const char* tray_name)
+{
+	int ret = 0;
+	this->is_shared_disk = true;
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
+	S5LOG_INFO("Loading shared disk %s ...", tray_name);
+	Cleaner err_clean;
+	fd = open(tray_name, O_RDWR | O_DIRECT);
+	if (fd == -1) {
+		return -errno;
+	}
+	DeferCall _1([this]() {::close(fd); });
+
+	/*init ioengine first*/
+	//TODO: change io engine according to config file
+	ioengine = new PfAioEngine(this);
+	//ioengine = new PfIouringEngine(this);  
+	ioengine->init();
+	DeferCall _2([this]() { delete ioengine; ioengine=NULL; });
+
+	if ((ret = read_store_head()) == 0)
+	{
+		//not load metadata until become the owner
+	}
+	else if (ret == -EUCLEAN)
+	{
+		S5LOG_WARN("New disk found, initializing  (%s) now ...", tray_name);
+		if (!is_disk_clean(ioengine))
+		{
+			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
+			return ret;
+		}
+		for(int i=0;i<10;i++) {
+			if (pf_ats_lock(fd, OFFSET_GLOBAL_META_LOCK) == 0) {
+				DeferCall _1([this](){ pf_ats_unlock(fd, OFFSET_GLOBAL_META_LOCK);});
+				if (read_store_head() == 0) {
+					S5LOG_INFO("Disk:%s has been initialized by other node, UUID:%s", tray_name, uuid_str);
+					return 0;
+				}
+				else {
+					ret = format_disk();
+					if(ret) {
+						S5LOG_ERROR("Failed to format disk:%s, rc:%d", tray_name, ret);
+						return ret;
+					}
+				}
+			}
+			sleep(1);//wait partner to release lock
+		}
+		S5LOG_ERROR("Failed to get ATS lock on disk:%s", tray_name);
+		return -EBUSY;
+	}
+	else
+		return ret;
+
+	in_obj_offset_mask = head.objsize - 1;
+
+	return ret;
+}
+
+int PfFlashStore::owner_init()
+{
+	int ret = 0;
+	S5LOG_INFO("Become owner of disk %s ...", tray_name);
+	Cleaner err_clean;
+	fd = open(tray_name, O_RDWR | O_DIRECT);
+	if (fd == -1) {
+		return -errno;
+	}
+	err_clean.push_back([this]() {::close(fd); });
+
+	/*init ioengine first*/
+	//TODO: change io engine according to config file
+	ioengine = new PfAioEngine(this);
+	//ioengine = new PfIouringEngine(this);  
+	ioengine->init();
+
+	if ((ret = read_store_head()) == 0)
+	{
+		ret = load_meta_data();
+		if (ret) {
+			S5LOG_ERROR("Failed to load meta from disk:%s", tray_name);
+			return ret;
+		}
+		redolog = new PfRedoLog();
+		ret = redolog->load(this);
+		if (ret)
+		{
+			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
+			return ret;
+		}
+		ret = redolog->replay();
+		if (ret)
+		{
+			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
+			return ret;
+		}
+		post_load_fix();
+		post_load_check();
+		save_meta_data();
+		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+
+		redolog->start();
+	}
+	else {
+		S5LOG_ERROR("Failed to load head from disk:%s rc:%d", tray_name, ret);
+		return ret;
+	}
+	in_obj_offset_mask = head.objsize - 1;
+
+	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
+
+	err_clean.cancel_all();
+	return ret;
+}
 
 int PfFlashStore::init(const char* tray_name)
 {
 	int ret = 0;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH*2);
+	this->is_shared_disk = false;
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading disk %s ...", tray_name);
 	Cleaner err_clean;
-	fd = open(tray_name, O_RDWR|O_DIRECT);
-	if (fd == -1)  {
+	fd = open(tray_name, O_RDWR | O_DIRECT);
+	if (fd == -1) {
 		return -errno;
 	}
 	err_clean.push_back([this]() {::close(fd); });
@@ -152,24 +320,24 @@ int PfFlashStore::init(const char* tray_name)
 		post_load_check();
 		save_meta_data();
 		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
-		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->start();
 	}
 	else if (ret == -EUCLEAN)
 	{
 		S5LOG_WARN("New disk found, initializing  (%s) now ...", tray_name);
-		if(!is_disk_clean(ioengine))
+		if (!is_disk_clean(ioengine))
 		{
 			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
 			return ret;
 		}
 		size_t dev_cap = ioengine->get_device_cap();
-		if(dev_cap < (10LL<<30)) {
-			S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap>>30);
+		if (dev_cap < (10LL << 30)) {
+			S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap >> 30);
 		}
 		ret = clean_meta_area(ioengine, app_context.meta_size);
-		if(ret) {
+		if (ret) {
 			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s, rc:%d", tray_name, ret);
 			return ret;
 
@@ -179,7 +347,7 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
 			return ret;
 		}
-		int obj_count = (int) ((head.tray_capacity - head.meta_size) >> head.objsize_order);
+		int obj_count = (int)((head.tray_capacity - head.meta_size) >> head.objsize_order);
 
 		ret = free_obj_queue.init(obj_count);
 		if (ret)
@@ -383,7 +551,6 @@ int PfFlashStore::do_write(IoSubTask* io)
 int PfFlashStore::initialize_store_head()
 {
 	memset(&head, 0, sizeof(head));
-	char uuid_str[64];
 	head.magic = 0x3553424e; //magic number, NBS5
 	head.version= S5_VERSION; //S5 version
 	uuid_generate(head.uuid);
@@ -610,6 +777,9 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
   offset 1GByte - 4096, md5 of SSD meta
   offset 1G: length 1GB, duplicate of first 1G area
   offset 2G: length 512MB, redo log
+  offset 2G+512M, length 32MB,  ATS lock area
+	 - 1st LBA(4K)  global meta lock
+	 - others, reserve as volume lock
 */
 int PfFlashStore::save_meta_data()
 {
@@ -795,7 +965,6 @@ int PfFlashStore::load_meta_data()
 
 int PfFlashStore::read_store_head()
 {
-	char uuid_str[64];
 	void *buf = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
 	if (!buf)
 	{
@@ -821,7 +990,31 @@ int PfFlashStore::read_store_head()
 
 int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
+	int rc=0;
+	char zk_node_name[128];
+	char store_id_str[16];
+	snprintf(store_id_str, sizeof(store_id_str), "%d", app_context.store_id);
+	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/owner_store", uuid_str);
 	switch (event_type) {
+	case EVT_WAIT_OWNER_LOCK: //this will be the first event received for shared disk
+		do{
+			rc = app_context.zk_client.wait_lock(zk_node_name, store_id_str); //we will not process any event before get lock
+			pthread_testcancel();
+			if(rc){
+				if(exiting)
+					return rc;
+				S5LOG_ERROR("Unexcepted rc on contention owner, rc:%d", rc);
+				sleep(1);
+			} else {
+				rc = owner_init(); //become to owner
+				if (rc) {
+					S5LOG_ERROR("Failed call owner_init");
+				}
+			}
+
+		}while(rc);
+
+		break;
 	case EVT_IO_REQ:
 	{
 	    PfOpCode op = ((IoSubTask*)arg_p)->parent_iocb->cmd_bd->cmd_bd->opcode;
@@ -1936,6 +2129,7 @@ int PfFlashStore::register_controller(const char *trid_str)
 		S5LOG_ERROR("spdk_nvme_probe() failed for transport address: %s", trid_str);
 		return -EINVAL;
 	}
+	return 0;
 }
 
 int disk_cnt = 0;

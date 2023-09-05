@@ -14,6 +14,7 @@ public:
 
 
 	bool inited;
+	bool exiting=false;
 	int init(const char* name, int queue_depth);
 	PfEventThread();
 	void destroy();

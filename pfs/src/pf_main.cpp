@@ -216,9 +216,13 @@ int main(int argc, char *argv[])
 		const char* devname = conf_get(fp, name.c_str(), "dev", NULL, false);
 		if(devname == NULL)
 			break;
+		int shared = conf_get_int(fp, name.c_str(), "shared", 0, false);
 		auto s = new PfFlashStore();
+		s->is_shared_disk = shared;
 		if (app_context.engine == SPDK)
 			rc = s->spdk_nvme_init(devname);
+		else if(shared)
+			rc = s->shared_disk_init(devname);
 		else
 			rc = s->init(devname);
 		if(rc) {
@@ -227,7 +231,12 @@ int main(int argc, char *argv[])
 		} else {
 			app_context.trays.push_back(s);
 		}
-		register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+		if(shared) {
+			register_shared_disk(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+			s->event_queue->post_event(EVT_WAIT_OWNER_LOCK, 0, 0, 0);
+		} else {
+			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+		}
 		s->start();
 	}
 

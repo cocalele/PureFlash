@@ -145,9 +145,12 @@ public:
 	PfFixedSizeQueue<int32_t> trim_obj_queue;
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
 	PfRedoLog* redolog;
-	char tray_name[256];
+	PfIoEngine* ioengine;
 	HeadPage head;
+	char tray_name[128];
+	char uuid_str[64];
 
+	int is_shared_disk;
 
 	~PfFlashStore();
 	/**
@@ -158,16 +161,15 @@ public:
 	 * @retval -ENOENT  device not exist or failed to open
 	 */
 	int init(const char* dev_name);
-
-	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
-	int preocess_io_event(IoSubTask* io);
-
-	int spdk_nvme_init(const char *trid_str);
-
+	int shared_disk_init(const char* tray_name);
+	int owner_init();
+	int spdk_nvme_init(const char* trid_str);
 	int register_controller(const char *trid_str);
 
+	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 
-	PfIoEngine* ioengine;
+
+
 	void trimming_proc();
 	std::thread trimming_thread;
 
@@ -200,7 +202,7 @@ public:
 	virtual int commit_batch() { return ioengine->submit_batch(); };
 private:
 	ThreadPool cow_thread_pool;
-
+	int format_disk();
 	int read_store_head();
 	int initialize_store_head();
 	int load_meta_data();

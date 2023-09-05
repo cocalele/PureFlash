@@ -60,6 +60,7 @@ public:
    	virtual uint64_t sync_read(void *buffer, uint64_t buf_size, uint64_t offset) = 0;
     virtual uint64_t sync_write(void *buffer, uint64_t buf_size, uint64_t offset) = 0;
 	virtual uint64_t get_device_cap() = 0;
+	virtual ~PfIoEngine(){}
 };
 
 #define BATCH_IO_CNT  512

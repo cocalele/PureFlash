@@ -95,6 +95,7 @@ int PfEventThread::start()
 }
 void PfEventThread::stop()
 {
+	exiting=true;
 	event_queue->post_event(EVT_THREAD_EXIT, 0, NULL);
 	int rc = pthread_join(tid, NULL);
 	if(rc) {
