@@ -138,8 +138,6 @@ public:
 	};
 	uint64_t in_obj_offset_mask; // := obj_size -1,
 
-	pthread_t polling_tid; //polling thread
-
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 	PfFixedSizeQueue<int32_t> free_obj_queue;
 	PfFixedSizeQueue<int32_t> trim_obj_queue;

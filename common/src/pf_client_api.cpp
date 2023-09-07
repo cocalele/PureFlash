@@ -40,6 +40,8 @@ static const char* pf_lib_ver = "S5 client version:0x00010000";
 PfAppCtx client_app_context;
 
 #define CLIENT_TIMEOUT_CHECK_INTERVAL 1 //seconds
+#define RPC_TIMEOUT_SEC 2
+
 const char* default_cfg_file = "/etc/pureflash/pf.conf";
 void from_json(const json& j, GeneralReply& reply)
 {
@@ -488,6 +490,14 @@ int PfClientAppCtx::init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_
 		BufferDescriptor* rbd = reply_pool.alloc();
 		rbd->data_len = rbd->buf_capacity;
 		rbd->client_iocb = NULL;
+		for (int i = 0; i < 1; i++) {//code copied from pf_dispatcher, keep for loop for consistency
+			io->subtasks[i] = &io->io_subtasks[i];
+			io->subtasks[i]->rep_index = i;
+			io->subtasks[i]->task_mask = 1 << i;
+			io->subtasks[i]->client_iocb = io;
+		}
+		io->task_mask = 0;
+
 		reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
@@ -1457,7 +1467,114 @@ void PfClientAppCtx::heartbeat_once()
 		ht_idx++;
 	}
 }
+
+void rpc_cbk(void* arg, int status)
+{
+	sem_t *sem = (sem_t*)arg;
+	sem_post(sem);
+}
+int PfClientAppCtx::rpc_common(PfClientVolume* vol, std::func<void(PfMessageHead* req_cmd)> head_filler,
+	std::func<void(PfMessageReply* reply)> reply_extractor)
+{
+	int rc;
+	sem_t sem;
+	sem_init(&sem, 0, 0);
+	PfClientIocb* io = iocb_pool.alloc();
+	io->ulp_handler = rpc_cbk;
+	io->ulp_arg = &sem;
+	BufferDescriptor* cmd_bd = io->cmd_bd;
+	PfMessageHead* io_cmd = io->cmd_bd->cmd_bd;
+	head_filler(io_cmd);
+
+	PfConnection* conn;
+	BufferDescriptor* rbd;
+	struct timespec ts;
+
+retry_owner:
+	rc = 0;
+	conn = conn_pool->get_conn(owner_ip, TCP_TYPE);
+	if (conn == NULL)
+		S5LOG_ERROR("Failed to get connection to owner:%s", owner_ip);
+
+
+	io_cmd->meta_ver = (uint16_t)vol->meta_ver;
+
+	rbd = reply_pool.alloc();
+	if (unlikely(rbd == NULL)) {
+		S5LOG_ERROR("No reply bd available to do io now, requeue IO");
+		io->ulp_handler(io->ulp_arg, -EAGAIN);
+		iocb_pool.free(io);
+		return -ENOMEM;
+	}
+	io->is_timeout = FALSE;
+	io->conn = conn;
+	conn->add_ref();
+	io->sent_time = now_time_usec();
+	int rc = conn->post_recv(rbd);
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to post_recv for reply");
+		reply_pool.free(rbd);
+		iocb_pool.free(io);
+		return rc;
+	}
+	rc = conn->post_send(cmd_bd);
+	if (rc) {
+		S5LOG_ERROR("Failed to post_send for cmd");
+		//reply_pool.free(rbd); //not reclaim rbd, since this bd has in connection's receive queue
+		iocb_pool.free(io);
+		return rc;
+	}
+
+
+	//clock_gettime(CLOCK_REALTIME, &ts);
+	//ts.tv_sec += RPC_TIMEOUT_SEC;
+
+	//if(sem_timedwait(&sem, &ts) == -1){
+	//	rc = -errno;
+	//	S5LOG_ERROR("RPC wait failed, rc:%d", rc);
+	//	if(rc == ETIMEDOUT){
+	//		vol->owner_ip.clean();
+	//		goto retry_owner;
+	//	}
+	//} else {
+	//	rc = (int)io->reply_bd->reply_bd->block_id;
+	//}
+
+	sem_wait(&sem);
+
+	rc = io->reply_bd->reply_bd->status;
+	if( rc == PfMessageStatus::MSG_STATUS_SUCCESS) {
+		reply_extractor(io->reply_bd->reply_bd);
+	}
 	
+	reply_pool.free(io->reply_bd);
+	io->reply_bd = NULL;
+	io->sent_time = 0;
+	io->conn->dec_ref();
+	io->conn = NULL;
+	free_iocb(io);
+	return rc;
+}
+int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
+{
+	int new_block_id = 0;
+	int rc;
+	rc = rpc_common(volume, [volume](PfMessageHead* cmd){
+		cmd->opcode = S5_OP_RPC_ALLOC_BLOCK;
+		cmd->vol_id = volume->volume_id;
+		cmd->rkey = 0;
+		cmd->offset = offset;
+		cmd->snap_seq = volume->snap_seq;
+		},
+		[&new_block_id](PfMessageReply* reply) {
+			new_block_id = reply->block_id;
+		}
+	);
+	if(rc == 0)
+		return new_block_id;
+	return rc;
+}
 static void __attribute__((constructor)) spdk_engine_init(void)
 {
 	spdk_engine_set(false);

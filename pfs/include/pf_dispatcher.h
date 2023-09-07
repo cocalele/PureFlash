@@ -23,39 +23,14 @@
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 
+#include "pf_iotask.h"
+
 #define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
 struct PfServerIocb;
 class PfFlashStore;
 struct lmt_entry;
 struct lmt_key;
 
-struct SubTask
-{
-	PfOpCode opcode;
-	//NOTE: any added member should be initialized either in PfDispatcher::init_mempools, or in PfServerIocb::setup_subtask
-	PfServerIocb* parent_iocb;
-	uint64_t rep_id;
-	uint64_t store_id;
-	uint32_t task_mask;
-	uint32_t rep_index; //task_mask = 1 << rep_index;
-	PfMessageStatus complete_status;
-	virtual void complete(PfMessageStatus comp_status);
-	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
-	//virtual PfEventQueue* half_complete(PfMessageStatus comp_status);
-
-	SubTask():opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0){}
-};
-
-struct IoSubTask : public SubTask
-{
-#pragma warning("Use union here is beter")
-	struct iovec uring_iov;
-	iocb aio_cb; //aio cb to perform io
-	IoSubTask* next;//used for chain waiting io
-    inline void complete_read_with_zero();
-
-	IoSubTask():next(NULL) {}
-};
 
 
 struct RecoverySubTask : public SubTask
@@ -73,13 +48,7 @@ struct RecoverySubTask : public SubTask
 	virtual void complete(PfMessageStatus comp_status);
 	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
 };
-struct CowTask : public IoSubTask {
-	off_t src_offset;
-	off_t dst_offset;
-	void* buf;
-	int size;
-	sem_t sem;
-};
+
 
 struct PfServerIocb
 {

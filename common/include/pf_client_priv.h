@@ -12,6 +12,8 @@
 #include "pf_buffer.h"
 #include "pf_client_api.h"
 #include "pf_app_ctx.h"
+#include "pf_iotask.h"
+
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 #define AOF_IODEPTH 100
 
@@ -72,9 +74,22 @@ public:
 	uint64_t submit_time;//time the io was submitted by up layer
 	uint64_t reply_time; // the time get reply from server
 
+	SubTask* subtasks[1];
+	IoSubTask io_subtasks[1];
+	uint32_t task_mask;
+	//uint32_t ref_count;
+
 	//used by PfClientVolume::reopen_waiting
 	PfClientIocb* list_next;
 	PfClientIocb* list_prev;
+
+	void inline setup_subtask(PfOpCode opcode)
+	{
+		subtasks[0]->complete_status = PfMessageStatus::MSG_STATUS_SUCCESS;
+		subtasks[0]->opcode = opcode;  //subtask opcode will be OP_WRITE or OP_REPLICATE_WRITE
+		task_mask |= subtasks[0]->task_mask;
+	}
+
 };
 template<typename T>
 class PfDoublyList{
@@ -137,6 +152,7 @@ public:
 	std::string status;
 	std::string volume_name;
 	std::string snap_name;
+	std::string owner_ip;
 
 	uint64_t volume_size;
 	uint64_t volume_id;
@@ -261,7 +277,6 @@ public:
 	void add_volume(PfClientVolume* vol);
 
 	int init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
-
 	void timeout_check_proc();
 	void heartbeat_once();
 	inline void add_ref() {
@@ -276,7 +291,10 @@ public:
 			delete this;
 		}
 	}
+	int rpc_alloc_block(PfClientVolume* vol, uint64_t offset);
 private:
+	int rpc_common(PfClientVolume* vol, std::func<void(PfMessageHead* req_cmd)> head_filler, 
+				std::func<void(PfMessageReply* reply)> reply_extractor);
 	~PfClientAppCtx();
 
 
