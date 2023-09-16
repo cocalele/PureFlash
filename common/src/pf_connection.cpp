@@ -6,7 +6,7 @@
 #include "pf_app_ctx.h"
 #include "pf_message.h"
 
-PfConnection::PfConnection():ref_count(0),state(0),master(NULL),on_destroy(NULL)
+PfConnection::PfConnection():ref_count(0),master(NULL), state(0), on_destroy(NULL)
 {
 }
 

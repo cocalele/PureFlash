@@ -120,6 +120,13 @@ static void zk_watch_cbk(zhandle_t* zh, int type,
 	struct ZkSem* ctx = (struct ZkSem*)watcherCtx;
 	sem_post(&ctx->sem);
 }
+static void zk_watch_cbk2(zhandle_t* zh, int type,
+	int state, const char* path, void* watcherCtx)
+{
+	struct ZkSem* ctx = (struct ZkSem*)watcherCtx;
+	sem_post(&ctx->sem);
+}
+
 static int cmpstringp(const void* p1, const void* p2)
 {
 	/* The actual arguments to this function are "pointers to
@@ -156,7 +163,7 @@ int PfZkClient::wait_lock(const std::string& lock_path, const char* myid)
 		struct String_vector children={0};
 		rc = zoo_wget_children(zkhandle, full_path.c_str(), zk_watch_cbk, &ctx, &children);
 		if (rc != ZOK) {
-			S5LOG_ERROR("Failed to create ZK lock:%s, lock_path:%s, rc:%d", full_path.c_str(), lock_path.c_str(), rc);
+			S5LOG_ERROR("Failed to watch ZK lock:%s, lock_path:%s, rc:%d", full_path.c_str(), lock_path.c_str(), rc);
 			return rc;
 		}
 		DeferCall _a([&children]() { deallocate_String_vector(&children); });
@@ -180,4 +187,67 @@ int PfZkClient::wait_lock(const std::string& lock_path, const char* myid)
 int PfZkClient::delete_node(const std::string& node_path)
 {
 	return zoo_delete(zkhandle, node_path.c_str(), -1);
+}
+
+std::string PfZkClient::get_data_port(int store_id,  int port_idx)
+{
+	int rc = 0;
+	char zk_path[256];
+	snprintf(zk_path, sizeof(zk_path), "/pureflash/%s/stores/%d/ports", cluster_name.c_str(), store_id);
+
+	struct String_vector children = { 0 };
+	rc = zoo_get_children(zkhandle, zk_path, 0, &children);
+	if (rc != ZOK) {
+		S5LOG_ERROR("Failed to get children on path:%s, rc:%d", zk_path, rc);
+		return std::string();
+	}
+	DeferCall _a([&children]() { deallocate_String_vector(&children); });
+	if (children.count <= 0) {
+		S5LOG_ERROR("No children under path:%s", zk_path);
+		return std::string();
+
+	}
+	return children.data[0];
+}
+
+
+int PfZkClient::watch_disk_owner(const char* disk_uuid, std::function<void(const char* )> on_new_owner)
+{
+	int rc;
+	char zk_node_name[256];
+	char owner_id[32];
+	std::string old_owner_node;
+	old_owner_node.reserve(128);
+	struct ZkSem ctx(NULL);
+
+	do {
+		snprintf(zk_node_name, sizeof(zk_node_name), "/pureflash/%s/shared_disks/%s/owner_store", cluster_name.c_str(), disk_uuid);
+		struct String_vector children = { 0 };
+		rc = zoo_wget_children(zkhandle, zk_node_name, zk_watch_cbk2, &ctx, &children);
+		if (rc != ZOK) {
+			S5LOG_ERROR("Failed to watch ZK node:%s, rc:%d", zk_node_name, rc);
+			return rc;
+		}
+		DeferCall _a([&children]() { deallocate_String_vector(&children); });
+		if (children.count <= 0) {
+			S5LOG_ERROR("owner watch get empty children, network connection wrong");
+			old_owner_node.clear();
+			on_new_owner("");
+
+		}
+		qsort(children.data, children.count, sizeof(char*), cmpstringp);
+		if (strcmp(children.data[0], old_owner_node.c_str()) != 0) {
+			old_owner_node = children.data[0];
+			snprintf(zk_node_name, sizeof(zk_node_name), "/pureflash/%s/shared_disks/%s/owner_store/%s", cluster_name.c_str(), disk_uuid, children.data[0]);
+			int len = (int)sizeof(owner_id);
+			rc = zoo_get(zkhandle, zk_node_name, 0, owner_id, &len, NULL);
+			if(len == 0) owner_id[0]=0;
+			S5LOG_INFO("Owner of disk:%s changed, new owner:%s", disk_uuid, owner_id);
+			on_new_owner(owner_id);
+		}
+		if(ctx.wait())
+			rc = -errno;
+	} while (rc == 0);
+
+	return rc;
 }

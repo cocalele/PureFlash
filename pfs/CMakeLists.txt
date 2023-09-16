@@ -68,11 +68,12 @@ set (S5AFS_SRC
 	src/pf_volume.cpp
 	src/pf_error_handler.cpp
 	src/pf_replicator.cpp
-	src/pf_ioengine.cpp
 	src/pf_bitmap.cpp
 	src/pf_bgtask_manager.cpp
 	src/pf_scrub.cpp
 	src/pf_atslock.cpp
+	src/pf_spdk_engine.cpp
+	src/pf_iouring_engine.cpp
 )
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c

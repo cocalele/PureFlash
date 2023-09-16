@@ -245,10 +245,20 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 	return 0;
 }
 
+static void server_complete(SubTask* t, PfMessageStatus comp_status) {
+	t->complete_status = comp_status;
+	((PfServerIocb*)t->parent_iocb)->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, t);
+}
+static void server_complete2(SubTask* t, PfMessageStatus comp_status, uint16_t meta_ver) {
+	if (meta_ver > ((PfServerIocb*)t->parent_iocb)->complete_meta_ver)
+		((PfServerIocb*)t->parent_iocb)->complete_meta_ver = meta_ver;
+	server_complete(t, comp_status);
+}
+static struct TaskCompleteOps _server_task_complete_ops={ server_complete , server_complete2 };
 
 int PfDispatcher::dispatch_complete(SubTask* sub_task)
 {
-	PfServerIocb* iocb = sub_task->parent_iocb;
+	PfServerIocb* iocb = (PfServerIocb * )sub_task->parent_iocb;
 //	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
 //			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
@@ -307,6 +317,7 @@ int PfDispatcher::init_mempools(int disp_index)
 			cb->subtasks[i]->rep_index =i;
 			cb->subtasks[i]->task_mask = 1 << i;
 			cb->subtasks[i]->parent_iocb = cb;
+			cb->subtasks[i]->ops = &_server_task_complete_ops;
 		}
 
 		//TODO: still 2 subtasks not initialized, for metro replicating and rebalance

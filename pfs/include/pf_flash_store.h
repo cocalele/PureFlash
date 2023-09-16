@@ -22,54 +22,11 @@
 #include "pf_volume.h"
 #include "pf_bitmap.h"
 #include "pf_ioengine.h"
+#include "pf_lmt.h"
 
-#define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
-#define MIN_META_RESERVE_SIZE (4LL<<30) //4GB, can be config in conf
-
-#define S5_VERSION 0x00020000
 
 class PfRedoLog;
-class IoSubTask;
-/**
- * key of 4M block
- */
-struct lmt_key
-{
-	uint64_t vol_id;
-	int64_t slba; //a lba is 4K. slba should align on block
-	int64_t rsv1;
-	int64_t rsv2;
-};
-static_assert(sizeof(lmt_key) == 32, "unexpected lmt_key size");
-enum EntryStatus: uint32_t {
-	UNINIT = 0, //not initialized
-	NORMAL = 1,
-	COPYING = 2, //COW on going
-	DELAY_DELETE_AFTER_COW = 3,
-	RECOVERYING = 4,
-};
-/**
- * represent a 4M block entry
- */
-struct lmt_entry
-{
-	int64_t offset; //offset of this block in device. in bytes
-	uint32_t snap_seq;
-	EntryStatus status; // type EntryStatus
-	lmt_entry* prev_snap;
-	IoSubTask* waiting_io;
 
-	PfBitmap * recovery_bmp;
-	void* recovery_buf;
-
-	void init_for_redo() {
-		//all other variable got value from redo log
-		prev_snap = NULL;
-		waiting_io = NULL;
-		recovery_bmp = NULL;
-		recovery_buf = NULL;
-	}
-};
 
 struct scc_cow_context
 {
@@ -81,27 +38,6 @@ struct scc_cow_context
 };
 
 
-static_assert(sizeof(lmt_entry) == 48, "unexpected lmt_entry size");
-
-inline bool operator == (const lmt_key &k1, const lmt_key &k2) { return k1.vol_id == k2.vol_id && k1.slba == k2.slba; }
-
-struct lmt_hash
-{
-	std::size_t operator()(const struct lmt_key& k) const
-	{
-		using std::size_t;
-		using std::hash;
-		using std::string;
-
-		// Compute individual hash values for first,
-		// second and third and combine them using XOR
-		// and bit shifting:
-		const size_t _FNV_offset_basis = 14695981039346656037ULL;
-		const size_t _FNV_prime = 1099511628211ULL;
-		return (((k.vol_id << 8)*k.slba) ^ _FNV_offset_basis)*_FNV_prime;
-
-	}
-};
 
 
 class PfFlashStore : public PfEventThread
@@ -168,7 +104,7 @@ public:
 
 
 
-	void trimming_proc();
+	void trim_proc();
 	std::thread trimming_thread;
 
 	/**
@@ -199,7 +135,7 @@ public:
 	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 	virtual int commit_batch() { return ioengine->submit_batch(); };
 private:
-	ThreadPool cow_thread_pool;
+	ThreadPool cow_thread_pool; //TODO: use std::async replace
 	int format_disk();
 	int read_store_head();
 	int initialize_store_head();

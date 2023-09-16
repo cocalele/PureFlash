@@ -25,7 +25,7 @@
 
 #include "pf_iotask.h"
 
-#define PF_MAX_SUBTASK_CNT 5 //1 local, 2 sync rep, 1 remote replicating, 1 rebalance
+
 struct PfServerIocb;
 class PfFlashStore;
 struct lmt_entry;
@@ -33,7 +33,7 @@ struct lmt_key;
 
 
 
-struct RecoverySubTask : public SubTask
+struct RecoverySubTask : public IoSubTask
 {
 	BufferDescriptor *recovery_bd;
 	uint64_t volume_id;
@@ -50,27 +50,19 @@ struct RecoverySubTask : public SubTask
 };
 
 
-struct PfServerIocb
+struct PfServerIocb : public PfIocb
 {
 public:
-	BufferDescriptor* cmd_bd;
-	BufferDescriptor* data_bd;
-	BufferDescriptor* reply_bd; //Used by dispatcher tasks
-
 	PfConnection *conn;
 	//PfVolume* vol;
 	uint64_t vol_id;
 	PfMessageStatus complete_status;
 	uint16_t  complete_meta_ver;
-	uint32_t task_mask;
 	uint32_t ref_count;
 	int disp_index;
 	BOOL is_timeout;
-
-
-	SubTask* subtasks[PF_MAX_SUBTASK_CNT];
-	IoSubTask io_subtasks[3];
 	uint64_t received_time;
+	IoSubTask io_subtasks[3];
 
 	void inline setup_subtask(PfShard* s, PfOpCode opcode)
 	{
@@ -150,27 +142,12 @@ inline void PfServerIocb::re_init()
 	task_mask = 0;
 }
 
-inline void SubTask::complete(PfMessageStatus comp_status){
-    complete_status = comp_status;
-    parent_iocb->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, this);
-}
-inline void SubTask::complete(PfMessageStatus comp_status, uint16_t meta_ver){
-	if(meta_ver > parent_iocb->complete_meta_ver)
-		parent_iocb->complete_meta_ver = meta_ver;
-	complete(comp_status);
-}
+
 /*
 inline PfEventQueue* SubTask::half_complete(PfMessageStatus comp_status)
 {
 	complete_status = comp_status;
 }
 */
-inline void IoSubTask::complete_read_with_zero() {
-//    PfMessageHead* cmd = parent_iocb->cmd_bd->cmd_bd;
-    BufferDescriptor* data_bd = parent_iocb->data_bd;
 
-    memset(data_bd->buf, 0, data_bd->data_len);
-    complete(PfMessageStatus::MSG_STATUS_SUCCESS);
-
-}
 #endif // pf_dispatcher_h__

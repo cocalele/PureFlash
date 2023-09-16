@@ -1,3 +1,15 @@
+#include <uuid/uuid.h>
+#include <unordered_map>
+#include <stdint.h>
+#include <libaio.h>
+#include <thread>
+#include <future>
+
+#include "pf_mempool.h"
+#include "pf_lmt.h"
+#include "pf_ioengine.h"
+
+class PfClientVolume;
 /**
  * This class is equivalent to PfFlashStore in server side.
  * This class is used to access disk directly from client (bypass store server)
@@ -46,6 +58,8 @@ public:
 	char uuid_str[64];
 
 	int is_shared_disk;
+	void zk_watch_proc();
+	std::thread zk_watch_thread;
 
 	~PfClientStore();
 	/**
@@ -55,9 +69,7 @@ public:
 	 * @return 0 on success, negative for error
 	 * @retval -ENOENT  device not exist or failed to open
 	 */
-	int init(PfClientVolume* vol, const char* dev_name);
-	int shared_disk_init(const char* tray_name);
-	int owner_init();
+	int init(PfClientVolume* vol, const char* dev_name, const char* dev_uuid);
 
 
 	/**
@@ -68,7 +80,7 @@ public:
 	 * actual data length may less than nlba in request to read. in this case, caller
 	 * should treat the remaining part of buffer as 0.
 	 */
-	inline int do_read(IoSubTask* io);
+	int do_read(IoSubTask* io);
 
 	/**
 	 * write data to flash store.
@@ -78,10 +90,16 @@ public:
 	 */
 	int do_write(IoSubTask* io);
 
+	inline void begin_cow(lmt_key* key, lmt_entry* srcEntry, lmt_entry* dstEntry)
+	{
+		auto f = std::async([this, key, srcEntry, dstEntry] {do_cow_entry(key, srcEntry, dstEntry); });
+	}
+	int delete_obj(struct lmt_key* key, struct lmt_entry* entry);
 
-	virtual int commit_batch() { return ioengine->submit_batch(); };
+	
 private:
-	ThreadPool cow_thread_pool;
+	void do_cow_entry(lmt_key* key, lmt_entry* srcEntry, lmt_entry* dstEntry);
+
 	int read_store_head();
 
 	/** these two function convert physical object id (i.e. object in disk space) and offset in disk

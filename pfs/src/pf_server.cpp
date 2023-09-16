@@ -16,11 +16,12 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include "pf_server.h"
 #include "pf_tcp_connection.h"
 #include "pf_connection.h"
 #include "pf_poller.h"
 #include "pf_errno.h"
-#include "pf_server.h"
+
 #include "pf_utils.h"
 #include "pf_main.h"
 #include "pf_conf.h"

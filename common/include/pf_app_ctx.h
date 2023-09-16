@@ -4,7 +4,7 @@
 
 #include "pf_buffer.h"
 #include "pf_mempool.h"
-
+#include "pf_volume_type.h"
 #include "pf_client_api.h"
 
 enum {
@@ -26,6 +26,7 @@ class PfAppCtx
 public:
 	int io_desc_count;
 	ObjectMemoryPool<PfIoDesc> iod_pool;
+	BigMemPool cow_buf_pool;
 
 	//BufferPool cmd_pool;
 	//BufferPool data_pool;
@@ -40,7 +41,7 @@ public:
 	std::string conf_file_name;
 	conf_file_t conf;
 	int engine;
-	PfAppCtx():engine(AIO){}
+	PfAppCtx():cow_buf_pool(COW_OBJ_SIZE),engine(AIO)  {}
 };
 
 extern PfAppCtx* g_app_ctx;

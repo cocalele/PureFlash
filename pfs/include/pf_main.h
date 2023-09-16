@@ -44,10 +44,6 @@ class PfRdmaServer;
 #define DATA_PORT 0
 #define REP_PORT 1
 
-#define COW_OBJ_SIZE (128<<10)
-#define RECOVERY_IO_SIZE (128<<10) //recovery read IO size
-#define DEFAULT_OBJ_SIZE (64<<20)
-#define DEFAULT_OBJ_SIZE_ORDER 26 // DEFAULT_OBJ_SIZE=1<<DEFAULT_OBJ_SIZE_ORDER
 //STATIC_ASSERT(DEFAULT_OBJ_SIZE == (1<<DEFAULT_OBJ_SIZE_ORDER));
 
 class PfVolume;
@@ -75,7 +71,6 @@ public:
     PfErrorHandler* error_handler;
 
 
-	BigMemPool cow_buf_pool;
 	BigMemPool recovery_buf_pool;
 	BufferPool recovery_io_bd_pool;
 

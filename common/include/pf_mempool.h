@@ -51,20 +51,26 @@ public:
 	}
 
 	U* alloc() {
-		AutoSpinLock _l(&lock);
-		if (free_obj_queue.is_empty())
+		pthread_spin_lock(&lock);
+		if (free_obj_queue.is_empty()){
+			pthread_spin_unlock(&lock);
 			return NULL;
-		return free_obj_queue.dequeue_nolock();
+		}
+		U* t = free_obj_queue.dequeue_nolock();
+		pthread_spin_unlock(&lock);
+		return t;
 	}
 
 	/**
 	 * throw logic_error
 	 */
 	void free(U* p) {
-		AutoSpinLock _l(&lock);
+		pthread_spin_lock(&lock);
 		int rc = free_obj_queue.enqueue_nolock(p);
-		if (rc != 0)
+		pthread_spin_unlock(&lock);
+		if (rc != 0) {
 			throw std::runtime_error("call free to full memory pool");
+		}
 	}
 
 	void destroy() {

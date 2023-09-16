@@ -340,7 +340,7 @@ int PfAfsAppContext::get_ssd_index(std::string ssd_uuid)
 	return -1;
 }
 
-PfAfsAppContext::PfAfsAppContext() : cow_buf_pool(COW_OBJ_SIZE), recovery_buf_pool(RECOVERY_IO_SIZE)
+PfAfsAppContext::PfAfsAppContext() : recovery_buf_pool(RECOVERY_IO_SIZE)
 {
 	int rc;
 	pthread_mutex_init(&lock, NULL);

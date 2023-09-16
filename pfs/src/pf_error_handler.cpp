@@ -54,7 +54,7 @@ int PfErrorHandler::submit_error(IoSubTask* t, PfMessageStatus sc)
 	} else {
 		S5LOG_INFO("Error report get sc:%s, meta_ver:%d", PfMessageStatus2Str(r.action_code), r.meta_ver);
 	}
-    t->complete(r.action_code, r.meta_ver);
+    t->ops->complete_meta_ver(t, r.action_code, r.meta_ver);
     return 0;
 }
 PfErrorHandler::PfErrorHandler()

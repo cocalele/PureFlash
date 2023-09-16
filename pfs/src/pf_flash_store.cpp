@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <algorithm>
 
+#include "pf_iotask.h"
 #include "pf_flash_store.h"
 #include "pf_utils.h"
 #include "pf_server.h"
@@ -46,49 +47,13 @@
 #include "pf_restful_api.h"
 #include "pf_client_priv.h"
 #include "pf_spdk.h"
+#include "pf_spdk_engine.h"
 #include "pf_atslock.h"
 
 using namespace std;
 using nlohmann::json;
 
-#define CUT_LOW_10BIT(x) (((unsigned long)(x)) & 0xfffffffffffffc00L)
-#define vol_offset_to_block_slba(offset, obj_size_order) (((offset) >> (obj_size_order)) << (obj_size_order - LBA_LENGTH_ORDER))
-#define offset_in_block(offset, in_obj_offset_mask) ((offset) & (in_obj_offset_mask))
 
-#define OFFSET_HEAD 0
-#define OFFSET_FREE_LIST 4096
-#define OFFSET_TRIM_LIST (64LL<<20)
-#define OFFSET_LMT_MAP (128LL<<20)
-#define OFFSET_MD5 ((1LL<<30) - 4096)
-#define OFFSET_META_COPY (1LL<<30)
-#define OFFSET_REDO_LOG (2LL<<30)
-#define REDO_LOG_SIZE (512LL<<20) //512M
-static_assert(OFFSET_REDO_LOG + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "OFFSET_REDO_LOG exceed reserve area");
-#define OFFSET_GLOBAL_META_LOCK ((2<<30)+(512<<20)) //2G + 512M
-
-static BOOL is_disk_clean(PfIoEngine *eng)
-{
-	void *buf = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
-	BOOL rc = TRUE;
-	int64_t* p = (int64_t*)buf;
-
-	if (LBA_LENGTH != eng->sync_read(buf, LBA_LENGTH, 0))
-	{
-		rc = FALSE;
-		goto release1;
-	}
-	for (uint32_t i = 0; i < LBA_LENGTH / sizeof(int64_t); i++)
-	{
-		if (p[i] != 0)
-		{
-			rc = FALSE;
-			goto release1;
-		}
-	}
-release1:
-	free_spdk(buf);
-	return rc;
-}
 static int clean_meta_area(PfIoEngine *eng, size_t size)
 {
 	size_t buf_len = 1 << 20;
@@ -176,7 +141,7 @@ int PfFlashStore::shared_disk_init(const char* tray_name)
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(this);
+	ioengine = new PfAioEngine(tray_name, this->fd, g_app_ctx);
 	//ioengine = new PfIouringEngine(this);  
 	ioengine->init();
 	DeferCall _2([this]() { delete ioengine; ioengine=NULL; });
@@ -234,7 +199,7 @@ int PfFlashStore::owner_init()
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(this);
+	ioengine = new PfAioEngine(this->tray_name, fd, g_app_ctx);
 	//ioengine = new PfIouringEngine(this);  
 	ioengine->init();
 
@@ -272,7 +237,7 @@ int PfFlashStore::owner_init()
 	}
 	in_obj_offset_mask = head.objsize - 1;
 
-	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
+	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 
 	err_clean.cancel_all();
 	return ret;
@@ -294,7 +259,7 @@ int PfFlashStore::init(const char* tray_name)
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(this);
+	ioengine = new PfAioEngine(tray_name, fd, g_app_ctx);
 	//ioengine = new PfIouringEngine(this);  
 	ioengine->init();
 
@@ -387,7 +352,7 @@ int PfFlashStore::init(const char* tray_name)
 
 	in_obj_offset_mask = head.objsize - 1;
 
-	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
+	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 
 	err_clean.cancel_all();
 	return ret;
@@ -427,7 +392,7 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 		else
 		{
 			S5LOG_ERROR("Read on object in unexpected state:%d", entry->status);
-			io->complete(MSG_STATUS_INTERNAL);
+			io->ops->complete(io, MSG_STATUS_INTERNAL);
 		}
 
 	}
@@ -487,7 +452,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			for(int i=0;i<cmd->length/SECTOR_SIZE;i++) {
 				entry->recovery_bmp->set_bit(int(offset_in_block(cmd->offset, in_obj_offset_mask)/SECTOR_SIZE) + i);
 			}
-			io->complete(PfMessageStatus::MSG_STATUS_SUCCESS);
+			io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
 			return 0;
 		}
 		if(likely(cmd->snap_seq == entry->snap_seq)) {
@@ -499,14 +464,14 @@ int PfFlashStore::do_write(IoSubTask* io)
 					return 0;
 				}
 				S5LOG_FATAL("Block in abnormal status:%d", entry->status);
-				io->complete(MSG_STATUS_INTERNAL);
+				io->ops->complete(io, MSG_STATUS_INTERNAL);
 				return -EINVAL;
 			}
 
 		} else if (unlikely(cmd->snap_seq < entry->snap_seq)) {
 			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%x request snap:%d, target snap:%d",
 				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
-			io->complete(MSG_STATUS_READONLY);
+			io->ops->complete(io, MSG_STATUS_READONLY);
 			return 0;
 		} else if(unlikely(cmd->snap_seq > entry->snap_seq)) {
 			if (free_obj_queue.is_empty())
@@ -1042,7 +1007,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	break;
 	case EVT_COW_WRITE:
 	{
-		struct CowTask *req = (struct CowTask*)arg_p;
+		struct CowTask*req = (struct CowTask*)arg_p;
 		req->opcode = S5_OP_COW_WRITE;
 		ioengine->submit_cow_io(req, req->dst_offset, req->size);
 	}
@@ -1089,7 +1054,7 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 	S5LOG_INFO("end do_cow_entry");
 	sync_invoke([key, srcEntry, dstEntry, this]()->int {
 		dstEntry->status = EntryStatus::NORMAL;
-		IoSubTask *t = dstEntry->waiting_io;
+		IoSubTask*t = dstEntry->waiting_io;
 		dstEntry->waiting_io = NULL;
 		while (t) {
 			if (unlikely(t->opcode != S5_OP_WRITE && t->opcode != S5_OP_REPLICATE_WRITE)) {
@@ -1113,7 +1078,7 @@ cowfail:
 		dstEntry->waiting_io = NULL;
 		while (t) {
 			S5LOG_ERROR("return REOPEN for cowfail, cid:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id);
-			t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+			t->ops->complete(t, PfMessageStatus::MSG_STATUS_REOPEN);
 			t=t->next;
 		}
 		return 0;
@@ -1141,7 +1106,7 @@ void* PfFlashStore::end_cow_scc(void *ctx)
 	lmt_entry *dstEntry = sc->dstEntry;
 	lmt_entry *srcEntry = sc->srcEntry;
 	lmt_key *key = sc->key;
-	IoSubTask *t = dstEntry->waiting_io;
+	IoSubTask*t = dstEntry->waiting_io;
 	dstEntry->waiting_io = NULL;
 
 	if (sc->rc == 0) {
@@ -1159,7 +1124,7 @@ void* PfFlashStore::end_cow_scc(void *ctx)
 	}else{
 		while (t) {
 			S5LOG_ERROR("return REOPEN for cowfail, cid:%d", t->parent_iocb->cmd_bd->cmd_bd->command_id);
-			t->complete(PfMessageStatus::MSG_STATUS_REOPEN);
+			t->ops->complete(t, PfMessageStatus::MSG_STATUS_REOPEN);
 			t = t->next;
 		}
 	}
@@ -1442,43 +1407,6 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 }
 
 
-void delete_matched_entry(struct lmt_entry **head_ref, std::function<bool(struct lmt_entry *)> match,
-		std::function<void(struct lmt_entry *)> free_func)
-{
-	// Store head node
-	struct lmt_entry* temp = *head_ref, *prev;
-
-	// If head node itself holds the key or multiple occurrences of key
-	while (temp != NULL && match(temp))
-	{
-		*head_ref = temp->prev_snap;   // Changed head
-		free_func(temp);    // free old head
-		temp = *head_ref;         // Change Temp
-	}
-
-	// Delete occurrences other than head
-	while (temp != NULL)
-	{
-		// Search for the key to be deleted, keep track of the
-		// previous node as we need to change 'prev->next'
-		while (temp != NULL && !match(temp))
-		{
-			prev = temp;
-			temp = temp->prev_snap;
-		}
-
-		// If key was not present in linked list
-		if (temp == NULL) return;
-
-		// Unlink the node from linked list
-		prev->prev_snap = temp->prev_snap;
-
-		free_func(temp);  // Free memory
-
-		//Update Temp for next iteration of outer loop
-		temp = prev->prev_snap;
-	}
-}
 int PfFlashStore::delete_obj(struct lmt_key* key, struct lmt_entry* entry)
 {
 	auto pos = obj_lmt.find(*key);
@@ -1937,7 +1865,7 @@ int PfFlashStore::delete_replica(replica_id_t rep_id)
 	return 0;
 }
 
-void PfFlashStore::trimming_proc()
+void PfFlashStore::trim_proc()
 {
 	char tname[32];
 	snprintf(tname, sizeof(tname), "trim_%s", tray_name);
@@ -2032,7 +1960,7 @@ static void
 register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct ns_entry *entry)
 {
 	struct spdk_nvme_ns *ns;
-	uint32_t nsid = entry->nsid;
+	uint16_t nsid = entry->nsid;
 
 	if (nsid == 0) {
 		for (nsid = spdk_nvme_ctrlr_get_first_active_ns(ctrlr);
@@ -2055,8 +1983,8 @@ register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct ns_entry *entry)
 		}
 		entry->ns = ns;
 		register_ns(ctrlr, entry);
-}
 	}
+}
 
 
 static void
@@ -2104,14 +2032,14 @@ int PfFlashStore::register_controller(const char *trid_str)
 	ns_str = strcasestr(trid_str, "ns:");
 	if (ns_str) {
 		ns_str += 3;
-		len = strcspn(ns_str, " \t\n");
+		len = (int)strcspn(ns_str, " \t\n");
 		if (len > 5) {
 			S5LOG_ERROR("Invalid NVMe namespace IDs len %d", len);
 			return -EINVAL;
 		}
 		memcpy(nsid_str, ns_str, len);
 		nsid_str[len] = '\0';
-		nsid = spdk_strtol(nsid_str, 10);
+		nsid = (uint16_t)spdk_strtol(nsid_str, 10);
 		if (nsid <= 0 || nsid > 65535) {
 			S5LOG_ERROR("Invalid NVMe namespace ID=%d", nsid);
 			return -EINVAL;
@@ -2147,7 +2075,7 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 		return rc;
 	}
 
-	ioengine = new PfspdkEngine(this);
+	ioengine = new PfspdkEngine(this, ns);
 	ioengine->init();
 
 	this->func_priv = ((PfspdkEngine *)ioengine)->poll_io;
@@ -2248,7 +2176,7 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 
 	in_obj_offset_mask = head.objsize - 1;
 
-	trimming_thread = std::thread(&PfFlashStore::trimming_proc, this);
+	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 	
 	return ret;
 }

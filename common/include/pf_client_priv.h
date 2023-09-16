@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <list>
 #include <mutex>
+#include <functional>
 #include "pf_message.h"
 #include "pf_mempool.h"
 #include "pf_event_thread.h"
@@ -13,12 +14,13 @@
 #include "pf_client_api.h"
 #include "pf_app_ctx.h"
 #include "pf_iotask.h"
+#include "pf_zk_client.h"
 
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 #define AOF_IODEPTH 100
 
 class PfPoller;
-
+class PfClientStore;
 /*
  * for open volume, jconductor will return a json like:
  *  {
@@ -52,12 +54,9 @@ public:
 	virtual int process_event(int event_type, int arg_i, void* arg_p,  void* arg_q);
 };
 
-class PfClientIocb
+class PfClientIocb : public PfIocb
 {
 public:
-	BufferDescriptor* cmd_bd;
-	BufferDescriptor* data_bd;
-	BufferDescriptor* reply_bd; //Used by dispatcher tasks
 	union{
 		void* user_buf;			//used by qfa_client to store user buffer
 		const struct iovec* user_iov;
@@ -66,7 +65,6 @@ public:
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
 
-	PfConnection *conn;
 	PfClientVolume* volume;
 	BOOL is_timeout;
 
@@ -75,13 +73,15 @@ public:
 	uint64_t reply_time; // the time get reply from server
 
 	SubTask* subtasks[1];
-	IoSubTask io_subtasks[1];
 	uint32_t task_mask;
 	//uint32_t ref_count;
 
 	//used by PfClientVolume::reopen_waiting
 	PfClientIocb* list_next;
 	PfClientIocb* list_prev;
+
+	PfConnection* conn;
+	IoSubTask io_subtasks[1];
 
 	void inline setup_subtask(PfOpCode opcode)
 	{
@@ -134,6 +134,12 @@ public:
 	//following are internal data constructed by client
 	std::vector<int> conn_id; // connection ID in connection pool. this vector correspond to store_ips
 	int current_ip;
+
+	int is_local = 0;//1 if this shard is local
+	std::string local_dev_name;
+	std::string local_dev_uuid;
+	PfClientStore* local_store=NULL;
+
 	PfClientShardInfo() :current_ip(0) {};
 };
 enum PfVolumeState
@@ -152,14 +158,14 @@ public:
 	std::string status;
 	std::string volume_name;
 	std::string snap_name;
-	std::string owner_ip;
+	char owner_ip[32];
 
 	uint64_t volume_size;
 	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
 	int meta_ver;
-	int snap_seq;
+	uint32_t snap_seq;
 	std::vector<PfClientShardInfo> shards;
 
 	//following are internal data constructed by client
@@ -181,6 +187,7 @@ public:
 
 	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
+	PfClientStore* get_local_store(int shard_index);
 };
 
 class ListVolumeReply
@@ -260,6 +267,7 @@ public:
 	int io_timeout; //timeout in second
 	int ref_count = 1;
 	mutable sem_t io_throttle; //used by AOF
+	PfZkClient zk_client;
 
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
 		PfClientIocb* io = &iocb_pool.data[cid];
@@ -276,7 +284,7 @@ public:
 	void remove_volume(PfClientVolume* vol);
 	void add_volume(PfClientVolume* vol);
 
-	int init(int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
+	int init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
 	void timeout_check_proc();
 	void heartbeat_once();
 	inline void add_ref() {
@@ -292,12 +300,16 @@ public:
 		}
 	}
 	int rpc_alloc_block(PfClientVolume* vol, uint64_t offset);
+	int rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq);
 private:
-	int rpc_common(PfClientVolume* vol, std::func<void(PfMessageHead* req_cmd)> head_filler, 
-				std::func<void(PfMessageReply* reply)> reply_extractor);
+	int rpc_common(PfClientVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler, 
+				std::function<void(PfMessageReply* reply)> reply_extractor);
 	~PfClientAppCtx();
 
 
 };
+
+
+
 #endif // pf_client_priv_h__
 

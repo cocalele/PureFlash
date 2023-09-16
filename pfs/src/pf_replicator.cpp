@@ -122,7 +122,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 		//	S5LOG_INFO("Recovery cid:%d complete", io_cmd->command_id);
 		//}
 		SubTask *t = (SubTask *) iocb->ulp_arg;
-		t->complete(s, reply->meta_ver);
+		t->ops->complete_meta_ver(t, s, reply->meta_ver);
 	}
 
 	mem_pool.reply_pool.free(iocb->reply_bd);
