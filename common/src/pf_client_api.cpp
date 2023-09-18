@@ -1494,7 +1494,7 @@ void PfClientAppCtx::heartbeat_once()
 		PfConnection* conn = it->second;
 		if (conn->state != CONN_OK || __sync_fetch_and_sub(&conn->inflying_heartbeat, 0) > 2)
 		{
-			conn_pool->ip_id_map.erase(it++);
+			it = conn_pool->ip_id_map.erase(it);
 			S5LOG_ERROR("connection:%p:%s timeout", conn, conn->connection_info.c_str());
 			conn->close();
 		}

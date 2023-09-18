@@ -1711,7 +1711,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 					//this snap not exists on primary
 					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", rep_id.val(), offset, snap);
 					delete_obj_snapshot(rep_id.to_shard_id().shard_id, offset >> LBA_LENGTH_ORDER, snap, prev, *primary_it);
-					local_snap_list.erase(it++);
+					it = local_snap_list.erase(it);
 					deleted = true;
 					break;
 				}
