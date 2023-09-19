@@ -45,7 +45,10 @@ public:
 };
 
 extern PfAppCtx* g_app_ctx;
-
-bool spdk_engine_used();
+extern bool spdk_engine;
+static inline __attribute__((always_inline)) bool spdk_engine_used()
+{
+	return spdk_engine == true;
+}
 void spdk_engine_set(bool use_spdk);
 #endif // pf_app_ctx_h__
