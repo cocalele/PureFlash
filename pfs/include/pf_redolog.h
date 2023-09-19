@@ -18,6 +18,7 @@ class PfRedoLog
 		TRIM_OBJ = 2,
 		FREE_OBJ = 3,
 		SNAP_SEQ_CHANGE = 4,
+		STATUS_CHANGE = 5,
 	};
 
 	struct Item{
@@ -44,6 +45,12 @@ class PfRedoLog
 				struct lmt_entry bentry;
 				uint32_t old_snap_seq;
 			}snap_seq_change;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				int old_status;
+			}state_change;
+
 		};
 	};
 
@@ -64,11 +71,14 @@ public:
 	int log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head);
 	int log_free(int block_id, int trim_list_head, int free_list_tail);
 	int log_trim(const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail);
+	int log_status_change(const lmt_key* key, const lmt_entry* entry, EntryStatus old_state);
+
 	int redo_allocation(Item* e);
 	int redo_trim(Item* e);
 	int redo_free(Item* e);
 	int log_snap_seq_change(const struct lmt_key* key, const struct lmt_entry* entry, int old_seq);
 	int redo_snap_seq_change(PfRedoLog::Item* e);
+	int redo_state_change(PfRedoLog::Item* e);
 	int stop();
 	int start();
 private:

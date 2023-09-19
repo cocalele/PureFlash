@@ -124,6 +124,9 @@ int PfRedoLog::replay()
 			case ItemType::SNAP_SEQ_CHANGE:
 				rc=redo_snap_seq_change(item);
 				break;
+			case ItemType::STATUS_CHANGE:
+				rc = redo_snap_seq_change(item);
+				break;
 			default:
 				S5LOG_FATAL("Unknown redo log type:%d", item->type);
 				rc = -1;
@@ -280,5 +283,33 @@ int PfRedoLog::redo_snap_seq_change(PfRedoLog::Item* e)
 		}
 	}
 	return 0;
+}
 
+int PfRedoLog::log_status_change(const lmt_key* key, const lmt_entry* entry, EntryStatus old_status)
+{
+	PfRedoLog::Item* item = (PfRedoLog::Item*)entry_buff;
+	item->phase = phase;
+	item->type = ItemType::STATUS_CHANGE;
+	item->state_change.bkey = *key;
+	item->state_change.bentry = *entry;
+	item->state_change.old_status = old_status;
+	return write_entry();
+}
+
+int PfRedoLog::redo_state_change(PfRedoLog::Item* e)
+{
+	auto pos = store->obj_lmt.find(e->snap_seq_change.bkey);
+	if (pos != store->obj_lmt.end())
+	{
+		for (struct lmt_entry* h = pos->second; h != NULL; h = h->prev_snap)
+		{
+			if (h->offset == e->state_change.bentry.offset)
+			{
+				if (h->status == e->state_change.old_status)
+					h->status = e->state_change.bentry.status;
+				break;
+			}
+		}
+	}
+	return 0;
 }
