@@ -970,7 +970,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				}
 				if (state == VOLUME_OPENED) {
 					state = VOLUME_WAIT_REOPEN;
-					std::ignore = std::async([this]() {
+					std::ignore = std::async(std::launch::async, [this]() {
 						S5LOG_INFO("Will reopen volume %s after 5s ...", volume_name.c_str());
 						sleep(5);
 						event_queue->post_event(EVT_REOPEN_VOLUME, meta_ver, (void*)(now_time_usec()), this);

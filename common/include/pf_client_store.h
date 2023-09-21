@@ -92,7 +92,7 @@ public:
 
 	inline void begin_cow(lmt_key* key, lmt_entry* srcEntry, lmt_entry* dstEntry)
 	{
-		auto f = std::async([this, key, srcEntry, dstEntry] {do_cow_entry(key, srcEntry, dstEntry); });
+		auto f = std::async(std::launch::async, [this, key, srcEntry, dstEntry] {do_cow_entry(key, srcEntry, dstEntry); });
 	}
 	int delete_obj(struct lmt_key* key, struct lmt_entry* entry);
 
