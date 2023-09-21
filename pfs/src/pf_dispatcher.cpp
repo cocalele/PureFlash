@@ -249,12 +249,12 @@ static void server_complete(SubTask* t, PfMessageStatus comp_status) {
 	t->complete_status = comp_status;
 	((PfServerIocb*)t->parent_iocb)->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, t);
 }
-static void server_complete2(SubTask* t, PfMessageStatus comp_status, uint16_t meta_ver) {
+static void server_complete_with_metaver(SubTask* t, PfMessageStatus comp_status, uint16_t meta_ver) {
 	if (meta_ver > ((PfServerIocb*)t->parent_iocb)->complete_meta_ver)
 		((PfServerIocb*)t->parent_iocb)->complete_meta_ver = meta_ver;
 	server_complete(t, comp_status);
 }
-static struct TaskCompleteOps _server_task_complete_ops={ server_complete , server_complete2 };
+static struct TaskCompleteOps _server_task_complete_ops={ server_complete , server_complete_with_metaver };
 
 int PfDispatcher::dispatch_complete(SubTask* sub_task)
 {

@@ -32,7 +32,7 @@ struct lmt_entry;
 struct lmt_key;
 
 
-
+extern TaskCompleteOps _recovery_complete_ops;
 struct RecoverySubTask : public IoSubTask
 {
 	BufferDescriptor *recovery_bd;
@@ -44,9 +44,7 @@ struct RecoverySubTask : public IoSubTask
 	sem_t* sem;
 	ObjectMemoryPool<RecoverySubTask>* owner_queue;
 
-	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){}
-	virtual void complete(PfMessageStatus comp_status);
-	virtual void complete(PfMessageStatus comp_status, uint16_t meta_ver);
+	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){ ops = &_recovery_complete_ops;}
 };
 
 
@@ -101,7 +99,7 @@ public:
 
 	//PfDispatcher(const std::string &name);
 	int prepare_volume(PfVolume* vol);
-	int dispatch_io(PfServerIocb *iocb);
+	inline int dispatch_io(PfServerIocb *iocb);
 	int dispatch_complete(SubTask*);
 	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 

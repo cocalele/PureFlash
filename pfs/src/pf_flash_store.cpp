@@ -885,8 +885,6 @@ int PfFlashStore::load_meta_data()
 			S5LOG_ERROR("Failed to read entry.");
 			return rc;
 		}
-		if(head_entry->status == EntryStatus::RECOVERYING)
-			head_entry->status = EntryStatus::UNINIT;
 		lmt_entry *tail = head_entry;
 		while (tail->prev_snap != NULL)
 		{
@@ -900,31 +898,17 @@ int PfFlashStore::load_meta_data()
 			}
 			tail->prev_snap = b;
 			S5LOG_DEBUG("read entry key:{rep_id:0x%x, slba:%d}, snap:%d phy_off:0x%llx", k.vol_id, k.slba, b->snap_seq, b->offset);
-			if(b->status == EntryStatus::RECOVERYING)
-				b->status = EntryStatus::UNINIT;
 			tail = tail->prev_snap;
 		}
-
-		//remove UNINITed entry
-		delete_matched_entry(&head_entry,
-		                     [](struct lmt_entry* _entry)->bool {
-			                     return _entry->status == EntryStatus::UNINIT;
-		                     },
-		                     [this](struct lmt_entry* _entry)->void {
-			                     lmt_entry_pool.free(_entry);
-		                     });
-		if(head_entry)
-			obj_lmt[k] = head_entry;
-
 
 	}
 	/*just for update md5*/
 	if (key_count == 0)
-		reader.load_buffer();
+		rc = reader.load_buffer();
 	S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d", key_count,
 		 free_obj_queue.queue_depth -1, free_obj_queue.count());
 
-	return 0;
+	return rc;
 
 }
 
@@ -1053,7 +1037,10 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 	}
 	S5LOG_INFO("end do_cow_entry");
 	sync_invoke([key, srcEntry, dstEntry, this]()->int {
+		EntryStatus old_status = dstEntry->status;
 		dstEntry->status = EntryStatus::NORMAL;
+
+		redolog->log_status_change(key, dstEntry, old_status);
 		IoSubTask*t = dstEntry->waiting_io;
 		dstEntry->waiting_io = NULL;
 		while (t) {
@@ -1139,7 +1126,11 @@ void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del
 	for(int i=0; i<SHARD_LBA_CNT; i += obj_lba_cnt)
 	{
 		uint64_t start_lba = shard_index * SHARD_LBA_CNT + i;
-		delete_obj_snapshot(vol_id, start_lba, snap_seq_to_del, prev_snap_seq, next_snap_seq);
+		this->event_queue->sync_invoke([this, prev_snap_seq, next_snap_seq, snap_seq_to_del, vol_id, start_lba]()->int {
+			return delete_obj_snapshot(vol_id, start_lba, snap_seq_to_del, prev_snap_seq, next_snap_seq);
+		});
+
+		
 	}
 
 }
@@ -1147,6 +1138,7 @@ void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del
 int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq)
 {
 	S5LOG_DEBUG("delete obj vol:0x%llx slba:%lld, snap_seq:%d prev_seq:%d next_seq:%d", volume_id, slba, snap_seq, prev_snap_seq, next_snap_seq);
+	assert(pthread_self() == this->tid);//we are manipulating lmt table
 	lmt_key key={.vol_id=volume_id, .slba = slba};
 	auto pos = obj_lmt.find(key);
 	if(pos == obj_lmt.end())
@@ -1450,54 +1442,38 @@ static int query_store(const char* ip, ReplyT& reply, const char* format, ...)
 	return -1;
 }
 
-void RecoverySubTask::complete(PfMessageStatus comp_status)
+static void recovery_complete(SubTask* t, PfMessageStatus comp_status)
 {
-	complete_status = comp_status;
+	t->complete_status = comp_status;
+	RecoverySubTask* rt = (RecoverySubTask *)t;
 	//S5LOG_INFO("RecoverySubTask::complete, status:%s", PfMessageStatus2Str(comp_status));
-	owner_queue->free(this);
-	sem_post(sem);
+	rt->owner_queue->free(rt);
+	sem_post(rt->sem);
+
+	
 }
-void RecoverySubTask::complete(PfMessageStatus comp_status, uint16_t meta_ver)
+static void recovery_complete_2(SubTask* t, PfMessageStatus comp_status, uint16_t meta_ver)
 {
-	complete(comp_status);
+	t->ops->complete(t, comp_status);
 }
+
+TaskCompleteOps _recovery_complete_ops = { recovery_complete , recovery_complete_2 };
 
 int PfFlashStore::recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset)
 {
+	int rc=0;
 	assert(head->status == EntryStatus::RECOVERYING);
 	lmt_entry* entry = head->prev_snap;
-	assert(entry == NULL || entry->snap_seq <= snap_seq);
-	if(entry == NULL || entry->snap_seq < snap_seq) {
-		if(free_obj_queue.is_empty()) {
-			S5LOG_ERROR("Failed to alloc object for recovery write, disk may be full. disk:%s", tray_name);
-		}
-		int obj_id = free_obj_queue.dequeue();
-		entry = lmt_entry_pool.alloc();
-		*entry = lmt_entry { offset: obj_id_to_offset(obj_id),
-				snap_seq : snap_seq,
-				status : EntryStatus::NORMAL,
-				prev_snap : head->prev_snap,
-				waiting_io : NULL
-		};
-		int rc = redolog->log_allocation(key, entry, free_obj_queue.head);
-		if (rc)
-		{
-			lmt_entry_pool.free(entry);
-			free_obj_queue.enqueue(obj_id);
-			S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc);
-			return rc;
-		}
-		head->prev_snap = entry;
-
-	}
+	assert(entry != NULL && entry->snap_seq == snap_seq);
+	
 	off_t in_blk_off = offset_in_block(offset, in_obj_offset_mask);
-	uint64_t rc = ioengine->sync_write(buf, length, entry->offset + in_blk_off);
+	rc = (int)ioengine->sync_write(buf, length, entry->offset + in_blk_off);
 	if(rc == (uint64_t)length)
 		return 0;
 	else {
 		rc = -errno;
 		S5LOG_ERROR("Failed write disk:%s on recovery_write, rc:%d", tray_name, rc);
-		return (int)rc;
+		return rc;
 	}
 }
 
@@ -1515,7 +1491,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 			if(lmt_pos->second == NULL)
 				obj_lmt.erase(lmt_pos);
 			head->prev_snap = NULL;
-//			lmt_entry_pool.free(head);
+//			lmt_entry_pool.free(head); //Why not free it? in `recovery_replica` will free recovery head entry
 			return -EALREADY;
 		}
 		lmt_entry* data_entry = head->prev_snap;
@@ -1595,7 +1571,9 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 				}
 			}
 		}
+		EntryStatus old_status = data_entry->status;
 		data_entry->status  = EntryStatus::NORMAL;
+		redolog->log_status_change(key, data_entry, old_status);
 		obj_lmt[*key] = data_entry;
 		return 0;
 	});
@@ -1625,7 +1603,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	}
 	DeferCall _d([vol] {vol->dec_ref(); });
 
-	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize, false);
+	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize, false); //size RECOVERY_IO_SIZE (128K), bug?
 	if(pendding_buf == NULL) {
 		S5LOG_ERROR("Failed to alloc pending buffer for recovery");
 		return -ENOMEM;
@@ -1639,7 +1617,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	}
 
 	lmt_entry *recovery_head_entry = lmt_entry_pool.alloc();
-	*recovery_head_entry = lmt_entry{.offset = -1, //this is a placehold entry, don't have valid position on disk
+	*recovery_head_entry = lmt_entry{.offset = -1, //this is a placeholder entry, don't have valid position on disk
 			.snap_seq = 0,
 			.status = EntryStatus::RECOVERYING,
 			.prev_snap = NULL,
@@ -1710,7 +1688,10 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				if(snap > prev && snap < *primary_it) {
 					//this snap not exists on primary
 					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", rep_id.val(), offset, snap);
-					delete_obj_snapshot(rep_id.to_shard_id().shard_id, offset >> LBA_LENGTH_ORDER, snap, prev, *primary_it);
+					
+					this->event_queue->sync_invoke([this, rep_id, offset, snap, prev, primary_it]()->int {
+						return delete_obj_snapshot(rep_id.to_shard_id().shard_id, offset >> LBA_LENGTH_ORDER, snap, prev, *primary_it);
+						});
 					it = local_snap_list.erase(it);
 					deleted = true;
 					break;
@@ -1733,6 +1714,52 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			sem_t recov_sem;
 			sem_init(&recov_sem, 0, iodepth);
 			S5LOG_INFO("recoverying object (rep_id:0x%llx offset:%lld snap: %d) ", rep_id.val(), offset, *snap_it);
+
+
+			lmt_entry* target_entry = recovery_head_entry->prev_snap;
+			uint32_t target_snap_seq = *snap_it;
+			assert(target_entry == NULL || target_entry->snap_seq <= target_snap_seq);
+
+			
+
+			if (target_entry == NULL || target_entry->snap_seq < target_snap_seq) {
+				rc = this->event_queue->sync_invoke([this, &target_entry, target_snap_seq, recovery_head_entry, key] {
+					if (free_obj_queue.is_empty()) {
+						S5LOG_ERROR("Failed to alloc object for recovery write, disk may be full. disk:%s", tray_name);
+						return -ENOSPC;
+					}
+					int obj_id = free_obj_queue.dequeue();
+					target_entry = lmt_entry_pool.alloc();
+					*target_entry = lmt_entry{ offset: obj_id_to_offset(obj_id),
+							snap_seq : target_snap_seq,
+							status : EntryStatus::RECOVERYING,
+							prev_snap : recovery_head_entry->prev_snap,
+							waiting_io : NULL
+					};
+					int rc = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
+					if (rc)
+					{
+						lmt_entry_pool.free(target_entry);
+						free_obj_queue.enqueue(obj_id);
+						S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc);
+						return rc;
+					}
+					recovery_head_entry->prev_snap = target_entry;
+					return rc;
+					});
+				// now we have two entry in RECOVERYING state
+				//[Head placeholder RECOVERYING] -> [Entry RECOVERYING] -> [old entry ...]
+			} else /* if (target_entry->snap_seq == target_snap_seq)*/  {
+				
+				//There's an existing target_entry, should we change it into status RECOVERYING?  No
+			}
+
+
+			if (rc)
+				return rc;
+
+
+
 			for(int j=0;j<recov_object_size/read_bs && !failed;j++) {
 				sem_wait(&recov_sem);
 				RecoverySubTask *t = task_queue.alloc();
@@ -1744,9 +1771,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
 						failed=1;
 					} else {
-						int rc2 = sync_invoke([this, &key, recovery_head_entry, t]()->int {
-							return recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
-						});
+						int rc2 =  recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
 						if(rc2)
 							failed = 1;
 					}
@@ -1770,7 +1795,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				bd->data_len = (int)read_bs;
 				t->recovery_bd = bd;
 				t->volume_id = rep_id.to_volume_id().vol_id;
-				t->offset = offset;
+				t->offset = offset + j* read_bs;
 
 				t->length = read_bs;
 				t->snap_seq = *snap_it;
@@ -1793,10 +1818,8 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
 						failed = 1;
 					} else {
-						rc = sync_invoke([this, &key, recovery_head_entry, t]() -> int {
-							return recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf,
+						rc =  recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf,
 							                      t->length, t->offset);
-						});
 						if (rc)
 							failed = 1;
 					}
@@ -1804,6 +1827,19 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 					t->recovery_bd = NULL;
 				}
 				task_queue.free(t);
+			}
+			//change target entry status to NORMAL
+			rc = event_queue->sync_invoke([this, key, target_entry]()->int{
+				if(target_entry->status != EntryStatus::NORMAL ) {
+					EntryStatus old = target_entry->status;
+					target_entry->status = EntryStatus::NORMAL;
+					return redolog->log_status_change(&key, target_entry, old);
+				}
+				
+			});
+			if(rc){
+				S5LOG_ERROR("Failed to write redolog rc:%d", rc);
+				return rc;
 			}
 			sem_destroy(&recov_sem);
 		}
@@ -1850,7 +1886,7 @@ int PfFlashStore::delete_replica(replica_id_t rep_id)
 
 			if (block_pos->second->status == RECOVERYING) {
 				S5LOG_WARN(
-						"Object(vol_id:0x%llx offset:%lld) is in recoverying and not deleted, please run GC later to reclaim it!",
+						"Object(vol_id:0x%llx offset:%lld) is in recovering and not deleted, please run GC later to reclaim it!",
 						key.vol_id, key.slba);
 				continue;
 			}
@@ -1895,7 +1931,22 @@ void PfFlashStore::trim_proc()
 
 void PfFlashStore::post_load_fix()
 {
-	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
+	//remove UNINITed entry
+	for(auto it = obj_lmt.begin(); it != obj_lmt.end(); ){
+
+		delete_matched_entry(&it->second,
+			[](struct lmt_entry* _entry)->bool {
+				return _entry->status == EntryStatus::COPYING || _entry->status == EntryStatus::RECOVERYING;
+			},
+			[this](struct lmt_entry* _entry)->void {
+				lmt_entry_pool.free(_entry);
+			});
+		if (it->second == NULL){
+			it = obj_lmt.erase(it);
+		} else {
+			++it;
+		}
+	}
 }
 
 void PfFlashStore::post_load_check()

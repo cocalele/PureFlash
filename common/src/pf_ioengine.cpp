@@ -52,7 +52,9 @@ uint64_t fd_get_cap(int fd)
 uint64_t PfAioEngine::sync_write(void *buffer, uint64_t size, uint64_t offset)
 {
 	uint64_t rc;
-
+	if(size >= (1<<20)){
+		S5LOG_WARN("Write large IO:%ldMB!", size>>20);
+	}
 	if ( (rc = pwrite(fd, buffer, size, offset)) != size)
 		return -errno;
 
@@ -62,6 +64,9 @@ uint64_t PfAioEngine::sync_write(void *buffer, uint64_t size, uint64_t offset)
 uint64_t PfAioEngine::sync_read(void *buffer, uint64_t size, uint64_t offset)
 {
 	uint64_t rc;
+	if (size >= (1 << 20)) {
+		S5LOG_WARN("Read large IO:%ldMB!", size >> 20);
+	}
 
 	if ( (rc = pread(fd, buffer, size, offset)) != size)
 		return -errno;
