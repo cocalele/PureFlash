@@ -160,6 +160,10 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 			stat.rep_wr_bytes += cmd->length;
 			return dispatch_rep_write(iocb, vol, s);
 			break;
+		case S5_OP_RPC_ALLOC_BLOCK:
+			return dispatch_rpc_alloc_block(iocb, vol, s);
+		case S5_OP_RPC_DELETE_BLOCK:
+			return dispatch_rpc_delete_block(iocb, vol, s);
 		default:
 			S5LOG_FATAL("Unknown opcode:%s(%d)", PfOpCode2Str(cmd->opcode), cmd->opcode);
 
@@ -245,6 +249,52 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 	return 0;
 }
 
+int PfDispatcher::dispatch_rpc_alloc_block(PfServerIocb* iocb, PfVolume* vol, PfShard* s)
+{
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	iocb->task_mask = 0;
+	int i = s->duty_rep_index;
+	if (likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
+		iocb->setup_one_subtask(s, i, cmd->opcode);
+		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
+		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
+		if (unlikely(s->is_primary_node)) {
+			S5LOG_ERROR("Rpc alloc block on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+				vol->id, vol->name, s->id, s->duty_rep_index);
+			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_REP_TO_PRIMARY);
+			return 1;
+		}
+		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	}
+	else {
+		S5LOG_FATAL("Unexpected replica status:%d on replicating write, rep:0x%llx", s->replicas[i]->status, s->replicas[i]->id);
+	}
+
+	return 0;
+}
+int PfDispatcher::dispatch_rpc_delete_block(PfServerIocb* iocb, PfVolume* vol, PfShard* s)
+{
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	iocb->task_mask = 0;
+	int i = s->duty_rep_index;
+	if (likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
+		iocb->setup_one_subtask(s, i, cmd->opcode);
+		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
+		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
+		if (unlikely(s->is_primary_node)) {
+			S5LOG_ERROR("Rpc delete block on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+				vol->id, vol->name, s->id, s->duty_rep_index);
+			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_REP_TO_PRIMARY);
+			return 1;
+		}
+		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
+	}
+	else {
+		S5LOG_FATAL("Unexpected replica status:%d on replicating write, rep:0x%llx", s->replicas[i]->status, s->replicas[i]->id);
+	}
+
+	return 0;
+}
 static void server_complete(SubTask* t, PfMessageStatus comp_status) {
 	t->complete_status = comp_status;
 	((PfServerIocb*)t->parent_iocb)->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, t);

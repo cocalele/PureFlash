@@ -13,6 +13,7 @@
 
 #include "pf_fixed_size_queue.h"
 #include "basetype.h"
+#include "pf_message.h"
 #include "pf_conf.h"
 #include "pf_mempool.h"
 #include "pf_event_queue.h"
@@ -156,7 +157,10 @@ private:
 	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
 	void post_load_fix();
 	void post_load_check();
-
+	int rpc_alloc_block_impl(SubTask* t);
+	int rpc_delete_block_impl(SubTask* t);
+	int rpc_change_block_status_impl(SubTask* t);
+	PfMessageStatus  _alloc_block(const lmt_key& key, PfMessageHead* req_cmd, lmt_entry** entry);
 	friend class PfRedoLog;
 };
 

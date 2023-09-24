@@ -445,6 +445,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 		entry = block_pos->second;
 		if(unlikely(entry->status == EntryStatus::RECOVERYING)) {
 			if(0 == entry->snap_seq) {
+				assert(entry->offset == -1);//this is the placeholder
 				entry->snap_seq = cmd->snap_seq;
 			}
 			memcpy((char*)entry->recovery_buf + offset_in_block(cmd->offset, in_obj_offset_mask),
@@ -976,6 +977,9 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
             case PfOpCode::S5_OP_REPLICATE_WRITE:
                 do_write((IoSubTask*)arg_p);
                 break;
+			case PfOpCode::S5_OP_RPC_ALLOC_BLOCK:
+				rpc_alloc_block_impl((IoSubTask*)arg_p);
+				break;
             default:
                 S5LOG_FATAL("Unsupported op code:%d", op);
         }
@@ -2230,4 +2234,163 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 	
 	return ret;
+}
+PfMessageStatus PfFlashStore::_alloc_block(const lmt_key& key, PfMessageHead* cmd, lmt_entry** entry)
+{
+	if (free_obj_queue.is_empty()) {
+		S5LOG_ERROR("Disk:%s is full!", tray_name);
+		return MSG_STATUS_NOSPACE;
+	}
+	int obj_id = free_obj_queue.dequeue();//has checked empty before and will never fail
+	*entry = lmt_entry_pool.alloc();
+	**entry = lmt_entry{ offset: obj_id_to_offset(obj_id),
+		snap_seq : cmd->snap_seq,
+		status : (EntryStatus)cmd->rpc_obj_status,
+		prev_snap : NULL,
+		waiting_io : NULL
+	};
+	obj_lmt[key] = *entry;
+	int rc = redolog->log_allocation(&key, *entry, free_obj_queue.head);
+	if (rc)
+	{
+		S5LOG_ERROR("log_allocation error, rc:%d", rc);
+		return MSG_STATUS_LOGFAILED;
+	}
+
+}
+
+int PfFlashStore::rpc_alloc_block_impl(SubTask* io)
+{
+	int blk_id = -1;
+	PfMessageStatus  rc = PfMessageStatus::MSG_STATUS_SUCCESS;
+	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
+	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
+	io->opcode = cmd->opcode;
+	lmt_key key = { VOLUME_ID(io->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
+	auto block_pos = obj_lmt.find(key);
+	lmt_entry* entry = NULL;
+
+	if (unlikely(block_pos == obj_lmt.end()))
+	{
+		S5LOG_DEBUG("Rpc alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
+		rc = _alloc_block(key, cmd, &entry);
+		if(rc){
+			app_context.error_handler->submit_error(io, rc);
+			return 0;
+		}
+	}
+	else
+	{
+		entry = block_pos->second;
+		while(entry!=NULL && entry->snap_seq > cmd->snap_seq) entry=entry->prev_snap;
+		if(entry!=NULL && entry->snap_seq == cmd->snap_seq){
+			if(entry->status != cmd->rpc_obj_status){
+				EntryStatus old = entry->status;
+				entry->status = (EntryStatus)cmd->rpc_obj_status;
+				int rc2 = redolog->log_status_change(&key, entry, old);
+				if (rc2) {
+					app_context.error_handler->submit_error(io, PfMessageStatus::MSG_STATUS_LOGFAILED);
+					return 0;
+				}
+			}
+		} else  {
+			lmt_entry* new_entry;
+			rc = _alloc_block(key, cmd, &new_entry);
+			if (rc) {
+				app_context.error_handler->submit_error(io, rc);
+				return 0;
+			}
+			entry = block_pos->second;
+			if(new_entry->snap_seq > entry->snap_seq){
+				new_entry->prev_snap = entry;
+				obj_lmt[key] = new_entry;
+			} else {
+				while (entry != NULL && entry->snap_seq > cmd->snap_seq) {
+					if (entry->prev_snap == NULL || new_entry->snap_seq > entry->prev_snap->snap_seq) {
+						new_entry->prev_snap = entry->prev_snap;
+						entry->prev_snap = new_entry;
+						entry = new_entry;
+						break;
+					}
+				}
+			}
+			
+		}
+
+
+	}
+
+
+	io->parent_iocb->reply_bd->reply_bd->block_id =   offset_to_obj_id(entry->offset);
+	io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
+}
+
+int PfFlashStore::rpc_delete_block_impl(SubTask* io)
+{
+	PfMessageHead* cmd = io->parent_iocb->cmd_bd->cmd_bd;
+	io->opcode = cmd->opcode;
+	lmt_key key = { VOLUME_ID(io->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
+	auto block_pos = obj_lmt.find(key);
+	lmt_entry* entry = NULL;
+	PfMessageStatus comp_status = MSG_STATUS_SUCCESS;
+	if (unlikely(block_pos == obj_lmt.end()))
+	{
+		S5LOG_DEBUG("Rpc delete object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx not exists ", io->rep_id, key.slba, cmd->offset);
+	}
+	else
+	{
+		delete_matched_entry(&entry, [cmd](lmt_entry* ele)->bool{
+			return (ele->offset == cmd->offset);
+		},
+			[key, &comp_status, this](struct lmt_entry* _entry)->void {
+				trim_obj_queue.enqueue((int)offset_to_obj_id(_entry->offset));
+				int rc = redolog->log_trim(&key, _entry, trim_obj_queue.tail);
+				if(rc){
+					S5LOG_ERROR("Failed to log trim, rc:%d", rc);
+					comp_status = PfMessageStatus::MSG_STATUS_LOGFAILED;
+				}
+				lmt_entry_pool.free(_entry);
+			}
+		);
+		if(block_pos->second == NULL){
+			obj_lmt.erase(block_pos);
+		}
+
+		
+	}
+	io->parent_iocb->reply_bd->reply_bd->block_id = offset_to_obj_id(cmd->offset);
+	io->ops->complete(io, comp_status);
+}
+
+int PfFlashStore::rpc_change_block_status_impl(SubTask* t)
+{
+	PfMessageHead* cmd = t->parent_iocb->cmd_bd->cmd_bd;
+	t->opcode = cmd->opcode;
+	lmt_key key = { VOLUME_ID(t->rep_id), (int64_t)vol_offset_to_block_slba(cmd->offset, head.objsize_order), 0, 0 };
+	auto block_pos = obj_lmt.find(key);
+	PfMessageStatus comp_status = MSG_STATUS_SUCCESS;
+	if (unlikely(block_pos == obj_lmt.end()))
+	{
+		S5LOG_DEBUG("Block not exists for rep:0x%llx slba:0x%llx  cmd offset:0x%llx not exists ", t->rep_id, key.slba, cmd->offset);
+		comp_status = MSG_STATUS_INVALID_FIELD;
+	}
+	else
+	{
+		comp_status = MSG_STATUS_INVALID_FIELD;
+		for (lmt_entry* entry = block_pos->second; entry!=NULL; entry=entry->prev_snap ){
+			if (entry->offset == cmd->offset){
+				auto old = entry->status;
+				entry->status = (EntryStatus)cmd->rpc_obj_status;
+				int rc = redolog->log_status_change(&key, entry, old);
+				if(rc){
+					S5LOG_ERROR("Failed to write redo log, rc:%d", rc);
+					comp_status = MSG_STATUS_LOGFAILED;
+				}else{
+					comp_status = MSG_STATUS_SUCCESS;
+				}
+				break;
+			}
+		}
+	}
+	t->ops->complete(t, comp_status);
 }

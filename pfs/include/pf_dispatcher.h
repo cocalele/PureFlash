@@ -109,6 +109,8 @@ public:
 	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
+	int dispatch_rpc_delete_block(PfServerIocb* iocb, PfVolume* vol, PfShard* s);
+	int dispatch_rpc_alloc_block(PfServerIocb* iocb, PfVolume* vol, PfShard* s);
 
 	void set_snap_seq(int64_t volume_id, int snap_seq);
 	int set_meta_ver(int64_t volume_id, int meta_ver);

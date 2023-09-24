@@ -15,6 +15,7 @@
 #include "pf_app_ctx.h"
 #include "pf_iotask.h"
 #include "pf_zk_client.h"
+#include "pf_lmt.h"
 
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 #define AOF_IODEPTH 100
@@ -299,8 +300,10 @@ public:
 			delete this;
 		}
 	}
-	int rpc_alloc_block(PfClientVolume* vol, uint64_t offset);
-	int rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq);
+	[[nodiscard]] int rpc_alloc_block(PfClientVolume* vol, uint64_t offset, EntryStatus new_status);
+	[[nodiscard]] int rpc_delete_obj(PfClientVolume* volume, const lmt_key* key, const lmt_entry* entry);
+	[[nodiscard]] int rpc_change_obj_status(PfClientVolume* volume, const lmt_key *key, lmt_entry* entry, EntryStatus st);
+
 private:
 	int rpc_common(PfClientVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler, 
 				std::function<void(PfMessageReply* reply)> reply_extractor);

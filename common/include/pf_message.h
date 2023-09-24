@@ -25,7 +25,7 @@
 #define IS_WRITE_OP(op) ((op & 0x03) == _WRITE_OP_)
 #define IS_READ_OP(op) ((op & 0x03) == _READ_OP_)
 
-#define _OP_CODE_(x, dir) ((x<<2)|dir)
+#define _OP_CODE_(x, dir) (((x)<<2)|dir)
 enum PfOpCode : uint8_t {
 	S5_OP_WRITE = _OP_CODE_(0, _WRITE_OP_),
 	S5_OP_READ  = _OP_CODE_(0, _READ_OP_),
@@ -37,6 +37,8 @@ enum PfOpCode : uint8_t {
 	S5_OP_RECOVERY_WRITE = _OP_CODE_(3, _WRITE_OP_),
 	S5_OP_RPC_ALLOC_BLOCK = _OP_CODE_(4, _NODATA_OP_),
 	S5_OP_RPC_DELETE_BLOCK = _OP_CODE_(5, _NODATA_OP_),
+	S5_OP_RPC_CHANGE_STATUS = _OP_CODE_(6, _NODATA_OP_),
+	S5_OP_RPC_CHANGE_SNAPSEQ = _OP_CODE_(7, _NODATA_OP_),
 };
 
 const char* PfOpCode2Str(PfOpCode op);
@@ -104,7 +106,7 @@ struct PfMessageHead
 	uint64_t                  buf_addr;
 	uint32_t                  rkey;
 	uint16_t                  meta_ver;
-	uint16_t                  rsv2;
+	uint16_t                  rpc_obj_status; //initial status of object, cast from EntryStatus(uint32_t)
 	uint64_t                  offset;
 	uint32_t                  length;
 	uint32_t                  command_seq;  //use this field to hold io task sequence number

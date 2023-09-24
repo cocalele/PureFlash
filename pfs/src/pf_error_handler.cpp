@@ -47,14 +47,16 @@ int PfErrorHandler::report_error_to_conductor(uint64_t rep_id, int sc,ErrorRepor
 //submit_error should work in asynchronous mode, though now it in synchronized mode
 int PfErrorHandler::submit_error(IoSubTask* t, PfMessageStatus sc)
 {
-	ErrorReportReply r;
-	int rc = report_error_to_conductor(t->rep_id, sc, r);
-	if(rc) {
-		S5LOG_ERROR("Failed report error to conductor, rc:%d", rc);
-	} else {
-		S5LOG_INFO("Error report get sc:%s, meta_ver:%d", PfMessageStatus2Str(r.action_code), r.meta_ver);
-	}
-    t->ops->complete_meta_ver(t, r.action_code, r.meta_ver);
+	std::async(std::launch::async, [this, t, sc](){
+		ErrorReportReply r;
+		int rc = report_error_to_conductor(t->rep_id, sc, r);
+		if(rc) {
+			S5LOG_ERROR("Failed report error to conductor, rc:%d", rc);
+		} else {
+			S5LOG_INFO("Error report get sc:%s, meta_ver:%d", PfMessageStatus2Str(r.action_code), r.meta_ver);
+		}
+		t->ops->complete_meta_ver(t, r.action_code|sc, r.meta_ver);
+	});
     return 0;
 }
 PfErrorHandler::PfErrorHandler()

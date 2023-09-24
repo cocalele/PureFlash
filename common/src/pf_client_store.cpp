@@ -142,7 +142,7 @@ int PfClientStore::do_write(IoSubTask* io)
 					entry->waiting_io = io; //insert io to waiting list
 					return 0;
 				}
-				S5LOG_FATAL("Block in abnormal status:%d", entry->status);
+				S5LOG_FATAL("Block (vol:0x%lx off:0x%lx in abnormal status:%d", cmd->vol_id, cmd->offset, entry->status);
 				io->ops->complete(io, MSG_STATUS_INTERNAL);
 				return -EINVAL;
 			}
@@ -155,10 +155,11 @@ int PfClientStore::do_write(IoSubTask* io)
 			return 0;
 		}
 		else if (unlikely(cmd->snap_seq > entry->snap_seq)) {
-			int obj_id = volume->runtime_ctx->rpc_alloc_block(volume, cmd->offset);
+			//assert(cmd->snap_seq == volume->snap_seq); //cmd->snap_seq is assigned in io_submit
+			int obj_id = volume->runtime_ctx->rpc_alloc_block(volume, cmd->offset, EntryStatus::COPYING);
 			if (obj_id < 0) {
-				S5LOG_ERROR("Disk:%s is full!", tray_name);
-				io->ops->complete(io, MSG_STATUS_READONLY);
+				S5LOG_ERROR("Failed allock block on disk:%s, rc:%d", tray_name, obj_id);
+				io->ops->complete(io, obj_id);
 				return 0;
 			}
 			struct lmt_entry* cow_entry = lmt_entry_pool.alloc();
@@ -189,8 +190,10 @@ int PfClientStore::do_write(IoSubTask* io)
 void PfClientStore::do_cow_entry(lmt_key* key, lmt_entry* srcEntry, lmt_entry* dstEntry)
 {//this function called in thread pool, not the store's event thread
 	CowTask r;
+	int rc = 0;
 	r.src_offset = srcEntry->offset;
 	r.dst_offset = dstEntry->offset;
+	r.opcode = S5_OP_COW_READ;
 	r.size = COW_OBJ_SIZE;
 	sem_init(&r.sem, 0, 0);
 	S5LOG_INFO("begin do_cow_entry");
@@ -203,6 +206,7 @@ void PfClientStore::do_cow_entry(lmt_key* key, lmt_entry* srcEntry, lmt_entry* d
 		goto cowfail;
 	}
 
+	r.opcode = S5_OP_COW_WRITE;
 	ioengine->submit_cow_io(&r, r.dst_offset, r.size);
 	sem_wait(&r.sem);
 	if (unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS)) {
@@ -210,8 +214,16 @@ void PfClientStore::do_cow_entry(lmt_key* key, lmt_entry* srcEntry, lmt_entry* d
 		goto cowfail;
 	}
 	S5LOG_INFO("end do_cow_entry");
+	rc = volume->runtime_ctx->rpc_change_obj_status(volume, key, dstEntry, EntryStatus::NORMAL);
+	if(rc){
+		S5LOG_ERROR("COW write failed, rpc_change_obj_status failed, rc:%d", rc);
+		goto cowfail;
+	}
 	volume->event_queue->sync_invoke([key, srcEntry, dstEntry, this]()->int {
+		EntryStatus old_status = dstEntry->status;
 		dstEntry->status = EntryStatus::NORMAL;
+		
+		//redolog->log
 		IoSubTask* t = dstEntry->waiting_io;
 		dstEntry->waiting_io = NULL;
 		while (t) {
@@ -226,7 +238,7 @@ void PfClientStore::do_cow_entry(lmt_key* key, lmt_entry* srcEntry, lmt_entry* d
 			delete_obj(key, srcEntry);
 		}
 		return 0;
-		});
+	});
 	g_app_ctx->cow_buf_pool.free(r.buf, spdk_engine_used());
 	return;
 cowfail:
@@ -309,6 +321,6 @@ int PfClientStore::delete_obj(struct lmt_key* key, struct lmt_entry* entry)
 		});
 	if (pos->second == NULL)
 		obj_lmt.erase(pos);
-	return volume->runtime_ctx->rpc_delete_obj(volume, key->slba, entry->snap_seq);
+	return volume->runtime_ctx->rpc_delete_obj(volume, key, entry);
 }
 

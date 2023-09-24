@@ -1464,8 +1464,9 @@ void PfClientAppCtx::timeout_check_proc()
 			if (ios[i].sent_time != 0 && now > ios[i].sent_time + io_timeout_us && ios[i].is_timeout != 1)
 			{
 			//IO may has been timeout, but not accurate, send to volume thread to judge again
-				//S5LOG_DEBUG("IO timeout detected, cid:%d, volume:%s, timeout:%luus",
-				//	((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, ios[i].volume->volume_name.c_str(), io_timeout_us);
+				S5LOG_DEBUG("Suspected IO timeout  cid:%d, volume:%s, timeout:%luus",
+					((PfMessageHead*)ios[i].cmd_bd->buf)->command_id, ios[i].volume->volume_name.c_str(), io_timeout_us);
+#pragma  warning("Add IO ref_count to avoid dangling IO reference")
 				ios[i].volume->event_queue->post_event(EVT_IO_TIMEOUT, 0, &ios[i], ios[i].volume);
 				ios[i].is_timeout = 1;
 			}
@@ -1601,7 +1602,7 @@ int PfClientAppCtx::rpc_common(PfClientVolume* vol, std::function<void(PfMessage
 	free_iocb(io);
 	return rc;
 }
-int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
+int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset, EntryStatus new_status)
 {
 	int new_block_id = 0;
 	int rc;
@@ -1611,6 +1612,7 @@ int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
 		cmd->rkey = 0;
 		cmd->offset = offset;
 		cmd->snap_seq = volume->snap_seq;
+		cmd->rpc_obj_status = new_status;
 		},
 		[&new_block_id](PfMessageReply* reply) {
 			new_block_id = reply->block_id;
@@ -1621,20 +1623,41 @@ int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
 	return rc;
 }
 
-int PfClientAppCtx::rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq)
+int PfClientAppCtx::rpc_delete_obj(PfClientVolume* volume, const lmt_key* key, const lmt_entry* entry)
 {
 	int rc;
-	rc = rpc_common(volume, [volume, slba](PfMessageHead* cmd) {
+	rc = rpc_common(volume, [volume, entry](PfMessageHead* cmd) {
 		cmd->opcode = S5_OP_RPC_DELETE_BLOCK;
 		cmd->vol_id = volume->volume_id;
 		cmd->rkey = 0;
-		cmd->offset = slba;
-		cmd->snap_seq = volume->snap_seq;
+		cmd->offset = entry->offset;
+		cmd->snap_seq = entry->snap_seq;
 		},
 		[](PfMessageReply* reply) {
 			
 		}
 		);
+	return rc;
+}
+
+int PfClientAppCtx::rpc_change_obj_status(PfClientVolume* volume, const lmt_key* key, lmt_entry* entry, EntryStatus status)
+{
+	int rc;
+	rc = rpc_common(volume, [volume, entry, status](PfMessageHead* cmd) {
+		cmd->opcode = S5_OP_RPC_CHANGE_STATUS;
+		cmd->vol_id = volume->volume_id;
+		cmd->rkey = 0;
+		cmd->offset = entry->offset;
+		cmd->rpc_obj_status = (uint16_t)status;
+		//cmd->snap_seq = volume->snap_seq;
+		},
+		[](PfMessageReply* reply) {
+
+		}
+		);
+	if(!rc){
+		entry->status = status;
+	}
 	return rc;
 }
 
