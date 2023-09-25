@@ -57,9 +57,9 @@ public:
 	void* entry_buff;
 	std::thread auto_save_thread;
 
-	int init(struct PfFlashStore* ssd);
-	int load(struct PfFlashStore* ssd);
-	int replay();
+	int init(struct PfFlashStore* s);
+	int set_log_phase(int64_t phase, uint64_t offset);
+	int replay(int64_t start_phase, int which);
 	int discard();
 	int log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head);
 	int log_free(int block_id, int trim_list_head, int free_list_tail);

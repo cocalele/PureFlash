@@ -24,9 +24,27 @@
 #include "pf_ioengine.h"
 
 #define META_RESERVE_SIZE (40LL<<30) //40GB, can be config in conf
-#define MIN_META_RESERVE_SIZE (4LL<<30) //40GB, can be config in conf
+#define MIN_META_RESERVE_SIZE (10LL<<30) //40GB, can be config in conf
 
 #define S5_VERSION 0x00020000
+
+#define MD5_RESULT_LEN (16)
+
+enum  {
+	FIRST_METADATA_ZONE,
+	SECOND_METADATA_ZONE,
+	FIRST_REDOLOG_ZONE,
+	SECOND_REDOLOG_ZONE,
+};
+
+enum {
+	FREELIST,
+	TRIMLIST,
+	LMT,
+	REDOLOG,
+	CURRENT,
+	OPPOSITE,
+};
 
 class PfRedoLog;
 class IoSubTask;
@@ -118,16 +136,26 @@ public:
 		uint64_t meta_size;
 		uint32_t objsize_order; //objsize = 2 ^ objsize_order
 		uint32_t rsv1; //to make alignment at 8 byte
-		uint64_t free_list_position;
-		uint64_t free_list_size;
-		uint64_t trim_list_position;
+		uint64_t free_list_position_first;
+		uint64_t free_list_position_second;
+		uint64_t free_list_size_first;
+		uint64_t free_list_size_second;
+		uint64_t trim_list_position_first;
+		uint64_t trim_list_position_second;
 		uint64_t trim_list_size;
-		uint64_t lmt_position;
+		uint64_t lmt_position_first;
+		uint64_t lmt_position_second;
 		uint64_t lmt_size;
-		uint64_t metadata_md5_position;
-		uint64_t head_backup_position;
-		uint64_t redolog_position;
+		uint64_t redolog_position_first;
+		uint64_t redolog_position_second;
 		uint64_t redolog_size;
+		/**update after save metadata**/
+		int64_t  redolog_phase;
+		uint8_t  current_metadata;
+		uint8_t  current_redolog;
+		char md5_first[MD5_RESULT_LEN];
+		char md5_second[MD5_RESULT_LEN];
+		/***/
 		char create_time[32];
 	};
 
@@ -147,7 +175,14 @@ public:
 	PfRedoLog* redolog;
 	char tray_name[256];
 	HeadPage head;
-
+	pthread_mutex_t md_lock;
+	pthread_cond_t md_cond;
+#define COMPACT_IDLE 0
+#define COMPACT_TODO 1
+#define COMPACT_STOP 2
+#define COMPACT_RUNNING 3
+#define COMPACT_ERROR 4
+	std::atomic<int> to_run_compact;
 
 	~PfFlashStore();
 	/**
@@ -189,7 +224,13 @@ public:
 	 */
 	int do_write(IoSubTask* io);
 
-	int save_meta_data();
+	int save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
+	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone);
+	int compact_meta_data();
+	int meta_data_compaction_trigger(int state, bool force_wait);
+	uint64_t get_meta_position(int meta_type, int which);
+	int oppsite_md_zone();
+	int oppsite_redolog_zone();
 	void delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 	int recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
 					  const std::string& from_ssd_uuid, int64_t object_size, uint16_t meta_ver);
@@ -202,8 +243,10 @@ private:
 	ThreadPool cow_thread_pool;
 
 	int read_store_head();
+	int write_store_head();
 	int initialize_store_head();
-	int load_meta_data();
+	int load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
+		std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone, bool compaction);
 
 	/** these two function convert physical object id (i.e. object in disk space) and offset in disk
 	 *  Note: don't confuse these function with vol_offset_to_block_idx, which do convert
