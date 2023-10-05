@@ -11,3 +11,6 @@
 [submodule "thirdParty/isa-l_crypto"]
 	path = thirdParty/isa-l_crypto
 	url = https://gitee.com/mirrors/isa-l_crypto.git
+[submodule "thirdParty/spdk"]
+	path = thirdParty/spdk
+	url = https://gitee.com/mirrors/spdk.git

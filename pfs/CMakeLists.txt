@@ -23,7 +23,6 @@ ENDIF()
 
 
 USE_ZOOKEEPER()
-
 set(CMAKE_C_FLAGS   "-Wall -Wno-conversion -Wno-sign-compare -std=c99 -fms-extensions -Wno-variadic-macros -Wno-format-truncation -I/usr/include ${C_FLAG_GCOV}")
 set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wno-variadic-macros -Wno-format-truncation -I/usr/include -D_XOPEN_SOURCE ${C_FLAG_GCOV}")
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG ")

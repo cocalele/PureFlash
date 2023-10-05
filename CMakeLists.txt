@@ -73,6 +73,7 @@ macro(USE_SPDK)
 	execute_process(COMMAND make -j 4
                     WORKING_DIRECTORY ${THIRDPARTY}/spdk)
 endmacro(USE_SPDK)
+USE_SPDK()
 
 INCLUDE(CheckIncludeFiles)
 CHECK_INCLUDE_FILES("rdma/rdma_cma.h" HAVE_RDMA_H)
