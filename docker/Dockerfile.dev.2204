@@ -1,0 +1,36 @@
+FROM ubuntu:22.04
+LABEL version="1.8.3"
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/ShangHai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+COPY apt-ali-sources-2204.list /etc/apt/sources.list
+RUN apt update
+RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool  libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk ant meson libssl-dev ncurses-dev
+RUN pip install pyelftools
+RUN apt install -y linux-kernel-headers
+
+#RUN apt install -y openssh-server
+#RUN mkdir /run/sshd;  chmod 700 /run/sshd
+#RUN passwd root
+
+##To install mariadb-server
+#RUN apt install -y apt-transport-https curl
+#RUN curl -o /etc/apt/trusted.gpg.d/mariadb_release_signing_key.asc 'https://mariadb.org/mariadb_release_signing_key.asc'
+#RUN sh -c "echo 'deb https://mirrors.aliyun.com/mariadb/repo/10.5/ubuntu focal main' >>/etc/apt/sources.list"
+#RUN apt update
+#RUN apt install -y mariadb-server
+#
+
+## to install ant
+
+
+#COPY mariadb/mariadb.cnf /etc/mysql/mariadb.cnf
+#COPY mariadb/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
+#COPY pfcli /opt/pureflash/pfcli
+#COPY pfdd /opt/pureflash/pfdd
+#COPY qemu-img /opt/pureflash/qemu-img
+#COPY pfs /opt/pureflash/pfs
+#COPY fio /opt/pureflash/fio
+#COPY run-all.sh /opt/pureflash/run-all.sh
+#COPY restart-pfc.sh /opt/pureflash/restart-pfc.sh
+#COPY restart-pfs.sh /opt/pureflash/restart-pfs.sh

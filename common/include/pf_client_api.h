@@ -30,7 +30,12 @@ struct PfClientVolumeInfo {
 	int snap_seq;
 };
 
-
+/**
+ * this is a helper function used to get volume information only.
+ * no runtime context is created
+ */
+struct PfClientVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+	int lib_ver);
 
 struct PfClientVolume *pf_open_volume(const char *volume_name, const char *cfg_filename, const char *snap_name,
                                       int lib_ver);

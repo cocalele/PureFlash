@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <future>
 
 #include "pf_connection_pool.h"
 #include "pf_connection.h"
@@ -157,7 +158,71 @@ struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_
 	return NULL;
 }
 
+struct PfClientVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+	int lib_ver)
+{
+	S5LOG_INFO("Half open volume:%s", volume_name);
+	try	{
+		Cleaner _clean;
+		PfClientVolume* volume = new PfClientVolume;
+		if (volume == NULL)
+		{
+			S5LOG_ERROR("alloca memory for volume failed!");
+			return NULL;
+		}
+		_clean.push_back([volume]() { delete volume; });
+		//other calls
+		volume->volume_name = volume_name;
+		if (cfg_filename == NULL)
+			cfg_filename = default_cfg_file;
+		volume->cfg_file = cfg_filename;
+		if (snap_name)
+			volume->snap_name = snap_name;
 
+		int rc = 0;
+		conf_file_t cfg = conf_open(cfg_filename);
+		if (cfg == NULL)
+		{
+			S5LOG_ERROR("Failed open config file:%s", cfg_filename);
+			return NULL;
+		}
+		DeferCall _cfg_r([cfg]() { conf_close(cfg); });
+
+		char* esc_vol_name = curl_easy_escape(NULL, volume_name, 0);
+		if (!esc_vol_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed.");
+			return NULL;
+		}
+		DeferCall _1([esc_vol_name]() { curl_free(esc_vol_name); });
+		char* esc_snap_name = curl_easy_escape(NULL, snap_name, 0);
+		if (!esc_snap_name)
+		{
+			S5LOG_ERROR("Curl easy escape failed.");
+			return NULL;
+		}
+		DeferCall _2([esc_snap_name]() { curl_free(esc_snap_name); });
+		const char* op = "open_volume";
+		std::string query = format_string("op=%s&volume_name=%s&snapshot_name=%s", op, esc_vol_name, esc_snap_name);
+		rc = query_conductor(cfg, query, *volume);
+		if (rc != 0) {
+			S5LOG_ERROR("Failed query conductor, rc:%d", rc);
+			return NULL;
+		}
+		for (int i = 0; i < volume->shards.size(); i++) {
+			volume->shards[i].parsed_store_ips = split_string(volume->shards[i].store_ips, ',');
+		}
+		volume->state = VOLUME_OPENED;
+		S5LOG_INFO("Succeeded open volume %s@%s(0x%lx), meta_ver=%d, io_depth=%d", volume->volume_name.c_str(),
+			volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->volume_id, volume->meta_ver, volume->io_depth);
+
+		_clean.cancel_all();
+		return volume;
+	}catch (std::exception& e)	{
+		S5LOG_ERROR("Exception in open volume:%s", e.what());
+	}
+	return NULL;
+}
 struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
 {
 	return _pf_open_volume(volume_name, cfg_filename, snap_name, lib_ver, false);
@@ -784,6 +849,10 @@ static int reopen_volume(PfClientVolume* volume)
 
 	S5LOG_INFO("Succeeded reopen volume %s@%s(0x%lx), meta_ver:%d io_depth=%d", volume->volume_name.c_str(),
 		volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->volume_id, volume->meta_ver, volume->io_depth);
+	PfClientIocb* io;
+	while((io = volume->reopen_waiting.pop()) != NULL) {
+		volume->resend_io(io);
+	}
 	return rc;
 }
 
@@ -834,11 +903,27 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		int shard_index = (int)(io_cmd->offset >> SHARD_SIZE_ORDER);
 		struct PfConnection* conn = get_shard_conn(shard_index);
 
-		if (conn == NULL)
-		{
-			io->ulp_handler(io->ulp_arg, -EIO);
-			S5LOG_ERROR("conn == NULL ,command id:%d task_sequence:%d, io_cmd :%d", io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
-			runtime_ctx->iocb_pool.free(io);
+		if (unlikely(conn == NULL))
+		{//no server available, volume will reopen soon
+			if (now_time_usec() > io->submit_time + SEC2US(runtime_ctx->io_timeout)) {
+				io->ulp_handler(io->ulp_arg, -EIO);
+				S5LOG_ERROR("IOError, can't get a usable connection before timeout, volume:%s command id:%d task_sequence:%d, io_cmd :%d",
+					volume_name, io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
+				runtime_ctx->iocb_pool.free(io);
+
+			}
+			else {
+				reopen_waiting.append(io);
+			}
+			if (state == VOLUME_OPENED) {
+				state = VOLUME_WAIT_REOPEN;
+				std::async([this]() {
+					S5LOG_INFO("Will reopen volume %s after 5s ...", volume_name.c_str());
+					sleep(5);
+					event_queue->post_event(EVT_REOPEN_VOLUME, meta_ver, (void*)(now_time_usec()), this);
+					});
+			}
+
 			break;
 		}
 		io_cmd->meta_ver = (uint16_t)meta_ver;
@@ -956,7 +1041,6 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 	}
 	S5LOG_ERROR("Failed to get an usable IP for vol:%s shard:%d, change volume state to VOLUME_DISCONNECTED ",
 			 volume_name.c_str(), shard_index);
-	state = VOLUME_DISCONNECTED;
 	return NULL;
 }
 

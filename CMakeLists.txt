@@ -65,6 +65,15 @@ macro(USE_ISA_L)
 #                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 endmacro(USE_ISA_L)
 
+macro(USE_SPDK)
+	execute_process(COMMAND git submodule update --init
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+	execute_process(COMMAND ./configure --disable-unit-tests --disable-tests
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+	execute_process(COMMAND make -j 4
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+endmacro(USE_SPDK)
+
 INCLUDE(CheckIncludeFiles)
 CHECK_INCLUDE_FILES("rdma/rdma_cma.h" HAVE_RDMA_H)
 

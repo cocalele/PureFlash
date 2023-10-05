@@ -3,8 +3,9 @@ set -m
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-JAVA_HOME=/opt/pureflash/jdk-17.0.6
-export PATH=/opt/pureflash:$JAVA_HOME/bin:$PATH
+#JAVA_HOME=/opt/pureflash/jdk-17.0.6
+#export PATH=/opt/pureflash:$JAVA_HOME/bin:$PATH
+export PATH=/opt/pureflash:$PATH
 
 echo "Start MariaDB..."
 mysql_install_db --user=mysql --ldata=/var/lib/mysql
@@ -53,7 +54,7 @@ sleep 2
 while !  lsof -i -P -n | grep 2181  ; do echo waiting zk; sleep 1; done
 echo "Start PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-$JAVA_HOME/bin/java  -classpath $DIR/pfconductor.jar:$JCROOT/lib/*  \
+java  -classpath $JCROOT/pfconductor.jar:$JCROOT/lib/*  \
    -Dorg.slf4j.simpleLogger.showDateTime=true \
    -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
    -XX:+HeapDumpOnOutOfMemoryError \
