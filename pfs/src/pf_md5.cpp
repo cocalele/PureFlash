@@ -35,7 +35,7 @@ void MD5Stream::spdk_eng_init(PfIoEngine *eng)
 	spdk_engine = true;
 }
 
-int MD5Stream::init()
+int MD5Stream::alloc_buffer()
 {
 	int rc =0;
 	if (spdk_engine)
@@ -54,6 +54,7 @@ int MD5Stream::init()
 void MD5Stream::reset(off_t offset)
 {
 	base_offset=offset;
+	data_len = 0;
 }
 
 
@@ -85,9 +86,91 @@ int MD5Stream::write(void *buf, size_t count, off_t offset)
 	return 0;
 }
 
-int MD5Stream::finalize(off_t offset, int in_read)
+
+int MD5Stream_ISA_L::init()
 {
+	int rc =0;
 
-	return  0;
+	rc = alloc_buffer();
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to allocate buffer");
+		return rc;
+	}
+	mgr = (MD5_HASH_CTX_MGR *)aligned_alloc(16, sizeof(MD5_HASH_CTX_MGR));
+	if (!mgr)
+	{
+		S5LOG_ERROR("Failed to allocate memory for mgr");
+		return -ENOMEM;
+	}
+	md5_ctx_mgr_init(mgr);
+	hash_ctx_init(&ctxpool);
 
+	return rc;
+}
+
+
+int MD5Stream_ISA_L::write_calc(void *buf, size_t count, off_t offset)
+{
+	int rc;
+
+	rc = write(buf, count, offset);
+	if (rc) {
+		S5LOG_ERROR("Failed to write");
+		return rc;
+	}
+
+	md5_ctx_mgr_submit(mgr, &ctxpool, buf, count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
+	while (md5_ctx_mgr_flush(mgr));
+
+	data_len += count;
+
+	return 0;
+}
+
+int MD5Stream_ISA_L::read_calc(void *buf, size_t count, off_t offset)
+{
+	int rc;
+
+	rc = read(buf, count, offset);
+	if (rc) {
+		S5LOG_ERROR("Failed to read");
+		return rc;
+	}
+
+	md5_ctx_mgr_submit(mgr, &ctxpool, buf, count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
+	while (md5_ctx_mgr_flush(mgr));
+
+	data_len += count;
+
+	return 0;
+}
+
+int MD5Stream_ISA_L::finalize(char *result, int in_read)
+{
+	int i;
+	char result_buf[MD5_RESULT_LEN] = {0};
+	int rc = 0;
+
+	if (MD5_RESULT_LEN != sizeof(ctxpool.job.result_digest)) {
+		S5LOG_FATAL("md5 buffer not enough, expect:%d", sizeof(ctxpool.job.result_digest));
+	}
+
+	md5_ctx_mgr_submit(mgr, &ctxpool, const_zero_page, 4096, HASH_LAST);
+	while (md5_ctx_mgr_flush(mgr));
+
+	for (i = 0; i < MD5_DIGEST_NWORDS; i++) {
+		((uint32_t *)result_buf)[i] = ctxpool.job.result_digest[i];
+	}
+
+	if (in_read) {
+		rc = memcmp(result, result_buf, MD5_RESULT_LEN);
+		if (rc) {
+			S5LOG_ERROR("md5 mismath");
+		}
+	}else{
+		memcpy(result, result_buf, MD5_RESULT_LEN);
+	}
+
+	return rc;
 }

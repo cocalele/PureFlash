@@ -472,6 +472,25 @@ void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
 	mg_printf(nc, "OK");
 }
 
+void handle_save_md_disk(struct mg_connection *nc, struct http_message * hm) {
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int i = app_context.get_ssd_index(ssd_uuid);
+	if(i<0){
+		S5LOG_ERROR("disk %s not found for handle_clean_disk", ssd_uuid.c_str());
+		mg_send_head(nc, 400, 5, "Content-Type: text/plain");
+		mg_printf(nc, "ERROR");
+		return;
+	}
+	PfFlashStore* disk = app_context.trays[i];
+	S5LOG_INFO("save metadata disk:%s", disk->tray_name);
+	disk->sync_invoke([disk]()->int{
+		disk->meta_data_compaction_trigger(COMPACT_TODO, false);
+		return 0;
+	});
+	mg_send_head(nc, 200, 2, "Content-Type: text/plain");
+	mg_printf(nc, "OK");
+}
+
 
 void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
