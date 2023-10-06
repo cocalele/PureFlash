@@ -67,10 +67,13 @@ set (S5AFS_SRC
 	src/pf_volume.cpp
 	src/pf_error_handler.cpp
 	src/pf_replicator.cpp
-	src/pf_ioengine.cpp
 	src/pf_bitmap.cpp
 	src/pf_bgtask_manager.cpp
-	src/pf_scrub.cpp)
+	src/pf_scrub.cpp
+	src/pf_atslock.cpp
+	src/pf_spdk_engine.cpp
+	src/pf_iouring_engine.cpp
+)
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c
         include/pf_threadpool.h)
@@ -90,7 +93,8 @@ add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
 
-TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper_mt  hashtable uuid ${SPDKLIBS} ${DPDKLIBS} s5common nlohmann_json::nlohmann_json aio curl uring ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a)
+TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper_mt  hashtable uuid ${SPDKLIBS} ${DPDKLIBS} s5common nlohmann_json::nlohmann_json
+	aio curl uring ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a libsgutils2.a)
 
 add_custom_command(TARGET pfs POST_BUILD 
         #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so

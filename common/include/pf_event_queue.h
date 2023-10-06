@@ -45,6 +45,7 @@ enum S5EventType : int
 	EVT_RECOVERY_READ_IO,
 	EVT_CONN_CLOSED,
 	EVT_SAVEMD,
+	EVT_WAIT_OWNER_LOCK,
 };
 const char* EventTypeToStr(S5EventType t);
 

@@ -122,7 +122,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 		//	S5LOG_INFO("Recovery cid:%d complete", io_cmd->command_id);
 		//}
 		SubTask *t = (SubTask *) iocb->ulp_arg;
-		t->complete(s, reply->meta_ver);
+		t->ops->complete_meta_ver(t, s, reply->meta_ver);
 	}
 
 	mem_pool.reply_pool.free(iocb->reply_bd);
@@ -140,7 +140,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	PfClientIocb* io = iocb_pool.alloc();
 	if (unlikely(io == NULL)) {
 		S5LOG_ERROR("Failed to allock IOCB for recovery read");
-		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+		t->ops->complete(t, PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		return -EAGAIN;
 	}
 	io->submit_time = now_time_usec();
@@ -163,7 +163,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
 		S5LOG_ERROR("Failed get connection to store:%d for  recovery read ", t->store_id);
-		t->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+		t->ops->complete(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		iocb_pool.free(io);
 		return -EINVAL;
 	}
@@ -176,7 +176,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	if(unlikely(rbd == NULL))
 	{
 		S5LOG_ERROR("replicator[%d] has no recv_bd available now, abort recovery read.", rep_index);
-		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+		t->ops->complete(t, PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		io->conn = NULL;
 		iocb_pool.free(io);
 		return -EAGAIN;
@@ -184,7 +184,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	rc = c->post_recv(rbd);
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_recv in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);
-		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+		t->ops->complete(t, PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		mem_pool.reply_pool.free(rbd);
 		io->conn = NULL;
 		iocb_pool.free(io);
@@ -194,7 +194,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 	rc = c->post_send(io->cmd_bd);
 	if(unlikely(rc)) {
 		S5LOG_ERROR("Failed to post_send in replicator[%d], connection:%s, rc:%d for recovery read", rep_index, c->connection_info.c_str(), rc);
-		t->complete(PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+		t->ops->complete(t, PfMessageStatus::MSG_STATUS_NO_RESOURCE);
 		//cann't free reply bd, since it was post into connection
 		io->conn = NULL;
 		iocb_pool.free(io);

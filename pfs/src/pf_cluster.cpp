@@ -140,7 +140,7 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	int rc;
 	uuid_unparse(uuid, uuid_str);
 	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s", store_id, uuid_str);
-	if ((rc = app_context.zk_client.create_node(zk_node_name, NULL, 0)) != ZOK)
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
 		return rc;
 
 	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/devname", store_id, uuid_str);
@@ -157,6 +157,41 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
 		return rc;
 	set_tray_state(store_id, uuid, "OK", true);
+	return 0;
+}
+
+
+/**
+ * For shared disk, it should register to ZK with following tree structure
+	 /cluster1/shared_disks/
+					+ <disk1_uuid>
+						   + <store1_id>
+						   |    + devname := <device name, e.g. /dev/sdd>
+						   + <store2_id>
+						   |    + devname  := <device name>
+						   + owner_store
+									+ <ephemeral_node1 := store_id>
+									+ <ephemeral_node2 := store_id>
+*/
+int register_shared_disk(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t obj_size)
+{
+	char zk_node_name[128];
+	char value_buf[128];
+	char uuid_str[64];
+	int rc;
+	uuid_unparse(uuid, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/%d/devname", uuid_str, store_id);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, devname)) != ZOK)
+		return rc;
+
+	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/capacity", uuid_str);
+	snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
+		return rc;
+	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/object_size", uuid_str);
+	snprintf(value_buf, sizeof(value_buf), "%ld", obj_size);
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
+		return rc;
 	return 0;
 }
 

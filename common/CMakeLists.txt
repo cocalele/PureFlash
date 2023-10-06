@@ -57,6 +57,8 @@ set (S5COMMON_SRC
 	src/pf_connection_pool.cpp
 	src/pf_aof.cpp
 	src/pf_aof_cache.cpp
+	src/pf_ioengine.cpp
+	src/pf_client_store.cpp
 	)
 IF (HAVE_RDMA_H)
 	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
@@ -81,6 +83,7 @@ link_directories(${THIRDPARTY}/spdk/dpdk/build/lib)
 
 
 add_definitions(-D__WITH_MURMUR)
+add_definitions(-DPF_CLIENT)
 set (S5HASH_SRC src/hash/murmur.c src/hash/hashtable.c)
 set_source_files_properties(${S5HASH_SRC} PROPERTIES COMPILE_FLAGS "-w")
 
@@ -94,7 +97,7 @@ TARGET_LINK_LIBRARIES(s5common dl rdmacm ibverbs pthread  ${GCOV})
 
 add_executable(pfdd ${PFDD_SRC})
 
-TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs ${SPDKLIBS} ${DPDKLIBS} pthread uuid zookeeper_mt hashtable curl ${GCOV})
+TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs ${SPDKLIBS} ${DPDKLIBS} pthread uuid zookeeper_mt hashtable curl aio ${GCOV})
 
-add_executable(aof_helper src/pf_aof_test_helper.cpp)
-TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper_mt hashtable curl ${GCOV})
+add_executable(aof_helper src/pf_aof_test_helper.cpp )
+TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper_mt hashtable curl aio ${GCOV})

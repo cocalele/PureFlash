@@ -117,7 +117,7 @@ int CacheLine::bg_fetch_data(off_t offset)
 {
 	lock.lock_shared();
 	if ((offset & (~SLOT_SIZE_MASK)) != off_in_file) {
-		std::async([this, offset](){
+		std::ignore = std::async(std::launch::async, [this, offset](){
 			int rc = fetch_data(offset & (~SLOT_SIZE_MASK));
 			if (rc != 0) {
 				S5LOG_ERROR("Failed to fetch data, rc:%d", rc);
