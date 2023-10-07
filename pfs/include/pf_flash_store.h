@@ -144,7 +144,7 @@ public:
 	int do_write(IoSubTask* io);
 
 	int save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
-	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone);
+				std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone);
 	int compact_meta_data();
 	int meta_data_compaction_trigger(int state, bool force_wait);
 	uint64_t get_meta_position(int meta_type, int which);

@@ -99,8 +99,4 @@ static_assert(OFFSET_REDO_LOG_SECOND + REDO_LOG_SIZE < MIN_META_RESERVE_SIZE, "O
 #define DEFAULT_OBJ_SIZE_ORDER 26 // DEFAULT_OBJ_SIZE=1<<DEFAULT_OBJ_SIZE_ORDER
 
 
-
-
-
-
 #endif // pf_volume_type_h__

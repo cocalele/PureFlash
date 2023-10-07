@@ -118,7 +118,7 @@ int  PfFlashStore::format_disk()
 		S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 		return ret;
 	}
-	save_meta_data();
+	save_meta_data(NULL, NULL, NULL, head.current_metadata);
 	char uuid_str[64];
 	uuid_unparse(head.uuid, uuid_str);
 	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%lld.", tray_name, uuid_str, obj_count, head.objsize);
@@ -205,19 +205,19 @@ int PfFlashStore::owner_init()
 
 	if ((ret = read_store_head()) == 0)
 	{
-		ret = load_meta_data();
+		ret = load_meta_data(NULL, NULL, NULL, head.current_metadata, false);
 		if (ret) {
 			S5LOG_ERROR("Failed to load meta from disk:%s", tray_name);
 			return ret;
 		}
 		redolog = new PfRedoLog();
-		ret = redolog->load(this);
+		ret = redolog->init(this);
 		if (ret)
 		{
 			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
 			return ret;
 		}
-		ret = redolog->replay();
+		ret = redolog->replay(head.redolog_phase, CURRENT);
 		if (ret)
 		{
 			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
@@ -225,7 +225,7 @@ int PfFlashStore::owner_init()
 		}
 		post_load_fix();
 		post_load_check();
-		save_meta_data();
+		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
 		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
@@ -245,46 +245,6 @@ int PfFlashStore::owner_init()
 
 
 char const_zero_page[4096] = { 0 };
-
-static BOOL is_disk_clean(PfIoEngine* eng)
-{
-	void* buf = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
-	BOOL rc = TRUE;
-	int64_t* p = (int64_t*)buf;
-
-	if (LBA_LENGTH != eng->sync_read(buf, LBA_LENGTH, 0))
-	{
-		rc = FALSE;
-		goto release1;
-	}
-	for (uint32_t i = 0; i < LBA_LENGTH / sizeof(int64_t); i++)
-	{
-		if (p[i] != 0)
-		{
-			rc = FALSE;
-			goto release1;
-		}
-	}
-release1:
-	free_spdk(buf);
-	return rc;
-}
-static int clean_meta_area(PfIoEngine* eng, size_t size)
-{
-	size_t buf_len = 1 << 20;
-	void* buf = align_malloc_spdk(LBA_LENGTH, buf_len, NULL);
-	for (off_t off = 0; off < size; off += buf_len) {
-		if (eng->sync_write(buf, buf_len, off) != buf_len) {
-			S5LOG_ERROR("Failed write zero to meta area, rc:%d", errno);
-			free_spdk(buf);
-			return -errno;
-		}
-	}
-
-	free_spdk(buf);
-	return 0;
-}
-
 
 uint64_t PfFlashStore::get_meta_position(int meta_type, int which)
 {
