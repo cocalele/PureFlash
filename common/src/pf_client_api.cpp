@@ -438,7 +438,7 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 		throw std::runtime_error("zookeeper ip not found in conf file");
 	}
 	const char* cluster_name = conf_get(cfg, "cluster", "name", "cluster1", FALSE);
-	rc = zk_client.init(zk_ip, 2, cluster_name); //will be destoried in destructor
+	rc = zk_client.init(zk_ip, ZK_TIMEOUT, cluster_name); //will be destroyed in destructor
 	
 	tcp_poller = new PfPoller();
 	if (tcp_poller == NULL) {

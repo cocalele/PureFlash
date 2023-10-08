@@ -1,6 +1,6 @@
 #!/bin/bash
 function fatal {
-    echo -e "\033[31m$* \033[0m"
+    echo -e "\033[31m$* \033[0m [line: ${BASH_LINENO[-2]}]"
     exit 1
 }
 function info {

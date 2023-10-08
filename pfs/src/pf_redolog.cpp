@@ -140,7 +140,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 				rc=redo_snap_seq_change(item);
 				break;
 			case ItemType::STATUS_CHANGE:
-				rc = redo_snap_seq_change(item);
+				rc = redo_state_change(item);
 				break;
 			default:
 				S5LOG_FATAL("Unknown redo log type:%d", item->type);

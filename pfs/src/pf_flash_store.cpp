@@ -280,6 +280,7 @@ uint64_t PfFlashStore::get_meta_position(int meta_type, int which)
 		default:
 			S5LOG_FATAL("Unknown type:%d", meta_type);
 	}
+	return 0; //never reach here
 }
 
 int PfFlashStore::oppsite_md_zone()
@@ -1115,7 +1116,7 @@ int PfFlashStore::meta_data_compaction_trigger(int state, bool force_wait)
 	pthread_mutex_lock(&md_lock);
 	last_state = to_run_compact.load();
 	if (last_state == COMPACT_ERROR) {
-		// flush metada synchronously
+		// flush metadata synchronously
 		head.redolog_phase = redolog->phase;
 		rc = save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
 		if (rc) {
@@ -1272,27 +1273,41 @@ void PfFlashStore::begin_cow(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEn
 
 void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEntry)
 {//this function called in thread pool, not the store's event thread
-	CowTask r;
-	r.src_offset = srcEntry->offset;
-	r.dst_offset = dstEntry->offset;
-	r.size = COW_OBJ_SIZE;
-	sem_init(&r.sem, 0, 0);
-	S5LOG_INFO("begin do_cow_entry");
-	r.buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE, spdk_engine_used());
-	event_queue->post_event(EVT_COW_READ, 0, &r);
-	sem_wait(&r.sem);
-	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
-		S5LOG_ERROR("COW read failed, status:%d", r.complete_status);
-		goto cowfail;
-	}
+	
+	int failed = 0;
+	sem_t cow_sem;
+	int cow_depth = 8;
+	S5LOG_DEBUG("Begin COW on dev:%s from obj:%ld snap:%d to snap:%d", tray_name, offset_to_obj_id(srcEntry->offset),
+			srcEntry->snap_seq, dstEntry->snap_seq);
 
-	event_queue->post_event(EVT_COW_WRITE, 0, &r);
-	sem_wait(&r.sem);
-	if(unlikely(r.complete_status != PfMessageStatus::MSG_STATUS_SUCCESS))	{
-		S5LOG_ERROR("COW write failed, status:%d", r.complete_status);
-		goto cowfail;
+	sem_init(&cow_sem, 0, cow_depth);
+	for (int j = 0; j < head.objsize / COW_OBJ_SIZE && !failed; j++) {
+		sem_wait(&cow_sem);
+		std::ignore = std::async(std::launch::async, [srcEntry, dstEntry, j, this, &failed, &cow_sem]{
+			void *buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE, spdk_engine_used());
+			int64_t rc = ioengine->sync_read(buf, COW_OBJ_SIZE, srcEntry->offset + j * COW_OBJ_SIZE);
+			if(rc != COW_OBJ_SIZE){
+				S5LOG_ERROR("Failed during cow read on dev:%s offset:0x%lx", tray_name, srcEntry->offset + j * COW_OBJ_SIZE);
+				failed++;
+			} else {
+				rc = ioengine->sync_write(buf, COW_OBJ_SIZE, dstEntry->offset + j * COW_OBJ_SIZE);
+				if (rc != COW_OBJ_SIZE) {
+					S5LOG_ERROR("Failed during cow write on dev:%s offset:0x%lx", tray_name, dstEntry->offset + j * COW_OBJ_SIZE);
+					failed++;
+				}
+			}
+			app_context.cow_buf_pool.free(buf, spdk_engine_used());
+			sem_post(&cow_sem);
+		});
+		
 	}
-	S5LOG_INFO("end do_cow_entry");
+	for (int i = 0; i < cow_depth; i++) {
+		sem_wait(&cow_sem);
+	}
+	S5LOG_DEBUG("End COW:%s", failed ? "FAILED" : "SUCCEED");
+	if(failed)
+		goto cowfail;
+
 	sync_invoke([key, srcEntry, dstEntry, this]()->int {
 		EntryStatus old_status = dstEntry->status;
 		dstEntry->status = EntryStatus::NORMAL;
@@ -1313,7 +1328,7 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 		}
 		return 0;
 	});
-	app_context.cow_buf_pool.free(r.buf, spdk_engine_used());
+
 	return;
 cowfail:
 	sync_invoke([dstEntry]()->int
@@ -1327,7 +1342,7 @@ cowfail:
 		}
 		return 0;
 	});
-	app_context.cow_buf_pool.free(r.buf, spdk_engine_used());
+
 	return;
 }
 
@@ -2092,7 +2107,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 					target_entry->status = EntryStatus::NORMAL;
 					return redolog->log_status_change(&key, target_entry, old);
 				}
-				
+				return 0;
 			});
 			if(rc){
 				S5LOG_ERROR("Failed to write redolog rc:%d", rc);
