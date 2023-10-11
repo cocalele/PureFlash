@@ -20,14 +20,14 @@ info "Primary node is:$PRIMARY_IP"
 
 STORE_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where is_primary=0 and volume_name='$VOL_NAME') limit 1")
 info "stop slave node $STORE_IP"
-ssh root@$STORE_IP supervisorctl stop pfs #stop pfs
+stop_pfs  $STORE_IP #stop pfs
 sleep 3
 
 info "check volume status should DEGRADED"
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "DEGRADED"
 
 info "start slave node $STORE_IP"
-ssh root@$STORE_IP supervisorctl start pfs #start pfs
+start_pfs $STORE_IP #start pfs
 sleep 3
 
 async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"

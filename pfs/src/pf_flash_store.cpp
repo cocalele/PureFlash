@@ -1462,7 +1462,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 	 * our goal is to determine how to treat physical-target object Ot, i.e. `targent_entry`, only three choice:
 	 *   C1) delete this entry
 	 *   C2) keep it, change its snap sequence
-	 *   C3) keet it, not change its snap sequence
+	 *   C3) keep it, not change its snap sequence
 	 *
 	 * we have the always truth:   Pts <= Lts, Lts < Pns
 	 * and possible A:   1) Lps < Pps < Pts <= Lts  2) Pps <= Lps < Pts <= Lts 3) Pps < Pts < Lps < Lts
@@ -1526,8 +1526,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 	     */
 		S5LOG_WARN("del snapshot state A1-B2 is illegal, may be caused by previous error, and can be corrected by GC");
 		//keep Ot for used by Lns
-		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lns;
+		redolog->log_snap_seq_change(&key, target_entry, old_snap);
 		//delete_obj(&key, prev_entry);// we can also delete Pps, since it's not needed
 	}
 	else if( (Lps < Pps) /*A1*/ && next_entry == NULL /*B3*/) {
@@ -1590,9 +1591,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		 *                    Pps         Pts                               Pns
 		 *
 		 */
-
-		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lns;
+		redolog->log_snap_seq_change(&key, target_entry, old_snap);
 	}
 	else if( (Pps <= Lps) /*A2*/  && next_entry == NULL /*B3*/) {
 		/* 	=case A2 B3=
@@ -1602,7 +1603,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 	   * Logical    -------------Sp-------------------D-------------Sn------->
 	   *
 	   *
-	   *	     	        +--+        +--+
+	   *                   +--+        +--+
 	   * Physical   -------|Op|------- |Ot|---------------------------------> ... Pns == UINT_MAX
 	   *                   +--+        +--+
 	   *                    ^           ^
@@ -1660,8 +1661,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
      *                    Pps         Pts
 	 */
 		S5LOG_INFO("del snapshot state A3-B*");
-		redolog->log_snap_seq_change(&key, target_entry, target_entry->snap_seq);
+		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lps;
+		redolog->log_snap_seq_change(&key, target_entry, old_snap);
 	}
 	else {
 		S5LOG_FATAL("del snapshot encounter unexpected state: vol_id:0x%llx slba:%lld Lps:%d Lts:%d Lns:%d Pps:%d Pts:%d Pns:%d",

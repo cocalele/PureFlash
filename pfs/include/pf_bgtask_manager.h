@@ -23,8 +23,9 @@ enum TaskStatus{WAITING, RUNNING, SUCCEEDED, FAILED };
 const char* TaskStatusToStr(TaskStatus s);
 
 class RestfulReply;
+class BackgroundTask;
 
-typedef std::function<RestfulReply*(void*)> TaskExecutor;
+typedef std::function<RestfulReply*(BackgroundTask*)> TaskExecutor;
 class BackgroundTask{
 public:
 	int64_t id;
@@ -47,6 +48,7 @@ public:
 	{}
 
 	BackgroundTask* initiate_task(TaskType type, std::string desc, TaskExecutor exe, void* arg);
+	void commit_task(BackgroundTask*);
 };
 
 #endif //PUREFLASH_PF_BGTASK_MANAGER_H

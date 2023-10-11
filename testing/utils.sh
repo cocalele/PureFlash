@@ -66,7 +66,7 @@ function query_db () {
 
 function get_obj_count() {
     total=0
-    store_ip=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where volume_name='$1')")
+    store_ip=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where volume_name='$1') and status='OK'")
     for ip in $store_ip; do
         cnt=$(curl "http://$ip:49181/debug?op=get_obj_count")
         total=$(($total + $cnt))
@@ -109,4 +109,14 @@ async_curl() {
 		fi
 	done
 	return -1
+}
+
+function stop_pfs(){
+	#ssh root@$STORE_IP supervisorctl stop pfs
+	ssh root@$STORE_IP  podman exec pfs-run pkill pfs
+}
+
+function start_pfs(){
+	#ssh root@$STORE_IP supervisorctl start pfs
+	ssh root@$STORE_IP podman exec pfs-run /opt/pureflash/restart-pfs.sh
 }

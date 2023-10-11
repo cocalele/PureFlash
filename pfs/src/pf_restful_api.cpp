@@ -324,10 +324,7 @@ void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) 
 		r.reason = format_string("ssd:%s not found", ssd_uuid.c_str());
 	} else {
 		PfFlashStore *disk = app_context.trays[ssd_idx];
-		disk->event_queue->sync_invoke([disk, rep_id,snap_seq, prev_seq, next_seq]()->int{
-			disk->delete_snapshot(int64_to_shard_id(SHARD_ID(rep_id)),snap_seq, prev_seq, next_seq);
-			return 0;
-		});
+		disk->delete_snapshot(int64_to_shard_id(SHARD_ID(rep_id)),snap_seq, prev_seq, next_seq);
 	}
 
 	send_reply_to_client(r, nc);
@@ -418,19 +415,19 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 		return;
 	}
 	PfFlashStore* disk = app_context.trays[i];
-	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY,
-								   format_string("recovery 0x%llx", rep_id),
-								   [disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size, meta_ver](void*)->RestfulReply*{
+	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY, format_string("recovery 0x%llx", rep_id),
+			[disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size, meta_ver](BackgroundTask* t)->RestfulReply*{
 		int rc = disk->recovery_replica(replica_id_t(rep_id), from_ip, from , from_ssd_uuid, obj_size, (uint16_t)meta_ver);
 		RestfulReply *r = new RestfulReply();
 		if(rc != 0){
 			r->ret_code = rc;
-			r->reason = "Failed reocvery";
+			r->reason = "Failed recovery";
 		}
 		return r;
 	}, NULL);
 	r.task_id = t->id;
 	r.status = TaskStatusToStr(t->status);
+	app_context.bg_task_mgr.commit_task(t); //Task never start before this line, ensure above reference to t valid
 	send_reply_to_client(r, nc);
 }
 void handle_get_obj_count(struct mg_connection *nc, struct http_message * hm) {
