@@ -5,7 +5,7 @@ ENV TZ=Asia/ShangHai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt update
-RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 libjsoncpp1 librdmacm1 libreadline5 libstdc++6 libtool liburcu6 libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk
+RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 libjsoncpp1 librdmacm1 libreadline5 libstdc++6 libtool liburcu6 libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk ssh
 
 #RUN apt install -y openssh-server
 #RUN mkdir /run/sshd;  chmod 700 /run/sshd
@@ -20,7 +20,7 @@ RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu66 lib
 #
 
 ## to install ant
-
+RUN apt install -y ant
 
 #COPY mariadb/mariadb.cnf /etc/mysql/mariadb.cnf
 #COPY mariadb/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf

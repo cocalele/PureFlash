@@ -9,8 +9,8 @@ RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev l
 RUN pip install pyelftools
 RUN apt install -y linux-kernel-headers
 
-#RUN apt install -y openssh-server
-#RUN mkdir /run/sshd;  chmod 700 /run/sshd
+RUN apt install -y openssh-server ssh
+RUN mkdir /run/sshd;  chmod 700 /run/sshd
 #RUN passwd root
 
 ##To install mariadb-server
