@@ -181,6 +181,16 @@ static int64_t parseNumber(string str)
 	return strtoll(str.c_str(), NULL, 10);
 }
 
+//BOOL is_seekable(int fd)
+//{
+//	if(isatty(fd))
+//		return FALSE;
+//	struct stat st;
+//	fstat(fd, &st);
+//	if(S_ISFIFO(st.st_mode))
+//		return FALSE;
+//	return TRUE;
+//}
 
 int main(int argc, char* argv[])
 {
@@ -224,7 +234,7 @@ int main(int argc, char* argv[])
 	}
 	int64_t bs = parseNumber(bs_str);
 	//TODO: need argments checking
-
+	//int seekable = 1;
 	void* buf = malloc(bs);
 	DeferCall _c([buf](){free (buf);});
 	int fd;
@@ -232,9 +242,11 @@ int main(int argc, char* argv[])
 	if(rw == "write") {
 		fd = open(ifname.c_str(), O_RDONLY);
 		is_write = 1;
+		//seekable = is_seekable(fd);
 	} else if(rw == "read") {
-		fd = open(ofname.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666);
+		fd = open(ofname.c_str(), O_WRONLY|O_CREAT, 0666);
 		is_write = 0;
+		//seekable = is_seekable(fd);
 	} else {
 		S5LOG_FATAL("Invalid argument rw:%s", rw.c_str());
 	}
@@ -259,14 +271,14 @@ int main(int argc, char* argv[])
 			if(arg.rc != 0) {
 				S5LOG_FATAL("Failed read data from volume, rc:%d", arg.rc);
 			}
-			ssize_t rc = pwrite(fd, buf, bs, offset_in_file + i * bs);
+			ssize_t rc = ::write(fd, buf, bs);
 			if(rc != bs) {
 				S5LOG_FATAL("Failed write data to file, rc:%ld, errno:%d", rc, errno);
 			}
 			fsync(fd);
 
 		} else {
-			ssize_t rc = pread(fd, buf, bs, offset_in_file + i * bs);
+			ssize_t rc =  ::read(fd, buf, bs);
 			if(rc != bs) {
 				S5LOG_FATAL("Failed read data from file, rc:%ld, errno:%d", rc, errno);
 			}

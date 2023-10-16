@@ -19,7 +19,7 @@ struct shard_id_t {
 	uint64_t shard_id;
 
 	inline __attribute__((always_inline)) shard_id_t(uint64_t id) : shard_id(id) {}
-	inline __attribute__((always_inline)) uint64_t val() { return shard_id; }
+	inline __attribute__((always_inline)) uint64_t val() const { return shard_id; }
 	inline __attribute__((always_inline)) volume_id_t to_volume_id() const { return  (volume_id_t) { VOLUME_ID(shard_id) }; }
 	inline __attribute__((always_inline)) uint32_t shard_index() const { return SHARD_INDEX(shard_id); }
 };
@@ -28,7 +28,7 @@ struct shard_id_t {
 struct replica_id_t {
 	uint64_t rep_id;
 
-	inline __attribute__((always_inline)) uint64_t val() { return rep_id; }
+	inline __attribute__((always_inline)) uint64_t val() const { return rep_id; }
 	inline __attribute__((always_inline)) shard_id_t to_shard_id() const { return (shard_id_t) { SHARD_ID(rep_id) }; }
 	inline __attribute__((always_inline)) volume_id_t to_volume_id() const { return (volume_id_t) { VOLUME_ID(rep_id) }; }
 	inline __attribute__((always_inline)) uint32_t shard_index() const { return SHARD_INDEX(rep_id); }

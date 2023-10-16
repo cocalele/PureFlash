@@ -8,9 +8,11 @@
 
 #include <string>
 #include <vector>
+#include <list>
 #include <stdint.h>
 #include <nlohmann/json.hpp>
 #include <pf_message.h>
+#include "pf_volume_type.h"
 
 class ReplicaArg
 {
@@ -92,6 +94,24 @@ public:
 	};
 	std::string md5;
 };
+
+struct SnapshotMd5
+{
+	uint32_t snap_seq;
+	std::string md5;
+	SnapshotMd5():snap_seq(0){}
+	SnapshotMd5(uint32_t ss, std::string&& _md5) : snap_seq(ss), md5(_md5){}
+};
+
+class ObjectMd5Reply : public RestfulReply {
+public:
+	ObjectMd5Reply(replica_id_t _rep_id) : RestfulReply("calculate_object_md5_reply"), rep_id(_rep_id) {
+
+	};
+	replica_id_t rep_id;
+	uint64_t offset_in_vol;
+	std::list< SnapshotMd5> snap_md5;
+};
 class PerfReply : public RestfulReply {
 public:
 	PerfReply() : RestfulReply("perf_reply") {
@@ -109,7 +129,8 @@ void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
 void from_json(const nlohmann::json& j, ErrorReportReply& p);
 void to_json(nlohmann::json& j, const CalcMd5Reply& r);
 void to_json(nlohmann::json& j, const PerfReply& r);
-
+void to_json(nlohmann::json& j, const ObjectMd5Reply& r);
+void to_json(nlohmann::json& j, const SnapshotMd5& m);
 struct mg_connection;
 struct http_message;
 
@@ -129,6 +150,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
 void handle_query_task(struct mg_connection *nc, struct http_message * hm);
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
+void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm);
 void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm);
 void handle_perf_stat(struct mg_connection* nc, struct http_message* hm);
 void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm);

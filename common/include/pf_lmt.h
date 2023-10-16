@@ -15,6 +15,9 @@ struct lmt_key
 	int64_t slba; //a lba is 4K. slba should align on block
 	int64_t rsv1;
 	int64_t rsv2;
+	std::string to_string() const{
+		return format_string("<0x%lx-%ld>", vol_id, slba);
+	}
 };
 static_assert(sizeof(lmt_key) == 32, "unexpected lmt_key size");
 enum EntryStatus : uint32_t {

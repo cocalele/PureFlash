@@ -107,6 +107,19 @@ void to_json(nlohmann::json& j, const PerfReply& r)
 			 {"perf_stat",      r.line},
 	};
 }
+void to_json(nlohmann::json& j, const SnapshotMd5& m)
+{
+	j["snap_seq"] = m.snap_seq;
+	j["md5"] = m.md5;
+}
+void to_json(nlohmann::json& j, const ObjectMd5Reply& r)
+{
+	to_json(j, (RestfulReply)r);
+	j["rep_id"] = r.rep_id.val();
+	j["offset_in_vol"]=r.offset_in_vol;
+	j["snap_md5"] = r.snap_md5;
+}
+
 template <typename R>
 void send_reply_to_client(R& r, struct mg_connection *nc) {
 
@@ -566,6 +579,29 @@ void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm) 
 	PfFlashStore* disk = app_context.trays[i];
 	Scrub scrub;
 	reply.md5 = scrub.cal_replica(disk, int64_to_replica_id(rep_id));
+	send_reply_to_client(reply, nc);
+}
+
+void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm) {
+	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
+	int64_t obj_idx = get_http_param_as_int64(&hm->query_string, "object_index", 0, true);
+	ObjectMd5Reply reply(int64_to_replica_id(rep_id));
+	int i = app_context.get_ssd_index(ssd_uuid);
+	if (i < 0) {
+		S5LOG_ERROR("disk %s not found for cal_replica_md5", ssd_uuid.c_str());
+		reply.ret_code = -ENOENT;
+		reply.reason = "disk not found";
+		send_reply_to_client(reply, nc);
+		return;
+	}
+
+	PfFlashStore* disk = app_context.trays[i];
+	
+	int rc = Scrub::cal_object(disk, int64_to_replica_id(rep_id), obj_idx, reply.snap_md5);
+	if(rc){
+		reply.ret_code = rc;
+	}
 	send_reply_to_client(reply, nc);
 }
 

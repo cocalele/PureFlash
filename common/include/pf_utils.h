@@ -17,7 +17,8 @@
 #include <functional>
 #include <vector>
 #include <stdexcept>
-
+#include <numeric> //std::accumulate
+#include <iostream>
 #include "pf_conf.h"
 #include "pf_log.h"
 #include "basetype.h"
@@ -166,6 +167,20 @@ const std::string get_socket_addr(int sock_fd, bool is_client);
 void split_string(const std::string& str, char delim, std::vector<std::string>& tokens);
 std::vector<std::string> split_string(const std::string& str, char delim);
 std::vector<std::string> split_string(const std::string& str, const std::string& delim);
+template<typename T>
+std::string join(std::vector<T> const& vec)
+{
+	if (vec.empty()) {
+		return std::string();
+	}
+
+	std::string delim = ",";
+	return std::accumulate(vec.begin() + 1, vec.end(), std::to_string(vec[0]),
+		[](const std::string& a, T b) {
+			return a + ", " + std::to_string(b);
+		});
+}
+
 class DeferCall {
 	std::function<void(void)> f;
 public:

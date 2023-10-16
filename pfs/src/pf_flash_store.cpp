@@ -897,7 +897,7 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	rc = ser.flush_buffer();
 	stream.finalize(md5_result, 0);
 	memset(buf, 0, LBA_LENGTH);
-	head.current_metadata = md_zone;
+	head.current_metadata = (uint8_t)md_zone;
 	redolog->discard();
 	memcpy(buf, &head, sizeof(head));
 	if (LBA_LENGTH != ioengine->sync_write(buf, LBA_LENGTH, 0))
@@ -1952,7 +1952,9 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			            rep_id.val(), offset, rc);
 			break;
 		}
-		S5LOG_INFO("%d snaps on primary and %d on local", primary_snap_list.size(), local_snap_list.size());
+		S5LOG_INFO("lmt_key:%s has %d snaps[%s] on primary and %d on local [%s]", key.to_string().c_str(),
+			primary_snap_list.size(), join(primary_snap_list).c_str(),
+			local_snap_list.size(), join(local_snap_list).c_str());
 		//delete unneeded object
 		for(auto it = local_snap_list.begin();it != local_snap_list.end(); ) {
 			int snap = *it;
@@ -2045,6 +2047,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
 						failed=1;
 					} else {
+						//TODO: call in asynchronous mode here,
 						int rc2 =  recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
 						if(rc2)
 							failed = 1;
@@ -2231,7 +2234,31 @@ void PfFlashStore::post_load_check()
 	//no duplicate snap_seq
 	//snap seq not 0
 	//used obj count + free + trim= total. any object should in one of three state: {used, free, trim}
-	S5LOG_WARN("TODO: %s not implemented", __FUNCTION__);
+
+	S5LOG_INFO("Begin post load check, %d keys in obj_lmt ...", obj_lmt.size());
+	int error_cnt =0;
+	int64_t last_off=0;
+	uint32_t last_snap=0;
+	S5LOG_INFO("Check for duplicated snap_seq and offset ...");
+	for(auto it : obj_lmt){
+		S5LOG_INFO("check for key:%s", it.first.to_string().c_str());
+		lmt_entry* head = it.second;
+		while(head!=nullptr){
+			S5LOG_INFO("\t snap:%d, off:0x%lx", head->snap_seq, head->offset);
+			if(head->snap_seq == last_snap || head->offset == last_off){
+				S5LOG_ERROR("duplicated snap_seq or offset. current (offset:0x%lx, snap:%u) vs last (0x%lx, %u)", 
+					head->offset, head->snap_seq, last_off, last_snap);
+				error_cnt++;
+			}
+			last_snap = head->snap_seq;
+			last_off = head->offset;
+			head=head->prev_snap;
+		}
+	}
+	if(error_cnt){
+		S5LOG_FATAL("%d errors found in metadata, can't continue");
+	}
+	S5LOG_INFO("Post check succeed!");
 }
 
 

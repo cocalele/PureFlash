@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include "isa-l_crypto.h"
 #include "pf_volume.h"
+#include "pf_restful_api.h"
 
 #define DIGEST_NWORDS   MD5_DIGEST_NWORDS
 #define MB_BUFS         MD5_MAX_LANES
@@ -30,8 +31,10 @@
 class Scrub {
 public:
 	Scrub() noexcept;
+	~Scrub();
 	int feed_data(void* buf, size_t len, size_t off);
 	std::string cal_replica(PfFlashStore* s, replica_id_t rep_id);
+	static int cal_object(PfFlashStore* s, replica_id_t rep_id, int64_t obj_idx, std::list<SnapshotMd5 >& rst);
 private:
 	HASH_CTX_MGR *mgr = NULL;
 	HASH_CTX *ctxpool = NULL, *ctx = NULL;

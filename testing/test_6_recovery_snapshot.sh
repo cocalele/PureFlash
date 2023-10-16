@@ -26,9 +26,6 @@ info "Primary node is:$PRIMARY_IP"
 STORE_IP=$(query_db "select mngt_ip from t_store where id in (select store_id from v_replica_ext where is_primary=0 and volume_name='$VOL_NAME') limit 1")
 info "Slave node is:$STORE_IP"
 
-function obj_cnt_on_ip(){
-	curl "http://$1:49181/debug?op=get_obj_count"
-}
 
 primary_cnt=$(obj_cnt_on_ip $PRIMARY_IP)
 slave_cnt=$(obj_cnt_on_ip $STORE_IP)
@@ -54,9 +51,10 @@ assert_equal $( get_obj_count $VOL_NAME ) $((count1 + REP_CNT*2))
 info "stop slave node $STORE_IP"
 stop_pfs $STORE_IP
 sleep 3
-assert cp snap2.dat head.dat
-assert dd if=/dev/urandom bs=4k  seek=64 count=32 conv=nocreat,notrunc of=head.dat
-assert pfdd --count 64 --rw write --bs 4k -v $VOL_NAME --if snap2.dat --offset=$((64*4096))
+assert cp snap2.dat snap3.dat
+assert dd if=/dev/urandom bs=4k          count=32 of=temp.dat
+assert dd if=temp.dat     bs=4k  seek=64 count=32 conv=nocreat,notrunc of=snap3.dat
+assert pfdd --count 32 --rw write --bs 4k -v $VOL_NAME --if temp.dat --offset=$((64*4096))
 
 
 # Replica-1                Replica-2 [OFFLINE]
@@ -65,6 +63,7 @@ assert pfdd --count 64 --rw write --bs 4k -v $VOL_NAME --if snap2.dat --offset=$
 #   s3
 assert_equal $(obj_cnt_on_ip $PRIMARY_IP) $((primary_cnt + 3))
 
+# case 1: snapshot deleted during one node fault
 assert pfcli delete_snapshot -v $VOL_NAME -n snap2
 
 # Replica-1                Replica-2 [OFFLINE]
@@ -77,7 +76,15 @@ assert_equal $(obj_cnt_on_ip $PRIMARY_IP) $((primary_cnt + 2))
 info "check volume status should DEGRADED"
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "DEGRADED"
 
+set -o pipefail
 
+SNAP3_MD5=$(dd if=snap3.dat bs=4k count=512  | md5sum -b)
+S3_MD5=$(assert pfdd --count 512 --rw read --bs 4k -v $VOL_NAME --of /dev/stdout | md5sum -b)
+#assert_equal "${PIPESTATUS[0]}" "0"
+assert_equal "$SNAP3_MD5" "$S3_MD5"
+
+
+# case 2: new snapshot created and new object formed during one node fault
 assert "fio --enghelp | grep pfbd "
 fio -name=test -ioengine=pfbd -volume=$VOL_NAME -iodepth=1  -rw=randwrite -size=64M -bs=4k -direct=1 -time_based -runtime=60 &
 FIO_PID=$!
@@ -96,9 +103,12 @@ assert_equal $(obj_cnt_on_ip $PRIMARY_IP) $((primary_cnt + 3))
 info "start slave node $STORE_IP"
 start_pfs $STORE_IP #start pfs
 sleep 3
-assert_equal $(obj_cnt_on_ip $STORE_IP) $((slave_cnt + 2))
 
-async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
+SLAVE_STATUS=$(query_db "select status from t_store where mngt_ip='$STORE_IP'" )
+assert_equal "$SLAVE_STATUS" "OK"
+assert_equal "$(obj_cnt_on_ip $STORE_IP)" "$((slave_cnt + 2))"
+
+assert async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
 
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "OK"
 sleep 3
@@ -114,7 +124,17 @@ if  pidof fio | grep $FIO_PID ; then
 else
     assert wait $FIO_PID
 fi
+
+
+info "Begin scrub volume"
+assert async_curl "http://$COND_IP:49180/s5c/?op=deep_scrub_volume&volume_name=$VOL_NAME"
+
+
+SNAP1_MD5=$(dd if=snap1.dat bs=4k count=512  | md5sum -b)
+S1_MD5=$(assert pfdd --count 512 --rw read --bs 4k -v $VOL_NAME --snapshot snap1 --of /dev/stdout | md5sum -b)
+#assert_equal "${PIPESTATUS[0]}" "0"
+assert_equal "$SNAP1_MD5" "$S1_MD5"
+
+
 info "Test OK"
 
-# case 1: snapshot deleted during one node fault
-# case 2: new snapshot created and new object formed during one node fault

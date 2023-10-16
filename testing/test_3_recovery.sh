@@ -30,7 +30,7 @@ info "start slave node $STORE_IP"
 start_pfs $STORE_IP #start pfs
 sleep 3
 
-async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
+assert async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
 
 assert_equal $(query_db "select status from t_volume where name='$VOL_NAME'") "OK"
 sleep 3

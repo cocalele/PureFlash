@@ -150,7 +150,6 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 			io->add_ref();
 			conn->add_ref();
 			io->conn = conn;
-			S5LOG_INFO("io:%p, conn:%p", io, conn);
 			rc = conn->post_recv(io->cmd_bd);
 			if(rc)
 			{

@@ -73,6 +73,9 @@ function get_obj_count() {
     done
     echo $total
 }
+function obj_cnt_on_ip(){
+	curl "http://$1:49181/debug?op=get_obj_count"
+}
 
 async_curl() {
 	echo "curl $@"
