@@ -112,10 +112,10 @@ int PfRedoLog::start()
 }
 int PfRedoLog::replay(int64_t start_phase, int which)
 {
-	S5LOG_INFO("Start replay redo log at %d log zone, start_phase:%d", which, start_phase);
 	int cnt = 0;
 	int rc = 0;
 	int64_t offset = store->get_meta_position(REDOLOG, which);
+	S5LOG_INFO("Start replay redo log at %d log zone, start_phase:%d, offset:0x%lx", which, start_phase, offset);
 	while(1)
 	{
 		if (store->ioengine->sync_read(entry_buff, LBA_LENGTH, offset) == -1) {
@@ -125,6 +125,8 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 		PfRedoLog::Item* item = (PfRedoLog::Item*)entry_buff;
 		if (item->phase != start_phase)
 			break;
+		S5LOG_DEBUG("replay redo log item type:%d", item->type);
+
 		switch (item->type)
 		{
 			case ItemType::ALLOCATE_OBJ:
@@ -180,6 +182,8 @@ int PfRedoLog::discard()
 }
 int PfRedoLog::log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head)
 {
+	S5LOG_DEBUG("log allocation for key:%s", key->to_string().c_str());
+
 	PfRedoLog::Item *item = (PfRedoLog::Item*)entry_buff;
 	*item = PfRedoLog::Item{phase:phase, type:ItemType::ALLOCATE_OBJ, {*key, *entry, free_list_head } };
 	return write_entry();
@@ -209,10 +213,20 @@ int PfRedoLog::redo_allocation(Item* e)
 	*entry = e->allocation.bentry;
 	entry->init_for_redo();
 	auto pos = store->obj_lmt.find(e->allocation.bkey);
-	if(pos != store->obj_lmt.end()) {
+	if(pos == store->obj_lmt.end()) {
 		store->obj_lmt[e->allocation.bkey] = entry;
 	} else {
-		store->lmt_entry_pool.free(entry);
+		int rc = insert_lmt_entry_list(&pos->second, entry, [entry](lmt_entry* item)->bool{
+				return item->snap_seq > entry->snap_seq;
+			},
+			[entry](lmt_entry* item)->bool {
+				return item->snap_seq == entry->snap_seq;
+			}
+		);
+		if(rc == -EEXIST){
+			//duplicated entry, free it
+			store->lmt_entry_pool.free(entry);
+		}
 	}
 	store->free_obj_queue.head = e->allocation.free_queue_head;
 	return 0;
@@ -255,7 +269,7 @@ int PfRedoLog::redo_free(Item* e)
 
 int PfRedoLog::write_entry()
 {
-	S5LOG_INFO("record log at phase %d %lld", phase, current_offset);
+	S5LOG_INFO("record log at phase:%d offset:0x%lx", phase, current_offset);
 	if (store->ioengine->sync_write(entry_buff, LBA_LENGTH, current_offset) == -1)
 	{
 		S5LOG_ERROR("Failed to persist redo log, rc:%d", -errno);

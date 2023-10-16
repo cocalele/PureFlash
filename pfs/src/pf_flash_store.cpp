@@ -822,7 +822,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone)
 {
-	S5LOG_INFO("Begin to save metadata at zone:%d", md_zone);
+	S5LOG_INFO("Begin to save metadata at zone:%d, %d keys in lmt", md_zone, obj_lmt.size());
 	int buf_size = 1 << 20;
 	void *buf = align_malloc_spdk(LBA_LENGTH, buf_size, NULL);
 	if (!buf)
@@ -911,7 +911,7 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone, bool compaction)
 {
-	S5LOG_INFO("load metadat from md zone:%d, compaction:%d", md_zone, compaction);
+	S5LOG_INFO("load metadata from md zone:%d, compaction:%d", md_zone, compaction);
 	int buf_size = 1 << 20;
 	void *buf = align_malloc_spdk(LBA_LENGTH, buf_size, NULL);
 	if (!buf)

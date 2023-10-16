@@ -72,7 +72,36 @@ struct lmt_hash
 
 	}
 };
-
+static inline int insert_lmt_entry_list(struct lmt_entry** head_ref, lmt_entry* entry, 
+	std::function<bool(struct lmt_entry*)> after_entry, std::function<bool(struct lmt_entry*)> same_entry)
+{
+	struct lmt_entry* head = *head_ref;
+	if(same_entry(head)){
+		return -EEXIST;
+	}
+	if (!after_entry(head)) { //insert as head
+		entry->prev_snap = head;
+		*head_ref = entry; //insert as head
+		return 0;
+	}
+	while(head != NULL){
+		if(same_entry(head))
+			return -EEXIST;
+		if(head->prev_snap == NULL){
+			head->prev_snap = entry; //insert as last
+			return 0;
+		} else if(after_entry(head->prev_snap)){
+			head = head->prev_snap;
+		} else {
+			entry->prev_snap = head->prev_snap;
+			head->prev_snap = entry; //insert in middle
+			return 0;
+		}
+	}
+	assert(0);
+	return -ENOENT; //never reach here
+	
+}
 static inline void delete_matched_entry(struct lmt_entry** head_ref, std::function<bool(struct lmt_entry*)> match,
 	std::function<void(struct lmt_entry*)> free_func)
 {

@@ -116,10 +116,10 @@ async_curl() {
 
 function stop_pfs(){
 	#ssh root@$STORE_IP supervisorctl stop pfs
-	ssh root@$STORE_IP  podman exec pfs-run pkill pfs
+	assert ssh root@$1  podman exec pfs-run pkill pfs
 }
 
 function start_pfs(){
 	#ssh root@$STORE_IP supervisorctl start pfs
-	ssh root@$STORE_IP podman exec pfs-run /opt/pureflash/restart-pfs.sh
+	assert ssh root@$1 podman exec pfs-run /opt/pureflash/restart-pfs.sh
 }
