@@ -1672,6 +1672,25 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 	return 0;
 }
 
+int PfFlashStore::delete_obj_by_snap_seq(struct lmt_key* key, uint32_t snap_seq)
+{
+	auto pos = obj_lmt.find(*key);
+	if (pos == obj_lmt.end())
+		return 0;
+	delete_matched_entry(&pos->second,
+		[snap_seq](struct lmt_entry* _entry)->bool {
+			return _entry->snap_seq == snap_seq;
+		},
+		[key, this](struct lmt_entry* _entry)->void {
+			trim_obj_queue.enqueue((int)offset_to_obj_id(_entry->offset));
+			redolog->log_trim(key, _entry, trim_obj_queue.tail);
+			lmt_entry_pool.free(_entry);
+		});
+	if (pos->second == NULL)
+		obj_lmt.erase(pos);
+	return 0;
+}
+
 
 int PfFlashStore::delete_obj(struct lmt_key* key, struct lmt_entry* entry)
 {
@@ -1733,12 +1752,13 @@ static void recovery_complete_2(SubTask* t, PfMessageStatus comp_status, uint16_
 
 TaskCompleteOps _recovery_complete_ops = { recovery_complete , recovery_complete_2 };
 
-int PfFlashStore::recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset)
+int PfFlashStore::recovery_write(lmt_key* key, lmt_entry * entry, uint32_t snap_seq, void* buf, size_t length, off_t offset)
 {
 	int rc=0;
-	assert(head->status == EntryStatus::RECOVERYING);
-	lmt_entry* entry = head->prev_snap;
-	assert(entry != NULL && entry->snap_seq == snap_seq);
+	assert(entry != NULL);
+	if(entry->snap_seq != snap_seq){
+		S5LOG_FATAL("incorrect snap_seq, entry snap:%d target snap:%d", entry->snap_seq, snap_seq);
+	}
 	
 	off_t in_blk_off = offset_in_block(offset, in_obj_offset_mask);
 	rc = (int)ioengine->sync_write(buf, length, entry->offset + in_blk_off);
@@ -1914,9 +1934,11 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		lmt_key key = {.vol_id = rep_id.to_volume_id().vol_id, .slba = obj_slba, 0, 0};
 		S5LOG_DEBUG("recovery i:%d key:{.vol_id:0x%x, .slba:0x%x}", i, key.vol_id, key.slba);
 		recovery_head_entry->recovery_bmp->clear();
-		recovery_head_entry->snap_seq=0;
+		recovery_head_entry->snap_seq=0; //mean this is a placeholder
 		recovery_head_entry->status = EntryStatus::RECOVERYING;
 		recovery_head_entry->prev_snap = NULL;
+
+
 		this->sync_invoke([this, &key, recovery_head_entry]()->int {
 			auto block_pos = obj_lmt.find(key);
 			if (block_pos == obj_lmt.end()) {
@@ -1924,7 +1946,13 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			} else {
 				if(block_pos->second->status == RECOVERYING) {
 					S5LOG_FATAL("Object already in recoverying, not handled!");
-					//TODO: handle object already in reocverying
+					//TODO: handle object already in recovering
+				}
+				if (block_pos->second->status == COPYING) {
+					S5LOG_WARN("Object in COPYING state can't recovery!");
+					//TODO: handle object in COPYING
+
+					return -EBUSY;
 				}
 				recovery_head_entry->prev_snap = block_pos->second;
 				block_pos->second = recovery_head_entry;
@@ -1965,8 +1993,8 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 					//this snap not exists on primary
 					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", rep_id.val(), offset, snap);
 					
-					this->event_queue->sync_invoke([this, rep_id, offset, snap, prev, primary_it]()->int {
-						return delete_obj_snapshot(rep_id.to_shard_id().shard_id, offset >> LBA_LENGTH_ORDER, snap, prev, *primary_it);
+					this->event_queue->sync_invoke([this, &key, snap]()->int {
+						return delete_obj_by_snap_seq(&key, snap);
 						});
 					it = local_snap_list.erase(it);
 					deleted = true;
@@ -1977,29 +2005,42 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				++it;
 		}
 
+
+
 		//for each snap object not exists on local, recovery it
-		auto first_snap = primary_snap_list.rbegin();
-		if(!local_snap_list.empty()) {
-			first_snap = std::find(primary_snap_list.rbegin(), primary_snap_list.rend(), local_snap_list.front());
-			//assert(first_snap != primary_snap_list.rend())
+		//
+
+		S5LOG_DEBUG("filter primary snap list[%s] on local list[%s]", join(primary_snap_list).c_str(), join(local_snap_list).c_str());
+		vector<int> snap_to_recovery;
+		for(int s : primary_snap_list){
+			if(local_snap_list.size()<2 || std::find(local_snap_list.begin() + 2, local_snap_list.end(), s) == local_snap_list.end()){
+				snap_to_recovery.push_back(s);
+			}
 		}
+		S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld) %d objects[%s] to recover ", rep_id.val(), offset,
+			snap_to_recovery.size(), join(snap_to_recovery).c_str());
+
+
+
+
+
 		int failed = 0;
 
 		//recovery each snapshot of this object
-		for(auto snap_it = first_snap; snap_it != primary_snap_list.rend() && !failed; ++ snap_it) {
+		for(auto snap_it  = snap_to_recovery.rbegin(); snap_it != snap_to_recovery.rend(); ++snap_it) {
 			sem_t recov_sem;
 			sem_init(&recov_sem, 0, iodepth);
-			S5LOG_INFO("recoverying object (rep_id:0x%llx offset:%lld snap: %d) ", rep_id.val(), offset, *snap_it);
+			uint32_t target_snap_seq = *snap_it;
+			S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld snap: %d) ", rep_id.val(), offset, target_snap_seq);
 
 
 			lmt_entry* target_entry = recovery_head_entry->prev_snap;
-			uint32_t target_snap_seq = *snap_it;
-			assert(target_entry == NULL || target_entry->snap_seq <= target_snap_seq);
+			for( ; target_entry != NULL && target_entry->snap_seq != target_snap_seq; target_entry = target_entry->prev_snap);
 
-			
+			if (target_entry == NULL) {
+				rc = this->event_queue->sync_invoke([this, &target_entry, target_snap_seq, &recovery_head_entry, key] {
 
-			if (target_entry == NULL || target_entry->snap_seq < target_snap_seq) {
-				rc = this->event_queue->sync_invoke([this, &target_entry, target_snap_seq, recovery_head_entry, key] {
+					
 					if (free_obj_queue.is_empty()) {
 						S5LOG_ERROR("Failed to alloc object for recovery write, disk may be full. disk:%s", tray_name);
 						return -ENOSPC;
@@ -2012,16 +2053,31 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 							prev_snap : recovery_head_entry->prev_snap,
 							waiting_io : NULL
 					};
-					int rc = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
-					if (rc)
+					int rc2 = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
+					if (rc2)
 					{
 						lmt_entry_pool.free(target_entry);
 						free_obj_queue.enqueue(obj_id);
-						S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc);
-						return rc;
+						S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc2);
+						return rc2;
 					}
-					recovery_head_entry->prev_snap = target_entry;
-					return rc;
+					rc2 = insert_lmt_entry_list(&recovery_head_entry, target_entry,
+							[target_snap_seq](lmt_entry* entry)->bool{
+								if(entry->snap_seq == 0)
+									return true;
+								return entry->snap_seq > target_snap_seq;
+							}, 
+								
+							[target_snap_seq](lmt_entry* entry)->bool {
+								if (entry->snap_seq == 0)
+									return false;
+								return entry->snap_seq == target_snap_seq;
+							}
+						);
+					if(rc2){
+						S5LOG_FATAL("Unexcepted error during insert recovering object");
+					}
+					return rc2;
 					});
 				// now we have two entry in RECOVERYING state
 				//[Head placeholder RECOVERYING] -> [Entry RECOVERYING] -> [old entry ...]
@@ -2035,7 +2091,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 				return rc;
 
 
-
+			S5LOG_DEBUG("target entry snap:%d and %d", target_entry->snap_seq, target_snap_seq);
 			for(int j=0;j<recov_object_size/read_bs && !failed;j++) {
 				sem_wait(&recov_sem);
 				RecoverySubTask *t = task_queue.alloc();
@@ -2048,7 +2104,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 						failed=1;
 					} else {
 						//TODO: call in asynchronous mode here,
-						int rc2 =  recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
+						int rc2 =  recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
 						if(rc2)
 							failed = 1;
 					}
@@ -2095,7 +2151,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
 						failed = 1;
 					} else {
-						rc =  recovery_write(&key, recovery_head_entry, t->snap_seq, t->recovery_bd->buf,
+						rc =  recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf,
 							                      t->length, t->offset);
 						if (rc)
 							failed = 1;

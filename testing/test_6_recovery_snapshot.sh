@@ -106,7 +106,7 @@ sleep 3
 
 SLAVE_STATUS=$(query_db "select status from t_store where mngt_ip='$STORE_IP'" )
 assert_equal "$SLAVE_STATUS" "OK"
-assert_equal "$(obj_cnt_on_ip $STORE_IP)" "$((slave_cnt + 2))"
+assert_equal $(obj_cnt_on_ip $STORE_IP) $((slave_cnt + 2))
 
 assert async_curl "http://$COND_IP:49180/s5c/?op=recovery_volume&volume_name=$VOL_NAME"
 
