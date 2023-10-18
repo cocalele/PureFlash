@@ -12,14 +12,30 @@ class PfPoller;
 class PfClientVolume;
 class BufferDescriptor;
 
+#define MAX_RDMA_DEVICE (4)
+#define MAX_POLLER_COUNT (16)
+
+#define CQ_POLLER_COUNT (16)
+#define CQ_POLLER_CLIENT_COUNT (8)
+
+struct PfRdmaPoller {
+	struct PfRdmaDevContext *prp_dev_ctx;
+	int prp_idx;
+	struct ibv_cq* prp_cq;
+	struct ibv_comp_channel* prp_comp_channel;
+	PfPoller poller;
+};
+
 struct PfRdmaDevContext {
     struct ibv_context* ctx;
     struct ibv_pd* pd;
-    struct ibv_cq* cq;
-    struct ibv_comp_channel* comp_channel;
     struct ibv_device_attr dev_attr;
-    PfPoller *poller;
     int idx;
+	int cq_poller_cnt;
+	int client_cq_poller_cnt;
+	int next_server_cq_poller_idx;
+	int next_client_cq_poller_idx;
+	struct PfRdmaPoller prdc_poller_ctx[MAX_POLLER_COUNT];
 };
 
 class PfRdmaConnection : public PfConnection
@@ -38,6 +54,7 @@ public:
 	struct rdma_cm_id* rdma_id;
 	struct rdma_cm_event* event;
 	struct PfRdmaDevContext* dev_ctx;
+	int prc_cq_poller_idx;
 
 	int socket_fd;
 	std::string ip;

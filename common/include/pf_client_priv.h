@@ -274,6 +274,9 @@ public:
 			delete this;
 		}
 	}
+	bool mr_registered;
+	int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx);
+	void PfRdmaUnRegisterMr();
 private:
 	~PfClientAppCtx();
 

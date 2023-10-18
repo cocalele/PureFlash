@@ -8,7 +8,6 @@
 #include "pf_message.h"
 #include "pf_rdma_connection.h"
 
-extern struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT];
 //PfDispatcher::PfDispatcher(const std::string &name) :PfEventThread(name.c_str(), IO_POOL_SIZE*3) {
 //
 //}
@@ -259,6 +258,7 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
         if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA)) {
             iocb->add_ref();
             conn->add_ref();
+			//S5LOG_INFO("rdma post write!!!,ref_count:%d", iocb->ref_count);
             int rc = conn->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
             if (rc)
             {
@@ -312,9 +312,6 @@ int PfDispatcher::init_mempools(int disp_index)
 		//TODO: still 2 subtasks not initialized, for metro replicating and rebalance
 		iocb_pool.free(cb);
 	}
-#ifdef WITH_RDMA
-	disp_mem_pool[disp_index] = &mem_pool;
-#endif
 	return rc;
 release4:
 	mem_pool.reply_pool.destroy();

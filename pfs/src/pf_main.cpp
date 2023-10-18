@@ -33,7 +33,6 @@ int init_restful_server();
 void unexpected_exit_handler();
 void stop_app();
 PfAfsAppContext app_context;
-extern BufferPool* recovery_bd_pool;
 enum connection_type rep_conn_type = TCP_TYPE; //TCP:0  RDMA:1
 struct spdk_mempool * g_msg_mempool;
 
@@ -244,9 +243,6 @@ int main(int argc, char *argv[])
 		}
 
 	}
-#ifdef WITH_RDMA
-	recovery_bd_pool = &app_context.recovery_io_bd_pool;
-#endif
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("rep_port.%d", i);
@@ -263,6 +259,7 @@ int main(int argc, char *argv[])
 
 	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
 	app_context.replicators.reserve(rep_count);
+	rep_count = 0;
 	for(int i=0; i< rep_count; i++) {
 		PfReplicator* rp = new PfReplicator();
 		rc = rp->init(i);
@@ -354,11 +351,42 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 
 PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) 
 {
-	if(vol_id == 0){
+	//if(vol_id == 0){
 		next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
 		return disps[next_client_disp_id];
+	//}
+	//return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
+}
+
+int PfAfsAppContext::PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx)
+{
+	struct ibv_pd* pd = dev_ctx->pd;
+	int idx = dev_ctx->idx;
+	struct disp_mem_pool *dmp;
+	struct replicator_mem_pool *rmp;
+
+	S5LOG_INFO("pf server register memory region!!");
+
+	for (int i = 0; i < app_context.disps.size(); i++) {
+		dmp = &app_context.disps[i]->mem_pool;
+		dmp->data_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ|IBV_ACCESS_REMOTE_WRITE);
+		dmp->cmd_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ);
+		dmp->reply_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_WRITE);
 	}
-	return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
+	
+	for (int i = 0; i < app_context.replicators.size(); i++) {
+		rmp = &app_context.replicators[i]->mem_pool;
+		rmp->cmd_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ);
+		rmp->reply_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_WRITE);
+	}
+
+	app_context.recovery_io_bd_pool.rmda_register_mr(pd, idx, IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_READ|IBV_ACCESS_REMOTE_WRITE);
+
+	return 0;
+}
+
+void PfAfsAppContext::PfRdmaUnRegisterMr()
+{
 }
 
 void unexpected_exit_handler()
