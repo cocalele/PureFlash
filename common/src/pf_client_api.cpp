@@ -737,7 +737,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 
 	for (int i = 0; i < retry_times; i++)
 	{
-		S5LOG_DEBUG("Query %s ...", url.c_str());
+		//S5LOG_DEBUG("Query %s ...", url.c_str());
 		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 		res = curl_easy_perform(curl);
 		if (res == CURLE_OK)
@@ -745,7 +745,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 			long http_code = 0;
 			curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
 			curl_buf.memory[curl_buf.size] = 0;
-			S5LOG_DEBUG("HTTP return:%d content:%*.s", http_code, curl_buf.size, curl_buf.memory);
+			//S5LOG_DEBUG("HTTP return:%d content:%*.s", http_code, curl_buf.size, curl_buf.memory);
 			if (http_code == 200)
 			{
 				return curl_buf.memory;

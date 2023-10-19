@@ -38,7 +38,7 @@ struct scc_cow_context
 };
 
 
-
+struct RecoveryContext;
 
 class PfFlashStore : public PfEventThread
 {
@@ -181,6 +181,10 @@ private:
 	int delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq);
 	int recovery_write(lmt_key* key, lmt_entry * head, uint32_t snap_seq, void* buf, size_t length, off_t offset);
 	int finish_recovery_object(lmt_key* key, lmt_entry * head, size_t length, off_t offset, int failed);
+	int recovery_object_series(struct RecoveryContext& recov_ctx, lmt_key& key, int64_t offset);
+	int recovery_single_object_entry(struct RecoveryContext& recov_ctx, lmt_key& key, uint32_t target_snap_seq, int64_t offset);
+
+
 	void post_load_fix();
 	void post_load_check();
 

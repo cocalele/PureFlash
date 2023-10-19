@@ -509,15 +509,23 @@ int PfFlashStore::do_write(IoSubTask* io)
 	}
 	else
 	{
+		//static int dirty_bit=0;
 		entry = block_pos->second;
 		if(unlikely(entry->status == EntryStatus::RECOVERYING)) {
 			if(0 == entry->snap_seq) {
 				entry->snap_seq = cmd->snap_seq;
 			}
+
+			if(cmd->snap_seq != entry->snap_seq){ //
+				//TODO: means new snapshot created during recovery, to make recovery operation fail, 
+				assert(0);
+			}
 			memcpy((char*)entry->recovery_buf + offset_in_block(cmd->offset, in_obj_offset_mask),
 				data_bd->buf,  cmd->length);
 			for(int i=0;i<cmd->length/SECTOR_SIZE;i++) {
 				entry->recovery_bmp->set_bit(int(offset_in_block(cmd->offset, in_obj_offset_mask)/SECTOR_SIZE) + i);
+				//dirty_bit++;
+				//S5LOG_DEBUG("dirty_bit cnt:%d", dirty_bit);
 			}
 			io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
 			return 0;
@@ -1319,7 +1327,7 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 			if (unlikely(t->opcode != S5_OP_WRITE && t->opcode != S5_OP_REPLICATE_WRITE)) {
 				S5LOG_FATAL("Unexcepted op code:%d", t->opcode);
 			}
-
+			S5LOG_DEBUG("COW pending IO:%p", t);
 			do_write(t);
 			t = t->next;
 		}
@@ -1739,7 +1747,7 @@ static void recovery_complete(SubTask* t, PfMessageStatus comp_status)
 {
 	t->complete_status = comp_status;
 	RecoverySubTask* rt = (RecoverySubTask *)t;
-	//S5LOG_INFO("RecoverySubTask::complete, status:%s", PfMessageStatus2Str(comp_status));
+	//S5LOG_INFO("RecoverySubTask:%p complete, status:%s", t, PfMessageStatus2Str(comp_status));
 	rt->owner_queue->free(rt);
 	sem_post(rt->sem);
 
@@ -1777,7 +1785,7 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 	assert(pthread_self () != this->tid); //this function must run in different thread than this disk's proc thread
 	off_t cow_src_off=-1, cow_dst_off=-1;
 
-	rc = this->sync_invoke([this, &key, head, failed, &cow_src_off, &cow_dst_off]()->int {
+	rc = this->sync_invoke([this, key, head, failed, &cow_src_off, &cow_dst_off]()->int {
 		assert(head->status == EntryStatus::RECOVERYING);
 		auto lmt_pos = obj_lmt.find(*key);
 		if(failed || head->recovery_bmp->is_empty()) {
@@ -1852,19 +1860,29 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 	//overwrite pending buffer's content to object
 	rc = this->sync_invoke([this, key, head, offset]()->int {
 		lmt_entry* data_entry = head->prev_snap;
+		//assert(offset_in_block(offset, in_obj_offset_mask) == 0); //offset is block offset
 		off_t base_offset = data_entry->offset + offset_in_block(offset, in_obj_offset_mask);
+		int cnt = 0;
+		int min=std::numeric_limits<int>::max();
+		int max=0;
 		for (int i = 0; i < head->recovery_bmp->bit_count; i++) {
 			if (head->recovery_bmp->is_set(i)) {
+				if(i<min)min=i;
+				if(i>max)max=i;
 				//TODO: write with sector size(512) is very low performance, need improvement
 				// if spdk support 512 write?
+				//S5LOG_DEBUG("sync write at:0x%lx ", base_offset + i * SECTOR_SIZE);
 				int rc = (int)ioengine->sync_write((char *) head->recovery_buf + i * SECTOR_SIZE, SECTOR_SIZE, base_offset + i * SECTOR_SIZE );
 				if (rc != SECTOR_SIZE) {
 					rc = -errno;
 					S5LOG_ERROR("Failed write disk:%s on end_recovery, rc:%d", tray_name, rc);
 					return rc;
 				}
+				cnt ++;
 			}
 		}
+		S5LOG_DEBUG("%d sectors overwrited from pending buffer, on offset:0x%lx snap:%d, range index:(%d, %d)", cnt, base_offset, data_entry->snap_seq,
+					min, max);
 		EntryStatus old_status = data_entry->status;
 		data_entry->status  = EntryStatus::NORMAL;
 		redolog->log_status_change(key, data_entry, old_status);
@@ -1874,6 +1892,69 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 	return rc;
 }
 
+struct RecoveryContext
+{
+	int iodepth = 4;
+
+	PfFlashStore* store;
+	ObjectMemoryPool<RecoverySubTask> task_queue;
+	const std::string& from_store_ip;
+	const std::string& from_ssd_uuid;
+	replica_id_t rep_id;
+	int from_store_id;
+	int64_t recov_object_size;
+	uint16_t meta_ver;
+	lmt_entry* recovery_head_entry=NULL;
+	void* pendding_buf = nullptr;
+	PfBitmap recov_bmp;
+	int64_t read_bs = RECOVERY_IO_SIZE;
+	RecoveryContext(PfFlashStore* _store, const std::string& _from_store_ip,
+		const std::string& _from_ssd_uuid,
+		replica_id_t _rep_id,
+		int _from_store_id,
+		int64_t _recov_object_size,
+		uint16_t _meta_ver):store(_store),from_store_ip(_from_store_ip), from_ssd_uuid(_from_ssd_uuid),
+							rep_id(_rep_id), from_store_id(_from_store_id), recov_object_size(_recov_object_size), 
+							meta_ver(_meta_ver), recov_bmp(int(_recov_object_size / SECTOR_SIZE))
+	{
+
+	}
+	int init()
+	{
+		pendding_buf = app_context.recovery_buf_pool.alloc(recov_object_size, false); //size RECOVERY_IO_SIZE (128K), bug?
+		if (pendding_buf == NULL) {
+			S5LOG_ERROR("Failed to alloc pending buffer for recovery");
+			return -ENOMEM;
+		}
+
+		recovery_head_entry = store->lmt_entry_pool.alloc();
+		if(recovery_head_entry == NULL){
+			S5LOG_ERROR("Failed to alloc heading entry");
+			return -ENOMEM;
+
+		}
+		*recovery_head_entry = lmt_entry{ .offset = 0, //this is a placeholder entry, don't have valid position on disk
+				.snap_seq = 0,
+				.status = EntryStatus::RECOVERYING,
+				.prev_snap = NULL,
+				.waiting_io = NULL,
+				.recovery_bmp = &recov_bmp,
+				.recovery_buf = pendding_buf
+		};
+
+
+		
+
+		return task_queue.init(iodepth);
+	}
+	~RecoveryContext()
+	{
+		if(recovery_head_entry)
+			store->lmt_entry_pool.free(recovery_head_entry);
+		if(pendding_buf)	
+			app_context.recovery_buf_pool.free(pendding_buf, false);
+	}
+};
 int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from_store_ip, int32_t from_store_id,
 								   const string& from_ssd_uuid, int64_t recov_object_size, uint16_t meta_ver)
 {
@@ -1897,54 +1978,57 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	}
 	DeferCall _d([vol] {vol->dec_ref(); });
 
-	void* pendding_buf = app_context.recovery_buf_pool.alloc(head.objsize, false); //size RECOVERY_IO_SIZE (128K), bug?
-	if(pendding_buf == NULL) {
-		S5LOG_ERROR("Failed to alloc pending buffer for recovery");
-		return -ENOMEM;
-	}
-	_clean.push_back([pendding_buf]{app_context.recovery_buf_pool.free(pendding_buf, false); });
-	PfBitmap recov_bmp(int(head.objsize/SECTOR_SIZE));
-	int64_t read_bs = RECOVERY_IO_SIZE;
+
 
 	if(head.objsize != recov_object_size) {
 		S5LOG_FATAL("Recovery between stores with different object size are not supported!");
 	}
 
-	lmt_entry *recovery_head_entry = lmt_entry_pool.alloc();
-	*recovery_head_entry = lmt_entry{.offset = -1, //this is a placeholder entry, don't have valid position on disk
-			.snap_seq = 0,
-			.status = EntryStatus::RECOVERYING,
-			.prev_snap = NULL,
-			.waiting_io = NULL,
-			.recovery_bmp = &recov_bmp,
-			.recovery_buf= pendding_buf
-	};
-	_clean.push_back([recovery_head_entry, this](){ lmt_entry_pool.free(recovery_head_entry); });
-	int iodepth = 4;
-
-	ObjectMemoryPool<RecoverySubTask> task_queue;
-	task_queue.init(iodepth);
+	
 
 	int64_t shard_size = std::min<int64_t>(SHARD_SIZE, vol->size - rep_id.shard_index()*SHARD_SIZE);
 	int64_t obj_cnt = shard_size/recov_object_size;
+
+	RecoveryContext recov_ctx(this, from_store_ip, from_ssd_uuid, rep_id, from_store_id, recov_object_size, meta_ver);
+	rc = recov_ctx.init();
+	if(rc){
+		S5LOG_ERROR("Failed to init RecoveryContext, rc:%d", rc);
+		return rc;
+	}
 	for(int64_t i=0;i<obj_cnt;i++) {//recovery each object (in recov_object_size, not native object size)
 		int64_t offset = ((int64_t)rep_id.shard_index() << SHARD_SIZE_ORDER) + recov_object_size * i;
 		//set local object to recovery state
 		int64_t obj_slba = vol_offset_to_block_slba(offset, head.objsize_order);
 		lmt_key key = {.vol_id = rep_id.to_volume_id().vol_id, .slba = obj_slba, 0, 0};
-		S5LOG_DEBUG("recovery i:%d key:{.vol_id:0x%x, .slba:0x%x}", i, key.vol_id, key.slba);
-		recovery_head_entry->recovery_bmp->clear();
-		recovery_head_entry->snap_seq=0; //mean this is a placeholder
-		recovery_head_entry->status = EntryStatus::RECOVERYING;
-		recovery_head_entry->prev_snap = NULL;
+		//S5LOG_DEBUG("recovery i:%d key:{.vol_id:0x%x, .slba:0x%x}", i, key.vol_id, key.slba);
 
+		rc = recovery_object_series(recov_ctx,  key, offset);
+		if(rc) {
+			return rc;
+		}
+	}
+	S5LOG_INFO("Finish recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+	           this->tray_name, recov_object_size);
 
-		this->sync_invoke([this, &key, recovery_head_entry]()->int {
+	return 0;
+}
+int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_key &key, int64_t offset)
+{
+	int rc=0;
+	recov_ctx.recovery_head_entry->recovery_bmp->clear();
+	recov_ctx.recovery_head_entry->snap_seq = 0;
+	recov_ctx.recovery_head_entry->status = EntryStatus::RECOVERYING;
+	recov_ctx.recovery_head_entry->prev_snap = NULL;
+	recov_ctx.recovery_head_entry->waiting_io = NULL;
+
+	do{
+		rc = this->sync_invoke([this, &key, &recov_ctx]()->int {
 			auto block_pos = obj_lmt.find(key);
 			if (block_pos == obj_lmt.end()) {
-				obj_lmt[key] = recovery_head_entry;
-			} else {
-				if(block_pos->second->status == RECOVERYING) {
+				obj_lmt[key] = recov_ctx.recovery_head_entry;
+			}
+			else {
+				if (block_pos->second->status == RECOVERYING) {
 					S5LOG_FATAL("Object already in recoverying, not handled!");
 					//TODO: handle object already in recovering
 				}
@@ -1954,239 +2038,262 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 
 					return -EBUSY;
 				}
-				recovery_head_entry->prev_snap = block_pos->second;
-				block_pos->second = recovery_head_entry;
+				recov_ctx.recovery_head_entry->prev_snap = block_pos->second;
+				block_pos->second = recov_ctx.recovery_head_entry;
 			}
 			return 0;
-		});
-
-
-		GetSnapListReply primary_snap_list_reply;
-
-		rc = query_store<GetSnapListReply>(from_store_ip.c_str(), primary_snap_list_reply , "op=get_snap_list&volume_id=%lld&offset=%lld&ssd_uuid=%s",
-				   rep_id.to_volume_id().vol_id, offset, from_ssd_uuid.c_str());
-		if(rc) {
-			S5LOG_ERROR("Failed to query remote snap list from store:%s, rep_id:0x%llx, offset:%lld, reason:%s",
-			   from_store_ip.c_str(), rep_id.val(), offset, primary_snap_list_reply.reason.c_str());
-			break;
-		}
-		vector<int>& primary_snap_list = primary_snap_list_reply.snap_list;
-		vector<int> local_snap_list;
-		rc = this->sync_invoke([this, &local_snap_list, offset, rep_id]()->int {
-			return get_snap_list(rep_id.to_volume_id().vol_id, offset, local_snap_list);
-		});
-		if(rc) {
-			S5LOG_ERROR("Failed to query local snap list, rep_id:0x%llx, offset:%lld, rc:%d",
-			            rep_id.val(), offset, rc);
-			break;
-		}
-		S5LOG_INFO("lmt_key:%s has %d snaps[%s] on primary and %d on local [%s]", key.to_string().c_str(),
-			primary_snap_list.size(), join(primary_snap_list).c_str(),
-			local_snap_list.size(), join(local_snap_list).c_str());
-		//delete unneeded object
-		for(auto it = local_snap_list.begin();it != local_snap_list.end(); ) {
-			int snap = *it;
-			int prev = -1;
-			bool deleted = false;
-			for(auto primary_it = primary_snap_list.rbegin(); primary_it != primary_snap_list.rend(); prev = *primary_it, ++primary_it) {
-				if(snap > prev && snap < *primary_it) {
-					//this snap not exists on primary
-					S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", rep_id.val(), offset, snap);
-					
-					this->event_queue->sync_invoke([this, &key, snap]()->int {
-						return delete_obj_by_snap_seq(&key, snap);
-						});
-					it = local_snap_list.erase(it);
-					deleted = true;
-					break;
-				}
-			}
-			if(!deleted)
-				++it;
-		}
-
-
-
-		//for each snap object not exists on local, recovery it
-		//
-
-		S5LOG_DEBUG("filter primary snap list[%s] on local list[%s]", join(primary_snap_list).c_str(), join(local_snap_list).c_str());
-		vector<int> snap_to_recovery;
-		for(int s : primary_snap_list){
-			if(local_snap_list.size()<2 || std::find(local_snap_list.begin() + 2, local_snap_list.end(), s) == local_snap_list.end()){
-				snap_to_recovery.push_back(s);
-			}
-		}
-		S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld) %d objects[%s] to recover ", rep_id.val(), offset,
-			snap_to_recovery.size(), join(snap_to_recovery).c_str());
-
-
-
-
-
-		int failed = 0;
-
-		//recovery each snapshot of this object
-		for(auto snap_it  = snap_to_recovery.rbegin(); snap_it != snap_to_recovery.rend(); ++snap_it) {
-			sem_t recov_sem;
-			sem_init(&recov_sem, 0, iodepth);
-			uint32_t target_snap_seq = *snap_it;
-			S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld snap: %d) ", rep_id.val(), offset, target_snap_seq);
-
-
-			lmt_entry* target_entry = recovery_head_entry->prev_snap;
-			for( ; target_entry != NULL && target_entry->snap_seq != target_snap_seq; target_entry = target_entry->prev_snap);
-
-			if (target_entry == NULL) {
-				rc = this->event_queue->sync_invoke([this, &target_entry, target_snap_seq, &recovery_head_entry, key] {
-
-					
-					if (free_obj_queue.is_empty()) {
-						S5LOG_ERROR("Failed to alloc object for recovery write, disk may be full. disk:%s", tray_name);
-						return -ENOSPC;
-					}
-					int obj_id = free_obj_queue.dequeue();
-					target_entry = lmt_entry_pool.alloc();
-					*target_entry = lmt_entry{ offset: obj_id_to_offset(obj_id),
-							snap_seq : target_snap_seq,
-							status : EntryStatus::RECOVERYING,
-							prev_snap : recovery_head_entry->prev_snap,
-							waiting_io : NULL
-					};
-					int rc2 = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
-					if (rc2)
-					{
-						lmt_entry_pool.free(target_entry);
-						free_obj_queue.enqueue(obj_id);
-						S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc2);
-						return rc2;
-					}
-					rc2 = insert_lmt_entry_list(&recovery_head_entry, target_entry,
-							[target_snap_seq](lmt_entry* entry)->bool{
-								if(entry->snap_seq == 0)
-									return true;
-								return entry->snap_seq > target_snap_seq;
-							}, 
-								
-							[target_snap_seq](lmt_entry* entry)->bool {
-								if (entry->snap_seq == 0)
-									return false;
-								return entry->snap_seq == target_snap_seq;
-							}
-						);
-					if(rc2){
-						S5LOG_FATAL("Unexcepted error during insert recovering object");
-					}
-					return rc2;
-					});
-				// now we have two entry in RECOVERYING state
-				//[Head placeholder RECOVERYING] -> [Entry RECOVERYING] -> [old entry ...]
-			} else /* if (target_entry->snap_seq == target_snap_seq)*/  {
-				
-				//There's an existing target_entry, should we change it into status RECOVERYING?  No
-			}
-
-
-			if (rc)
-				return rc;
-
-
-			S5LOG_DEBUG("target entry snap:%d and %d", target_entry->snap_seq, target_snap_seq);
-			for(int j=0;j<recov_object_size/read_bs && !failed;j++) {
-				sem_wait(&recov_sem);
-				RecoverySubTask *t = task_queue.alloc();
-				if(unlikely(t == NULL)) {
-					S5LOG_FATAL("Unexpected error, can't alloc RecoverySubTask");
-				}
-				if(t->recovery_bd != NULL) {
-					if(t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
-						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
-						failed=1;
-					} else {
-						//TODO: call in asynchronous mode here,
-						int rc2 =  recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
-						if(rc2)
-							failed = 1;
-					}
-					app_context.recovery_io_bd_pool.free(t->recovery_bd);
-					t->recovery_bd = NULL;
-				}
-				if(failed) {
-					task_queue.free(t);
-					sem_post(&recov_sem);
-					break;
-				}
-
-				BufferDescriptor *bd = app_context.recovery_io_bd_pool.alloc();
-				if (bd == NULL) {
-					S5LOG_ERROR("Failed to alloc recovery data bd");
-					failed = 1;
-					task_queue.free(t);
-					sem_post(&recov_sem);
-					break;
-				}
-				bd->data_len = (int)read_bs;
-				t->recovery_bd = bd;
-				t->volume_id = rep_id.to_volume_id().vol_id;
-				t->offset = offset + j* read_bs;
-
-				t->length = read_bs;
-				t->snap_seq = *snap_it;
-				t->store_id = from_store_id;
-				t->rep_id = 0;//
-				t->sem = &recov_sem;
-				t->meta_ver = meta_ver;
-				t->opcode = PfOpCode::S5_OP_RECOVERY_READ;
-				t->owner_queue = &task_queue;
-				app_context.replicators[0]->event_queue->post_event(EVT_RECOVERY_READ_IO, 0, t);
-			}
-			for(int i=0;i<iodepth; i++) {
-				sem_wait(&recov_sem);
-				RecoverySubTask *t = task_queue.alloc();
-				if(t==NULL) {
-					S5LOG_FATAL("Unexpected error, no RecoverySubTask in queue");
-				}
-				if(t->recovery_bd != NULL) {
-					if (t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
-						S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
-						failed = 1;
-					} else {
-						rc =  recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf,
-							                      t->length, t->offset);
-						if (rc)
-							failed = 1;
-					}
-					app_context.recovery_io_bd_pool.free(t->recovery_bd);
-					t->recovery_bd = NULL;
-				}
-				task_queue.free(t);
-			}
-			//change target entry status to NORMAL
-			rc = event_queue->sync_invoke([this, key, target_entry]()->int{
-				if(target_entry->status != EntryStatus::NORMAL ) {
-					EntryStatus old = target_entry->status;
-					target_entry->status = EntryStatus::NORMAL;
-					return redolog->log_status_change(&key, target_entry, old);
-				}
-				return 0;
 			});
-			if(rc){
-				S5LOG_ERROR("Failed to write redolog rc:%d", rc);
-				return rc;
-			}
-			sem_destroy(&recov_sem);
+		if(rc == -EBUSY){
+			S5LOG_INFO("Recovery target object in COW, wait it complete");
+			sleep(1);
 		}
-		rc = finish_recovery_object(&key, recovery_head_entry, recov_object_size, offset, failed);
-		if(failed || rc) {
-			S5LOG_ERROR("Failed recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
-			           this->tray_name, recov_object_size);
-			return -1;
+	}while(rc != 0);
+
+	GetSnapListReply primary_snap_list_reply;
+
+	rc = query_store<GetSnapListReply>(recov_ctx.from_store_ip.c_str(), primary_snap_list_reply, "op=get_snap_list&volume_id=%lld&offset=%lld&ssd_uuid=%s",
+		recov_ctx.rep_id.to_volume_id().vol_id, offset, recov_ctx.from_ssd_uuid.c_str());
+	if (rc) {
+		S5LOG_ERROR("Failed to query remote snap list from store:%s, rep_id:0x%llx, offset:%lld, reason:%s",
+			recov_ctx.from_store_ip.c_str(), recov_ctx.rep_id.val(), offset, primary_snap_list_reply.reason.c_str());
+		return rc;
+	}
+	vector<int>& primary_snap_list = primary_snap_list_reply.snap_list;
+	vector<int> local_snap_list;
+	rc = this->sync_invoke([this, &local_snap_list, offset, &recov_ctx]()->int {
+		return get_snap_list(recov_ctx.rep_id.to_volume_id().vol_id, offset, local_snap_list);
+		});
+	if (rc) {
+		S5LOG_ERROR("Failed to query local snap list, rep_id:0x%llx, offset:%lld, rc:%d",
+			recov_ctx.rep_id.val(), offset, rc);
+		return rc;
+	}
+	//S5LOG_INFO("lmt_key:%s has %d snaps[%s] on primary and %d on local [%s]", key.to_string().c_str(),
+	//	primary_snap_list.size(), join(primary_snap_list).c_str(),
+	//	local_snap_list.size(), join(local_snap_list).c_str());
+	//delete unneeded object
+	for (auto it = local_snap_list.begin(); it != local_snap_list.end(); ) {
+		int snap = *it;
+		int prev = -1;
+		bool deleted = false;
+		for (auto primary_it = primary_snap_list.rbegin(); primary_it != primary_snap_list.rend(); prev = *primary_it, ++primary_it) {
+			if (snap > prev && snap < *primary_it) {
+				//this snap not exists on primary
+				S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", recov_ctx.rep_id.val(), offset, snap);
+
+				this->event_queue->sync_invoke([this, &key, snap]()->int {
+					return delete_obj_by_snap_seq(&key, snap);
+					});
+				it = local_snap_list.erase(it);
+				deleted = true;
+				break;
+			}
+		}
+		if (!deleted)
+			++it;
+	}
+
+
+
+	//for each snap object not exists on local, recovery it
+	//
+
+	//S5LOG_DEBUG("filter primary snap list[%s] on local list[%s]", join(primary_snap_list).c_str(), join(local_snap_list).c_str());
+	vector<int> snap_to_recovery;
+	for (int s : primary_snap_list) {
+		if (local_snap_list.size() < 2 || std::find(local_snap_list.begin() + 2, local_snap_list.end(), s) == local_snap_list.end()) {
+			snap_to_recovery.push_back(s);
 		}
 	}
-	S5LOG_INFO("Finish recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
-	           this->tray_name, recov_object_size);
 
+
+	int failed = 0;
+
+	if(snap_to_recovery.size() > 0){
+		S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld) %d objects[%s] to recover ", recov_ctx.rep_id.val(), offset,
+			snap_to_recovery.size(), join(snap_to_recovery).c_str());
+		//recovery each snapshot of this object
+		for (auto snap_it = snap_to_recovery.rbegin(); snap_it != snap_to_recovery.rend(); ++snap_it) {
+			uint32_t target_snap_seq = *snap_it;
+			rc = recovery_single_object_entry(recov_ctx, key,  target_snap_seq, offset);
+			if(rc){
+				S5LOG_ERROR("recovery single obj entry failed, rc:%d", rc);
+				failed ++;
+				break;
+			}
+
+		}
+	}
+	int rc2 = finish_recovery_object(&key, recov_ctx.recovery_head_entry, recov_ctx.recov_object_size, offset, failed);
+	if (rc || rc2) {
+		S5LOG_ERROR("Failed recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", recov_ctx.rep_id, recov_ctx.from_store_ip.c_str(), recov_ctx.from_ssd_uuid.c_str(),
+			recov_ctx.store->tray_name, recov_ctx.recov_object_size);
+		return rc? : rc2;
+	}
 	return 0;
+}
+
+
+int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx, lmt_key& key, uint32_t target_snap_seq, int64_t offset)
+{
+	int rc= 0;
+
+	S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld snap: %d) ", recov_ctx.rep_id.val(), offset, target_snap_seq);
+
+	lmt_entry* target_entry = recov_ctx.recovery_head_entry->prev_snap;
+	for (; target_entry != NULL && target_entry->snap_seq != target_snap_seq; target_entry = target_entry->prev_snap);
+	
+	if (target_entry == NULL) {
+		rc = this->event_queue->sync_invoke([this, &target_entry, target_snap_seq, &recov_ctx, key] {
+
+
+			if (free_obj_queue.is_empty()) {
+				S5LOG_ERROR("Failed to alloc object for recovery write, disk may be full. disk:%s", tray_name);
+				return -ENOSPC;
+			}
+			int obj_id = free_obj_queue.dequeue();
+			target_entry = lmt_entry_pool.alloc();
+			*target_entry = lmt_entry{ offset: obj_id_to_offset(obj_id),
+					snap_seq : target_snap_seq,
+					status : EntryStatus::RECOVERYING,
+					prev_snap : NULL,
+					waiting_io : NULL
+			};
+			int rc2 = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
+			if (rc2)
+			{
+				lmt_entry_pool.free(target_entry);
+				free_obj_queue.enqueue(obj_id);
+				S5LOG_ERROR("Failed to log_allocation in recovery_write, rc:%d", rc2);
+				return rc2;
+			}
+			rc2 = insert_lmt_entry_list(&recov_ctx.recovery_head_entry, target_entry,
+				[target_snap_seq](lmt_entry* entry)->bool {
+					if (entry->snap_seq == 0)
+						return true;
+					return entry->snap_seq > target_snap_seq;
+				},
+
+				[target_snap_seq](lmt_entry* entry)->bool {
+					if (entry->snap_seq == 0)
+						return false;
+					return entry->snap_seq == target_snap_seq;
+				}
+				);
+			if (rc2) {
+				S5LOG_FATAL("Unexcepted error during insert recovering object");
+			}
+			return rc2;
+		});
+		// now we have two entry in RECOVERYING state
+		//[Head placeholder RECOVERYING] -> [Entry RECOVERYING] -> [old entry ...]
+	}
+	else /* if (target_entry->snap_seq == target_snap_seq)*/ {
+
+		//There's an existing target_entry, should we change it into status RECOVERYING?  No
+	}
+	if (rc)
+		return rc;
+
+
+	int failed = 0;
+	sem_t recov_sem;
+	sem_init(&recov_sem, 0, recov_ctx.iodepth);
+	for (int j = 0; j < recov_ctx.recov_object_size / recov_ctx.read_bs && !failed; j++) {
+		sem_wait(&recov_sem);
+		RecoverySubTask* t = recov_ctx.task_queue.alloc();
+
+		if (unlikely(t == NULL)) {
+			S5LOG_FATAL("Unexpected error, can't alloc RecoverySubTask");
+		}
+		if (t->recovery_bd != NULL) {
+			if (t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
+				S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
+				failed = 1;
+			}
+			else {
+				//TODO: call in asynchronous mode here,
+				int rc2 = recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf, t->length, t->offset);
+				if (rc2)
+					failed = 1;
+			}
+			app_context.recovery_io_bd_pool.free(t->recovery_bd);
+			t->recovery_bd = NULL;
+			t->snap_seq = 0;
+		}
+		if (failed) {
+			S5LOG_ERROR("prev recovery IO has failed");
+			recov_ctx.task_queue.free(t);
+			sem_post(&recov_sem);
+			break;
+		}
+
+		BufferDescriptor* bd = app_context.recovery_io_bd_pool.alloc();
+		if (bd == NULL) {
+			S5LOG_ERROR("Failed to alloc recovery data bd");
+			failed = 1;
+			recov_ctx.task_queue.free(t);
+			sem_post(&recov_sem);
+			break;
+		}
+		bd->data_len = (int)recov_ctx.read_bs;
+		t->recovery_bd = bd;
+		t->volume_id = recov_ctx.rep_id.to_volume_id().vol_id;
+		t->offset = offset + j * recov_ctx.read_bs;
+
+		t->length = recov_ctx.read_bs;
+		t->snap_seq = target_snap_seq;
+		t->store_id = recov_ctx.from_store_id;
+		t->rep_id = 0;//
+		t->sem = &recov_sem;
+		t->meta_ver = recov_ctx.meta_ver;
+		t->opcode = PfOpCode::S5_OP_RECOVERY_READ;
+		t->owner_queue = &recov_ctx.task_queue;
+		app_context.replicators[0]->event_queue->post_event(EVT_RECOVERY_READ_IO, 0, t);
+	}
+	for (int i = 0; i < recov_ctx.iodepth; i++) {
+		sem_wait(&recov_sem);
+	}
+	for (int i = 0; i < recov_ctx.iodepth; i++) {
+		RecoverySubTask* t = recov_ctx.task_queue.alloc();
+		if (t == NULL) {
+			S5LOG_FATAL("Unexpected error, no RecoverySubTask in queue");
+		}
+		if (t->recovery_bd != NULL) {
+			if (t->complete_status != PfMessageStatus::MSG_STATUS_SUCCESS) {
+				S5LOG_ERROR("Previous recovery IO has failed, rc:%d", t->complete_status);
+				failed = 1;
+			}
+			else {
+				rc = recovery_write(&key, target_entry, t->snap_seq, t->recovery_bd->buf,
+					t->length, t->offset);
+				if (rc)
+					failed = 1;
+			}
+			app_context.recovery_io_bd_pool.free(t->recovery_bd);
+			t->recovery_bd = NULL;
+			t->snap_seq = 0;
+		}
+		recov_ctx.task_queue.free(t);
+	}
+	//change target entry status to NORMAL
+	rc = event_queue->sync_invoke([this, key, target_entry]()->int {
+		if (target_entry->status != EntryStatus::NORMAL) {
+			EntryStatus old = target_entry->status;
+			target_entry->status = EntryStatus::NORMAL;
+			return redolog->log_status_change(&key, target_entry, old);
+		}
+		return 0;
+		});
+	if (rc) {
+		S5LOG_ERROR("Failed to write redolog rc:%d", rc);
+		return rc;
+	}
+	sem_destroy(&recov_sem);
+	rc = failed ? -EIO : rc;
+	S5LOG_INFO("recovering object complete (rep_id:0x%llx offset:%lld snap: %d), rc:%d ", recov_ctx.rep_id.val(), offset, target_snap_seq, rc );
+	 
+	return rc;
 }
 
 int PfFlashStore::get_snap_list(volume_id_t volume_id, int64_t offset, vector<int>& snap_list)
@@ -2195,7 +2302,7 @@ int PfFlashStore::get_snap_list(volume_id_t volume_id, int64_t offset, vector<in
 	auto block_pos = obj_lmt.find(key);
 	if(block_pos != obj_lmt.end()){
 		lmt_entry* p = block_pos->second;
-		if(p->status == EntryStatus::RECOVERYING && p->snap_seq == 0) {
+		if(p->status == EntryStatus::RECOVERYING && p->offset == 0) {
 			//this is recovery head entry, skip it
 			p =  p->prev_snap;
 		}

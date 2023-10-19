@@ -121,10 +121,11 @@ assert_equal $(obj_cnt_on_ip $STORE_IP) $((slave_cnt + 3))
 if  pidof fio | grep $FIO_PID ; then
     info "FIO still running, that's OK, kill it"
     kill -INT $FIO_PID
+	wait $FIO_PID
 else
     assert wait $FIO_PID
 fi
-
+sleep 3
 
 info "Begin scrub volume"
 assert async_curl "http://$COND_IP:49180/s5c/?op=deep_scrub_volume&volume_name=$VOL_NAME"

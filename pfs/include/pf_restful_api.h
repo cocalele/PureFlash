@@ -109,7 +109,7 @@ public:
 
 	};
 	replica_id_t rep_id;
-	uint64_t offset_in_vol;
+	uint64_t offset_in_vol=0;
 	std::list< SnapshotMd5> snap_md5;
 };
 class PerfReply : public RestfulReply {

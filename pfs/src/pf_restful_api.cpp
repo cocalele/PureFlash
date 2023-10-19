@@ -583,10 +583,12 @@ void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm) 
 }
 
 void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm) {
-	uint64_t rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
+	uint64_t _rep_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "replica_id", 0, true);
 	string ssd_uuid = get_http_param_as_string(&hm->query_string, "ssd_uuid", "", true);
 	int64_t obj_idx = get_http_param_as_int64(&hm->query_string, "object_index", 0, true);
-	ObjectMd5Reply reply(int64_to_replica_id(rep_id));
+	
+	replica_id_t rep_id(_rep_id);
+	ObjectMd5Reply reply(rep_id);
 	int i = app_context.get_ssd_index(ssd_uuid);
 	if (i < 0) {
 		S5LOG_ERROR("disk %s not found for cal_replica_md5", ssd_uuid.c_str());
@@ -597,10 +599,17 @@ void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm) {
 	}
 
 	PfFlashStore* disk = app_context.trays[i];
-	
-	int rc = Scrub::cal_object(disk, int64_to_replica_id(rep_id), obj_idx, reply.snap_md5);
+	int64_t logic_offset = rep_id.shard_index() * SHARD_SIZE + obj_idx *disk->head.objsize;
+	reply.offset_in_vol = logic_offset;
+
+	int rc = Scrub::cal_object(disk, rep_id, obj_idx, reply.snap_md5);
 	if(rc){
-		reply.ret_code = rc;
+		if(rc == -ENOENT){
+			reply.ret_code = 0;//consider as success
+		} else {
+			S5LOG_ERROR("Scrub::cal_object fail, rc:%d", rc);
+			reply.ret_code = rc;
+		}
 	}
 	send_reply_to_client(reply, nc);
 }

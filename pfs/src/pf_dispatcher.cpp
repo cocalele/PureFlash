@@ -190,7 +190,7 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 				S5LOG_ERROR("submit_io, rc:%d", rc);
 			}
 		} else {
-			S5LOG_DEBUG("process none");
+			//S5LOG_DEBUG("process none");
 		}
 	}
 	return 0;
