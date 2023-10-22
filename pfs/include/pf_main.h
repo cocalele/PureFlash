@@ -38,7 +38,7 @@ class PfRdmaServer;
 #define MAX_PORT_COUNT 4
 #define MAX_DISPATCHER_COUNT 10
 #define MAX_REPLICATOR_COUNT 10
-#define IO_POOL_SIZE 256
+#define IO_POOL_SIZE 1024
 //#define IO_POOL_SIZE 128
 
 #define DATA_PORT 0
@@ -61,7 +61,6 @@ public:
 
 	PfTcpServer* tcp_server;
 	PfRdmaServer* rdma_server;
-	struct PfRdmaDevContext* dev_ctx[4];
 	std::vector<PfFlashStore*> trays;
 	std::vector<PfDispatcher*> disps;
 	std::vector<PfReplicator*> replicators;
@@ -81,6 +80,8 @@ public:
 
 	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);
+	int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx);
+	void PfRdmaUnRegisterMr();
 	PfAfsAppContext();
 
 	PfDispatcher *get_dispatcher(uint64_t vol_id);

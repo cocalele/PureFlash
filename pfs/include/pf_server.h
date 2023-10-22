@@ -46,7 +46,7 @@ private:
 class PfRdmaServer
 {
 public:
-	PfRdmaConnection *conn;
+	//PfRdmaConnection *conn;
 	PfPoller* poller;
 	int init(int port);
 	int server_socket_fd;

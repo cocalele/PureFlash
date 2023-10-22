@@ -151,7 +151,7 @@ void PfAioEngine::polling_proc()
 #define MAX_EVT_CNT 100
 	struct io_event evts[MAX_EVT_CNT];
 	char name[32];
-	snprintf(name, sizeof(name), "aio_%s", disk_name.c_str());
+	snprintf(name, sizeof(name), "p_aio_%s", disk_name.c_str());
 	prctl(PR_SET_NAME, name);
 	int rc = 0;
 	while (1) {

@@ -14,6 +14,7 @@
  */
 
 #include "pf_fixed_size_queue.h"
+#include <rdma/rdma_cma.h>
 
 class BufferPool;
 class PfConnection;
@@ -55,9 +56,7 @@ struct BufferDescriptor
 	//int(*on_work_complete)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 	void* cbk_data;
 	int buf_capacity; /// this is the size, i.e. max size of buf
-#ifdef WITH_RDMA
 	struct ibv_mr* mrs[4];
-#endif
 	BufferPool* owner_pool;
 	PfConnection* conn;
 };
@@ -76,6 +75,8 @@ public:
 	void destroy();
 	void* data_buf;
 	BufferDescriptor* data_bds;
+	int rmda_register_mr(struct ibv_pd* pd, int idx, int access_mode);
+	void rmda_unregister_mr();
 private:
 	PfFixedSizeQueue<BufferDescriptor*> free_bds;
 };
