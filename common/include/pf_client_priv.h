@@ -299,6 +299,9 @@ public:
 			delete this;
 		}
 	}
+	bool mr_registered;
+	int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx);
+	void PfRdmaUnRegisterMr();
 	int rpc_alloc_block(PfClientVolume* vol, uint64_t offset);
 	int rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq);
 private:
@@ -308,8 +311,5 @@ private:
 
 
 };
-
-
-
 #endif // pf_client_priv_h__
 

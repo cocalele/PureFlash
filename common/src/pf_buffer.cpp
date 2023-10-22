@@ -58,6 +58,35 @@ void BufferPool::destroy()
 	free_bds.destroy();
 }
 
+int BufferPool::rmda_register_mr(struct ibv_pd* pd, int idx, int access_mode)
+{
+	if (mrs[idx] != NULL)
+	{
+		S5LOG_ERROR("pool->mrs[%d] is not NULL", idx);
+		return -EEXIST;
+	}
+	struct ibv_mr *mr = mrs[idx] = ibv_reg_mr(pd, data_buf, buf_size * buf_count, access_mode);
+	if (!mr) {
+		S5LOG_ERROR("ibv_reg_mr failed, idx;%d, errno:%d", idx, errno);
+        return -errno;
+	}
+	for (int i = 0 ;i < buf_count; i++) {
+		data_bds[i].mrs[idx] = mr;
+	}
+
+	return 0;
+}
+
+void BufferPool::rmda_unregister_mr()
+{
+	for (int i = 0 ; i < 4; i++) {
+		if (mrs[i] != NULL)
+			ibv_dereg_mr(mrs[i]);
+	}
+
+	return ;
+}
+
 const char* WcStatusToStr(WcStatus s) {
 	switch(s){
 		case TCP_WC_SUCCESS:

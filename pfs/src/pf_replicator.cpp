@@ -16,7 +16,6 @@
 #endif
 
 extern enum connection_type rep_conn_type;
-extern struct replicator_mem_pool* rep_mem_pool[10];
 
 int PfReplicator::begin_replicate_io(IoSubTask* t)
 {
@@ -490,9 +489,6 @@ int PfReplicator::init(int index)
 		mem_pool.reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
-#ifdef WITH_RDMA
-	rep_mem_pool[rep_index] = &mem_pool;
-#endif
 	clean.cancel_all();
 	return 0;
 }

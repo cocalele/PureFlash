@@ -6,6 +6,7 @@
 //#include "pf_main.h"
 //#include "pf_server.h"
 #include "pf_rdma_connection.h"
+#include "pf_app_ctx.h"
 
 #define RDMA_RESOLVE_ROUTE_TIMEOUT_MS 100
 
@@ -14,10 +15,6 @@
 #define MAX_DISPATCHER_COUNT 10
 #define MAX_REPLICATOR_COUNT 10
 #define DEFAULT_MAX_MR		64
-struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT]={0};
-struct replicator_mem_pool* rep_mem_pool[MAX_REPLICATOR_COUNT]={0};
-BufferPool* recovery_bd_pool;
-struct PfRdmaDevContext* global_dev_ctx[4];
 pthread_mutex_t global_dev_lock;
 
 int on_addr_resolved(struct rdma_cm_id* id)
@@ -31,105 +28,16 @@ int on_addr_resolved(struct rdma_cm_id* id)
     return 0;
 }
 
-static int register_rdma_mem_pool(BufferPool *pool, struct ibv_pd *pd, int idx, int access_mode)
-{
-    if (pd == NULL)
-    {
-	S5LOG_ERROR("pd is NULL");
-        return -1;
-    }
-    S5LOG_DEBUG("register_rdma_mem_pool, idx;%d", idx);
-    if (pool->mrs[idx] != NULL)
-    {
-	S5LOG_ERROR("pool->mrs[%d] is not NULL", idx);
-        return -EEXIST;
-    }
-    struct ibv_mr* mr = pool->mrs[idx] = ibv_reg_mr(pd, pool->data_buf, ((size_t)pool->buf_size)*pool->buf_count, access_mode);
-    if (mr == NULL)
-    {
-	S5LOG_ERROR("ibv_reg_mr failed, idx;%d, errno:%d", idx, errno);
-        return -errno;
-    }
-    for (int i=0; i<pool->buf_count; i++)
-    {
-        pool->data_bds[i].mrs[idx] = mr;
-    }
-    return 0;
-}
-
-static int register_disp_context_buf(struct ibv_pd* pd, int idx)
-{
-	int rc = 0;
-	for(int i=0; i<MAX_DISPATCHER_COUNT; i++){
-		rc = 0;
-		if (disp_mem_pool[i] == 0)
-			break;
-		struct disp_mem_pool* mem_pool = disp_mem_pool[i];
-		rc = register_rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-		if (rc)
-		{
-			S5LOG_ERROR("register_rdma_mem_pool for disp cmd_pool failed, rc:%d", rc);
-			return rc;
-		}
-		rc = register_rdma_mem_pool(&mem_pool->data_pool, pd, idx,
-		                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-		if (rc)
-		{
-			S5LOG_ERROR("register_rdma_mem_pool for disp data_pool failed, rc:%d", rc);
-			return rc;
-		}
-		rc = register_rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-		if (rc)
-		{
-			S5LOG_ERROR("register_rdma_mem_pool for disp reply_pool failed, rc:%d", rc);
-			return rc;
-		}
-		S5LOG_DEBUG("register_dispatcher_mem i:%d done", i);
-	}
-	return 0;
-}
-
-static int register_rep_context_buf(struct ibv_pd* pd, int idx)
-{
-	int rc;
-	for(int i=0; i<MAX_REPLICATOR_COUNT; i++){
-		rc = 0;
-		if(rep_mem_pool[i] == 0)
-			break;
-		struct replicator_mem_pool* mem_pool = rep_mem_pool[i];
-		rc = register_rdma_mem_pool(&mem_pool->cmd_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-		if (rc)
-		{
-			S5LOG_ERROR("register_rdma_mem_pool for replicator cmd_pool failed, rc:%d", rc);
-			return rc;
-		}
-		rc = register_rdma_mem_pool(&mem_pool->reply_pool, pd, idx, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-		if (rc)
-		{
-			S5LOG_ERROR("register_rdma_mem_pool for replicator reply_pool failed, rc:%d", rc);
-			return rc;
-		}
-		S5LOG_DEBUG("register_rep_mem i:%d done", i);
-	}
-	rc = register_rdma_mem_pool(recovery_bd_pool, pd, idx,
-	                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-	if (rc)
-	{
-		S5LOG_ERROR("register_rdma_mem_pool for recovery_io_bd_pool failed, rc:%d", rc);
-		return rc;
-	}
-	return 0;
-}
-
 #define MAX_WC_CNT 256
 static void *cq_poller_proc(void *arg_)
 {
-    struct PfRdmaDevContext* dev_ctx = (struct PfRdmaDevContext*)arg_;
+	struct PfRdmaPoller *prp_poller = (struct PfRdmaPoller *)arg_;
+    //struct PfRdmaDevContext* dev_ctx = prp_poller->prp_dev_ctx;
     struct ibv_cq *cq;
     struct ibv_wc wc[MAX_WC_CNT];
     void *cq_ctx;
     int n;
-    ibv_get_cq_event(dev_ctx->comp_channel, &cq, &cq_ctx);
+    ibv_get_cq_event(prp_poller->prp_comp_channel, &cq, &cq_ctx);
     ibv_ack_cq_events(cq, 1);
     ibv_req_notify_cq(cq, 0);
     while((n = ibv_poll_cq(cq, MAX_WC_CNT, wc)))
@@ -139,13 +47,14 @@ static void *cq_poller_proc(void *arg_)
             struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;
             if(msg == NULL)
             {
-		S5LOG_WARN("msg is NULL, continue");
+				S5LOG_WARN("msg is NULL, continue");
                 continue;
             }
             struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
             if(wc[i].status != IBV_WC_SUCCESS){
             	S5LOG_WARN("wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s", i, wc[i].status, ibv_wc_status_str(wc[i].status));
             }
+			//S5LOG_INFO("cq poller get msg!!!!!!, opcode:%d", msg->wr_op);
             if (likely(conn->on_work_complete))
             {
                 conn->on_work_complete(msg, WcStatus::RDMA_WC_SUCCESS, conn, NULL);
@@ -161,6 +70,30 @@ static void on_rdma_cq_event(int fd, uint32_t events, void *arg)
 }
 
 
+static int init_rdmd_cq_poller(struct PfRdmaPoller *poller, int idx,
+	struct PfRdmaDevContext *dev_ctx, struct ibv_context* rdma_ctx)
+{
+	poller->prp_comp_channel = ibv_create_comp_channel(rdma_ctx);
+	if (!poller->prp_comp_channel) {
+		S5LOG_ERROR("failed to create comp channel");
+	}
+	poller->prp_cq = ibv_create_cq(rdma_ctx, 512, NULL, poller->prp_comp_channel, 0);
+	if (!poller->prp_cq) {
+		S5LOG_ERROR("failed ibv_create_cq, errno:%d", errno);
+	}
+	// todo: busy polling mode
+	ibv_req_notify_cq(poller->prp_cq, 0);
+
+	poller->poller.init("rdma_cq_poller", 1024);
+	poller->prp_dev_ctx = dev_ctx;
+	int rc = poller->poller.add_fd(poller->prp_comp_channel->fd, EPOLLIN, on_rdma_cq_event, poller);
+	if (rc) {
+		S5LOG_ERROR("failed to add fd");
+	}
+
+	return 0;
+}
+
 struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 {
 	struct PfRdmaDevContext* rdma_dev_ctx;
@@ -175,40 +108,37 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 		return NULL;
 	}
 
-	for (int i=0; i<4; i++)
+	S5LOG_INFO("RDMA device fw:%s vendor:%d  node_guid:0x%llX, dev:%s", device_attr.fw_ver,
+		device_attr.vendor_id, device_attr.node_guid, rdma_context->device->name);
+
+	for (int i=0; i < MAX_RDMA_DEVICE; i++)
 	{
-		if (global_dev_ctx[i] == NULL)
+		if (g_app_ctx->dev_ctx[i] == NULL)
 		{
-			rdma_dev_ctx = (struct PfRdmaDevContext*)calloc(1, sizeof(struct PfRdmaDevContext));
+			rdma_dev_ctx = new PfRdmaDevContext;
 			memcpy(&rdma_dev_ctx->dev_attr, &device_attr, sizeof(struct ibv_device_attr));
 			rdma_dev_ctx->ctx = rdma_context;
 			rdma_dev_ctx->pd = ibv_alloc_pd(rdma_context);
-			rc = register_rep_context_buf(rdma_dev_ctx->pd, i);
-			if (rc)
-			{
-				S5LOG_ERROR("register_rep_context_buf failed, rc:%d", rc);
-				break;
-			}
-			rc = register_disp_context_buf(rdma_dev_ctx->pd, i);
-			if (rc)
-			{
-				S5LOG_ERROR("register_disp_context_buf failed, rc:%d", rc);
-				break;
-			}
-			rdma_dev_ctx->comp_channel = ibv_create_comp_channel(rdma_context);
-			rdma_dev_ctx->cq = ibv_create_cq(rdma_context, 512, NULL, rdma_dev_ctx->comp_channel, 0);
-			ibv_req_notify_cq(rdma_dev_ctx->cq, 0);
 			rdma_dev_ctx->idx = i;
-			rdma_dev_ctx->poller = new PfPoller();
-			rdma_dev_ctx->poller->init(format_string("RDMA_poll_%d", i).c_str(), 128);
-			rdma_dev_ctx->poller->dev_ctx = rdma_dev_ctx;
-			rdma_dev_ctx->poller->add_fd(rdma_dev_ctx->comp_channel->fd, EPOLLIN, on_rdma_cq_event, rdma_dev_ctx);
-			global_dev_ctx[i] = rdma_dev_ctx;
+			rdma_dev_ctx->cq_poller_cnt = CQ_POLLER_COUNT;
+			if (g_app_ctx->rdma_client_only)
+				rdma_dev_ctx->client_cq_poller_cnt = rdma_dev_ctx->cq_poller_cnt;
+			else
+				rdma_dev_ctx->client_cq_poller_cnt = CQ_POLLER_CLIENT_COUNT;
+			rdma_dev_ctx->next_server_cq_poller_idx = rdma_dev_ctx->client_cq_poller_cnt;
+			rdma_dev_ctx->next_client_cq_poller_idx = 0;
+			for (int pindex = 0; pindex < CQ_POLLER_COUNT; pindex++) {
+				init_rdmd_cq_poller(&rdma_dev_ctx->prdc_poller_ctx[pindex], pindex,
+					rdma_dev_ctx, rdma_context);
+			}
+			g_app_ctx->dev_ctx[i] = rdma_dev_ctx;
+			if (!g_app_ctx->rdma_client_only)
+				g_app_ctx->PfRdmaRegisterMr(rdma_dev_ctx);
 		}
-		if (global_dev_ctx[i]->ctx == rdma_context)
+		if (g_app_ctx->dev_ctx[i]->ctx == rdma_context)
 		{
 			pthread_mutex_unlock(&global_dev_lock);
-			return global_dev_ctx[i];
+			return g_app_ctx->dev_ctx[i];
 		}
 	}
 	pthread_mutex_unlock(&global_dev_lock);
@@ -218,9 +148,10 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 void PfRdmaConnection::build_qp_attr(struct ibv_qp_init_attr *qp_attr)
 {
     memset(qp_attr, 0, sizeof(*qp_attr));
-    qp_attr->send_cq = dev_ctx->cq;
-    qp_attr->recv_cq = dev_ctx->cq;
+    qp_attr->send_cq = dev_ctx->prdc_poller_ctx[prc_cq_poller_idx].prp_cq;
+    qp_attr->recv_cq = dev_ctx->prdc_poller_ctx[prc_cq_poller_idx].prp_cq;
     qp_attr->qp_type = IBV_QPT_RC;
+	// todo
     qp_attr->cap.max_send_wr = 512;
     qp_attr->cap.max_recv_wr = 512;
     qp_attr->cap.max_send_sge = 1;
@@ -239,6 +170,9 @@ int on_route_resolved(struct rdma_cm_id* id)
 		S5LOG_ERROR("build_context");
 		return -1;
 	}
+	conn->prc_cq_poller_idx = conn->dev_ctx->next_client_cq_poller_idx;
+	conn->dev_ctx->next_client_cq_poller_idx =
+		(conn->dev_ctx->next_client_cq_poller_idx + 1)%conn->dev_ctx->client_cq_poller_cnt;
 
 	conn->build_qp_attr(&qp_attr);
 	rc = rdma_create_qp(id, conn->dev_ctx->pd, &qp_attr);
@@ -328,7 +262,7 @@ PfRdmaConnection* PfRdmaConnection::connect_to_server(const std::string ip, int 
 		return NULL;
 	}
 	((struct sockaddr_in*)addr->ai_addr)->sin_port = htons((uint16_t)port);
-	S5LOG_DEBUG("server ip:%s.\n", ip.c_str());
+	//S5LOG_DEBUG("server ip:%s.\n", ip.c_str());
 	PfRdmaConnection* conn = new PfRdmaConnection();
 	conn->ec = rdma_create_event_channel();
 	if(conn->ec == NULL)
@@ -440,7 +374,7 @@ int PfRdmaConnection::post_read(BufferDescriptor* buf, uintptr_t raddr, uint32_t
     struct ibv_sge sge;
 
     buf->conn = this;
-    buf->wr_op = RDMA_WR_RECV;
+    buf->wr_op = RDMA_WR_READ;
 
     wr.wr_id = (uint64_t)buf;
     wr.next = NULL;
@@ -497,56 +431,23 @@ int PfRdmaConnection::post_write(BufferDescriptor* buf, uintptr_t raddr, uint32_
 int PfRdmaConnection::post_write(BufferDescriptor* buf)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
 }
 
 int PfRdmaConnection::post_read(BufferDescriptor* buf)
 {
 	S5LOG_FATAL("%s not implemented", __FUNCTION__);
+	return 0;
 }
 
 int PfRdmaConnection::do_close()
 {
 	int rc = 0;
 	struct rdma_cm_id* id = this->rdma_id;
-	this->dev_ctx->poller->del_fd(this->dev_ctx->comp_channel->fd);
+	struct PfRdmaPoller *rdma_poller = &dev_ctx->prdc_poller_ctx[prc_cq_poller_idx];
+	S5LOG_INFO("Client close rdma connection!");
+	rdma_poller->poller.del_fd(rdma_poller->prp_comp_channel->fd);
 	rdma_destroy_qp(id);
-	for(int i=0; i<MAX_DISPATCHER_COUNT; i++){
-		rc = 0;
-		if (disp_mem_pool[i] == 0)
-			break;
-		struct disp_mem_pool* mem_pool = disp_mem_pool[i];
-		rc = ibv_dereg_mr(mem_pool->cmd_pool.mrs[this->dev_ctx->idx]);
-		if(rc)
-		{
-		    S5LOG_ERROR("ibv_dereg_mr disp cmd_pool failed, rc:%d", rc);
-		}
-		rc = ibv_dereg_mr(mem_pool->data_pool.mrs[this->dev_ctx->idx]);
-		if(rc)
-		{
-		    S5LOG_ERROR("ibv_dereg_mr disp data_pool failed, rc:%d", rc);
-		}
-		rc = ibv_dereg_mr(mem_pool->reply_pool.mrs[this->dev_ctx->idx]);
-		if(rc)
-		{
-		    S5LOG_ERROR("ibv_dereg_mr disp reply_pool failed, rc:%d", rc);
-		}
-	}
-	for(int i=0; i<MAX_REPLICATOR_COUNT; i++){
-		rc = 0;
-		if(rep_mem_pool[i] == 0)
-			break;
-		struct replicator_mem_pool *mem_pool = rep_mem_pool[i];
-		rc = ibv_dereg_mr(mem_pool->cmd_pool.mrs[this->dev_ctx->idx]);
-		if(rc)
-		{
-		    S5LOG_ERROR("ibv_dereg_mr rep reply_pool failed, rc:%d", rc);
-		}
-		rc = ibv_dereg_mr(mem_pool->reply_pool.mrs[this->dev_ctx->idx]);
-		if(rc)
-		{
-		    S5LOG_ERROR("ibv_dereg_mr rep reply_pool failed, rc:%d", rc);
-		}
-	}
 	rc = rdma_destroy_id(id);
 	if(rc) {
 		S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);

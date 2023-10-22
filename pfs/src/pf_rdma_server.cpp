@@ -11,9 +11,6 @@
 
 #define MAX_DISPATCHER_COUNT    10
 #define MAX_REPLICATOR_COUNT    10
-extern struct disp_mem_pool* disp_mem_pool[MAX_DISPATCHER_COUNT];
-extern struct replicator_mem_pool* rep_mem_pool[MAX_REPLICATOR_COUNT];
-extern struct PfRdmaDevContext* global_dev_ctx[4];
 
 static int post_receive(struct PfRdmaConnection *conn, BufferDescriptor *bd)
 {
@@ -52,15 +49,19 @@ static void *rdma_server_event_proc(void* arg)
 		memcpy(&event_copy, event, sizeof(*event));
 		if(event_copy.event == RDMA_CM_EVENT_CONNECT_REQUEST)
 		{
+			S5LOG_INFO("get connnect request");
 			server->on_connect_request(&event_copy);
 			rdma_ack_cm_event(event);
 		}
 		else if (event_copy.event == RDMA_CM_EVENT_ESTABLISHED)
 		{
+			S5LOG_INFO("rdma connection established");
 			rdma_ack_cm_event(event);
 		}
 		else if (event_copy.event == RDMA_CM_EVENT_DISCONNECTED)
 		{
+			// todo: close rdma conn
+			S5LOG_INFO("TODO: close rdma conn");
 			rdma_ack_cm_event(event);
 		}
 		else
@@ -84,40 +85,39 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 				if (bd->cmd_bd->opcode == S5_OP_WRITE || bd->cmd_bd->opcode == S5_OP_REPLICATE_WRITE) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
 					conn->add_ref();
+					//S5LOG_INFO("get %d write", bd->cmd_bd->opcode);
 					conn->post_read(iocb->data_bd, bd->cmd_bd->buf_addr, bd->cmd_bd->rkey);
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
-					conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
+					//S5LOG_INFO("get iocmd!!!!command_id:%d seq:%d", bd->cmd_bd->command_id, bd->cmd_bd->command_seq);
+					if (spdk_engine_used())
+						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+					else
+						conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
-			}
-			else {
-				//data received
-				PfServerIocb *iocb = bd->server_iocb;
-				iocb->received_time = now_time_usec();
-				conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
+			}else{
+				S5LOG_ERROR("RDMA_WR_RECV unkonw data");
 			}
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_SEND){
 			//IO complete, start next
 			PfServerIocb *iocb = bd->server_iocb;
-			if(bd->data_len == sizeof(PfMessageReply) && iocb->cmd_bd->cmd_bd->opcode == PfOpCode::S5_OP_READ) {
-				//message head sent complete
-				conn->add_ref(); //data_bd reference to connection
-				return 1;
-			} else {
-				iocb->dec_ref();
-				iocb = (PfServerIocb *)conn->dispatcher->iocb_pool.alloc(); //alloc new IO
-				iocb->conn = conn;
-				iocb->add_ref();
-//				post_receive(conn, iocb->cmd_bd);
-				conn->post_recv(iocb->cmd_bd);
-			}
+			iocb->re_init();
+			conn->post_recv(iocb->cmd_bd);
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_WRITE) {
 			//read or recovery_read
 			PfServerIocb *iocb = bd->server_iocb;
             iocb->dec_ref();
+		} else if (bd->wr_op == WrOpcode::RDMA_WR_READ) {
+			//data received
+			PfServerIocb *iocb = bd->server_iocb;
+			iocb->received_time = now_time_usec();
+			if (spdk_engine_used())
+				((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
+			else
+				conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
 		} else {
 			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
 		}
@@ -138,7 +138,12 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
     struct rdma_cm_id* id = evt->id;
     struct PfHandshakeMessage* hs_msg = (struct PfHandshakeMessage*)evt->param.conn.private_data;
 	PfVolume* vol;
-    conn = new PfRdmaConnection();
+	struct sockaddr * peer_addr = rdma_get_peer_addr(id);
+	char* ipstr = inet_ntoa(((struct sockaddr_in*)peer_addr)->sin_addr);
+
+	S5LOG_INFO("RDMA connection request:vol_id:0x%lx, from:%s", hs_msg->vol_id, ipstr);
+
+    PfRdmaConnection *conn = new PfRdmaConnection();
     conn->dev_ctx = build_context(id->verbs);
     if(conn->dev_ctx == NULL)
     {
@@ -146,6 +151,11 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
         return -1;
     }
 
+	conn->prc_cq_poller_idx = conn->dev_ctx->next_server_cq_poller_idx++;
+	//conn->prc_cq_poller_idx = 0;
+	if (conn->dev_ctx->next_server_cq_poller_idx >= conn->dev_ctx->cq_poller_cnt)
+		conn->dev_ctx->next_server_cq_poller_idx = conn->dev_ctx->client_cq_poller_cnt;
+	S5LOG_INFO("poller at cq index:%d", conn->prc_cq_poller_idx);
     conn->build_qp_attr(&qp_attr);
     rc = rdma_create_qp(id, conn->dev_ctx->pd, &qp_attr);
     if(rc)
@@ -250,6 +260,8 @@ int PfRdmaServer::init(int port)
     memset(&listen_addr, 0, sizeof(listen_addr));
     listen_addr.sin_family = AF_INET;
     listen_addr.sin_port = htons((uint16_t)port);
+
+	S5LOG_INFO("Init RDMA Server with IP:<NULL>:%d", port);
 	
     this->ec = rdma_create_event_channel();
     rc = rdma_create_id(this->ec, &this->cm_id, NULL, RDMA_PS_TCP);

@@ -21,7 +21,6 @@ int PfEventQueue::init(const char* name, int size, BOOL semaphore_mode)
 		S5LOG_ERROR("Failed create eventfd for EventQueue:%s, rc:%d", name, -errno);
 		return -errno;
 	}
-	S5LOG_DEBUG("Create event queue:%s with fd:%d", name, event_fd);
 	int rc = 0;
 	rc = queue1.init(size);
 	if(rc)
