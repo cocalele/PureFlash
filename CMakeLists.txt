@@ -23,13 +23,15 @@ set(ZOOKEEPER_INC ${ZOOKEEPER_SOURCE}/include ${ZOOKEEPER_SOURCE}/generated)
 set(ZOOKEEPER_BIN ${ZOOKEEPER_SOURCE}/.libs)
 
 set(ZOOKEEPER_PREBUILDED 1)
+
 execute_process(COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/osname.sh   OUTPUT_VARIABLE  OS_NAME)
 message("os is ${OS_NAME}")
+set(PREBUILD_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/pre_build_libs/${OS_NAME})
 
 macro(USE_ZOOKEEPER)
     if(ZOOKEEPER_PREBUILDED)
-        set(ZOOKEEPER_BIN ${CMAKE_CURRENT_SOURCE_DIR}/pre_build_libs/${OS_NAME})
-        include_directories(${CMAKE_CURRENT_SOURCE_DIR}/pre_build_libs/${OS_NAME})
+        set(ZOOKEEPER_BIN ${PREBUILD_LIB_DIR})
+        include_directories(${PREBUILD_LIB_DIR})
 
     elseif(UNIX)
         foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
@@ -94,7 +96,6 @@ add_subdirectory(pfs)
 add_subdirectory(common)
 add_custom_target(scripts ALL
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/scripts ${CMAKE_BINARY_DIR}
-#    COMMAND cp -rpfu ${ZOOKEEPER_SOURCE}/.libs/libzookeeper_mt.a ${CMAKE_BINARY_DIR}
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..
     COMMAND cp -rp ${CMAKE_CURRENT_SOURCE_DIR}/testing ${BUILD_ROOT_DIR}
 )

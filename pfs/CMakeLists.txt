@@ -72,8 +72,12 @@ set (S5AFS_SRC
 	src/pf_scrub.cpp
 	src/pf_atslock.cpp
 	src/pf_spdk_engine.cpp
-	src/pf_iouring_engine.cpp
+	
 )
+IF(WITH_IOURING)
+	set (S5AFS_SRC  ${S5AFS_SRC} src/pf_iouring_engine.cpp)
+ENDIF(WITH_IOURING)
+
 set (HTTP_SRC
 	../thirdParty/mongoose/mongoose.c
         include/pf_threadpool.h)
@@ -94,14 +98,12 @@ set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
 #find_library(ZOOKEEPER_LIB NAMES libzookeeper_mt.a zookeeper_mt)
 
 TARGET_LINK_LIBRARIES(pfs rdmacm ibverbs pthread zookeeper_mt  hashtable uuid ${SPDKLIBS} ${DPDKLIBS} s5common nlohmann_json::nlohmann_json
-	aio curl uring ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a libsgutils2.a)
+	aio curl  ${THIRDPARTY}/isa-l_crypto/.libs/libisal_crypto.a libsgutils2.a)
+IF(WITH_IOURING)
+	TARGET_LINK_LIBRARIES(pfs  uring)
+ENDIF(WITH_IOURING)
 
 add_custom_command(TARGET pfs POST_BUILD 
-        #COMMAND rm -f ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
-	COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/pfs_template.conf ${CMAKE_BINARY_DIR}
-        #COMMAND cp ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2.0.0
-        #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so.2
-        #COMMAND ln -s libzookeeper_mt.so.2.0.0 ${LIBRARY_OUTPUT_PATH}/libzookeeper_mt.so
-	DEPENDS ${ZOOKEEPER_BIN}/libzookeeper_mt.so.2.0.0 
+	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/pfs_template.conf ${CMAKE_BINARY_DIR}
 )
 

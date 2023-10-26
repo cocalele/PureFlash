@@ -36,8 +36,15 @@ assert cp -rp $COND_HOME/res/init_s5metadb.sql  mariadb/
 assert cp -rp $COND_HOME/pfcli  .
 assert cp -rp $PFS_BUILD/bin/pfs .
 assert cp -rp $PFS_BUILD/bin/pfdd .
-assert cp -rp $QEMU_BUILD/qemu-img .
+#assert cp -rp $QEMU_BUILD/qemu-img .
 assert cp -rp $FIO_BUILD/fio .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_eal.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_mempool.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_ring.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_bus_pci.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_kvargs.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_telemetry.so.23 .
+assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_pci.so.23 .
 
 
-docker build -f Dockerfile -t pureflash/pureflash:1.8.3 .
+docker build -f Dockerfile -t pureflash/pureflash:1.9.0 .

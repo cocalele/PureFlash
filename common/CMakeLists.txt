@@ -101,3 +101,6 @@ TARGET_LINK_LIBRARIES(pfdd s5common rdmacm ibverbs ${SPDKLIBS} ${DPDKLIBS} pthre
 
 add_executable(aof_helper src/pf_aof_test_helper.cpp )
 TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper_mt hashtable curl aio ${GCOV})
+add_custom_command(TARGET s5common POST_BUILD 
+	COMMAND cp -rpfu ${PREBUILD_LIB_DIR}/*.a ${LIBRARY_OUTPUT_PATH}/
+)
