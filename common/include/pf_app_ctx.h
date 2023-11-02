@@ -55,7 +55,7 @@ public:
 
 		rdma_client_only = false;
 	}
-	~PfAppCtx(){}
+	virtual ~PfAppCtx(){}
 };
 
 extern PfAppCtx* g_app_ctx;

@@ -7,7 +7,7 @@ class IoSubTask;
 class IoSubTask;
 class PfBitmap;
 /**
- * key of 4M block
+ * key of 64M block
  */
 struct lmt_key
 {

@@ -34,6 +34,7 @@ macro(USE_ZOOKEEPER)
         include_directories(${PREBUILD_LIB_DIR})
 
     elseif(UNIX)
+		message("Begin to compile zookeeper")
         foreach(f ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.h ${ZOOKEEPER_SOURCE}/generated/zookeeper.jute.c)
             if(NOT EXISTS "${f}")
                 execute_process(COMMAND ant clean
@@ -57,17 +58,30 @@ macro(use_cxx11)
     endif ()
 endmacro(use_cxx11)
 macro(USE_ISA_L)
+	message("Begin to compile isa-l_crypto")
 	execute_process(COMMAND ./autogen.sh
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 	execute_process(COMMAND ./configure
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 	execute_process(COMMAND make -j 4
                     WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
-#	execute_process(COMMAND make install
-#                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+	execute_process(COMMAND make install
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
 endmacro(USE_ISA_L)
+macro(USE_SG3_UTILS)
+	message("Begin to compile sg3_utils")
+	execute_process(COMMAND ./autogen.sh
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+	execute_process(COMMAND ./configure
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+	execute_process(COMMAND make -j 4
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+	execute_process(COMMAND make install
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+endmacro(USE_SG3_UTILS)
 
 macro(USE_SPDK)
+	message("Begin to compile SPDK")
 	execute_process(COMMAND git submodule update --init
                     WORKING_DIRECTORY ${THIRDPARTY}/spdk)
 	execute_process(COMMAND ./configure --disable-unit-tests --disable-tests
@@ -87,6 +101,8 @@ ENDIF (HAVE_RDMA_H)
 
 USE_ZOOKEEPER()
 USE_ISA_L()
+USE_SG3_UTILS()
+
 add_compile_options (-fdiagnostics-color=always)
 if(NOT ZOOKEEPER_PREBUILDED)
     add_subdirectory(${ZOOKEEPER_SOURCE})

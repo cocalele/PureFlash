@@ -220,7 +220,13 @@ int PfFlashStore::owner_init()
 		ret = redolog->replay(head.redolog_phase, CURRENT);
 		if (ret)
 		{
-			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
+			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
+			return ret;
+		}
+		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
+		if (ret)
+		{
+			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
 			return ret;
 		}
 		post_load_fix();
@@ -337,10 +343,15 @@ int PfFlashStore::init(const char* tray_name)
 		ret = redolog->replay(head.redolog_phase, CURRENT);
 		if (ret)
 		{
-			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
+			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
 			return ret;
 		}
 		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
+		if (ret)
+		{
+			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
+			return ret;
+		}
 		post_load_fix();
 		post_load_check();
 		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
@@ -1039,7 +1050,7 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
  *   not run on ssd thread
  *   take notice:
  *	   some struct of PfFlashStore will used outside ssd_thread, 
- *     wo we should make sure that they are thread safe. 
+ *     we should make sure that they are thread safe. 
  */
 int PfFlashStore::compact_meta_data()
 {
@@ -1049,7 +1060,7 @@ int PfFlashStore::compact_meta_data()
 	S5LOG_INFO("begin to compact metadata for %s", tray_name);
 
 	/*load metadata at current md zone*/
-	// lmt_entry_pool is thread safe, so wo re-use lmt_entry_pool here
+	// lmt_entry_pool is thread safe, so we re-use lmt_entry_pool here
 	rc = load_meta_data(&pfs_copy->free_obj_queue, &pfs_copy->trim_obj_queue, &pfs_copy->obj_lmt,
 		head.current_metadata, true);
 	if (rc) {
@@ -1086,7 +1097,7 @@ out1:
 	pfs_copy->free_obj_queue.destroy();
 	pfs_copy->trim_obj_queue.destroy();
 	for(auto it = pfs_copy->obj_lmt.begin();it != pfs_copy->obj_lmt.end();++it) {
-		lmt_key k= it->first;
+		//lmt_key k= it->first;
 		lmt_entry *head = it->second;
 		while (head) {
 			lmt_entry *p = head;
@@ -2400,14 +2411,15 @@ void PfFlashStore::post_load_check()
 
 	S5LOG_INFO("Begin post load check, %d keys in obj_lmt ...", obj_lmt.size());
 	int error_cnt =0;
-	int64_t last_off=0;
-	uint32_t last_snap=0;
 	S5LOG_INFO("Check for duplicated snap_seq and offset ...");
 	for(auto it : obj_lmt){
 		S5LOG_INFO("check for key:%s", it.first.to_string().c_str());
 		lmt_entry* head = it.second;
+		int64_t last_off = head->offset;
+		uint32_t last_snap = head->snap_seq;
+		head = head->prev_snap;
 		while(head!=nullptr){
-			S5LOG_INFO("\t snap:%d, off:0x%lx", head->snap_seq, head->offset);
+			//S5LOG_INFO("\t snap:%d, off:0x%lx", head->snap_seq, head->offset);
 			if(head->snap_seq == last_snap || head->offset == last_off){
 				S5LOG_ERROR("duplicated snap_seq or offset. current (offset:0x%lx, snap:%u) vs last (0x%lx, %u)", 
 					head->offset, head->snap_seq, last_off, last_snap);

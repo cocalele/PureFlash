@@ -9,12 +9,11 @@
 
 #include "pf_redolog.h"
 
-#define STORE_META_AUTO_SAVE_INTERVAL (1800)
+#define STORE_META_AUTO_SAVE_INTERVAL (120)
 
 int PfRedoLog::init(struct PfFlashStore* s)
 {
 	int rc = 0;
-	int64_t *p;
 	this->store = s;
 	this->disk_fd = s->fd;
 	this->size = s->head.redolog_size;
@@ -24,12 +23,6 @@ int PfRedoLog::init(struct PfFlashStore* s)
 	memset(entry_buff, 0, LBA_LENGTH);
 
 	return 0;
-
-release1:
-	free_spdk(entry_buff);
-	entry_buff = NULL;
-	S5LOG_ERROR("Failed to init redo log, rc:%d", rc);
-	return rc;
 }
 
 int PfRedoLog::set_log_phase(int64_t _phase, uint64_t offset)
@@ -45,7 +38,7 @@ int PfRedoLog::start()
 		int rc;
 		struct timespec timeout;
 		struct timeval now;
-		char name[64] = {0};
+		char name[256] = {0};
 		sprintf(name, "md_%s", store->tray_name);
 		prctl(PR_SET_NAME, name);
 		while (1)

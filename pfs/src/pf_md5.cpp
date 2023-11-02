@@ -120,7 +120,7 @@ int MD5Stream_ISA_L::write_calc(void *buf, size_t count, off_t offset)
 		return rc;
 	}
 
-	md5_ctx_mgr_submit(mgr, &ctxpool, buf, count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
+	md5_ctx_mgr_submit(mgr, &ctxpool, buf, (uint32_t)count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
 	while (md5_ctx_mgr_flush(mgr));
 
 	data_len += count;
@@ -138,7 +138,7 @@ int MD5Stream_ISA_L::read_calc(void *buf, size_t count, off_t offset)
 		return rc;
 	}
 
-	md5_ctx_mgr_submit(mgr, &ctxpool, buf, count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
+	md5_ctx_mgr_submit(mgr, &ctxpool, buf, (uint32_t)count, data_len == 0 ? HASH_FIRST : HASH_UPDATE);
 	while (md5_ctx_mgr_flush(mgr));
 
 	data_len += count;

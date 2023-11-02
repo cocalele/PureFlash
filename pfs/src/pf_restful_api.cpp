@@ -711,7 +711,7 @@ void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm)
 	int len = 0;
 	char buf[512];
 	PerfReply reply;
-	DispatchStat total_stat={0};
+	//DispatchStat total_stat={0};
 	for (auto d : app_context.disps)
 	{
 		len += snprintf(buf + len, sizeof(buf) - len - 1, "disp_%d:wr_cnt:%ld rd_cnt:%ld rep_cnt:%ld wr_bytes:%ld rd_bytes:%ld rep_bytes:%ld\n ",

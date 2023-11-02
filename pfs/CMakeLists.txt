@@ -47,7 +47,8 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 # include(...) for pulling in other CMake projects anyways.
 add_subdirectory(nlohmann_json)
 
-INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include ${THIRDPARTY}/isa-l_crypto/include)
+#INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include ${THIRDPARTY}/isa-l_crypto ${THIRDPARTY}/isa-l_crypto/include)
+INCLUDE_DIRECTORIES(include ../sld/include ../common/include ../thirdParty/mongoose nlohmann_json/include )
 include_directories(../thirdParty/spdk/include)
 include_directories(../thirdParty/spdk)
 

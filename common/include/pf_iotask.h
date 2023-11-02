@@ -18,7 +18,7 @@ struct PfIocb {
 public:
 	BufferDescriptor* cmd_bd;
 	BufferDescriptor* data_bd;
-	BufferDescriptor* reply_bd; //Used by dispatcher tasks
+	BufferDescriptor* reply_bd; 
 	uint32_t task_mask;
 
 

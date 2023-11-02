@@ -197,8 +197,10 @@ void s5log(int level, const char * format, ...)
 	strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&tp.tv_sec));
 	snprintf(&time_buf[strlen(time_buf)], 100, ".%03d", (int)(tp.tv_nsec/1000000L));
 	fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
-	if (level == S5LOG_LEVEL_FATAL)
+	if (level == S5LOG_LEVEL_FATAL){
+		fflush(stderr);
 		exit(-1);
+	}
 }
 
 const std::string format_string(const char * format, ...)

@@ -9,7 +9,7 @@
 #include "pf_utils.h"
 #include "pf_tray.h"
 #include "pf_ioengine.h"
-#include "md5_mb.h"
+#include "isa-l_crypto/md5_mb.h"
 
 class MD5_CTX;
 typedef int dev_handle_t;
@@ -26,7 +26,7 @@ public:
 	off_t base_offset;
 	char* buffer;
 	bool spdk_engine;
-	int data_len;
+	size_t data_len;
 public:
 	MD5Stream(int fd);
 	~MD5Stream();

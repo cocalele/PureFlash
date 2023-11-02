@@ -7,7 +7,7 @@ PureFlash can be build with cmake tools.
 1. Build on Linux
 =================
 0a) Prerequisite to build on Ubuntu-22.04
-    # apt install cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool  libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk ant meson libssl-dev ncurses-dev
+    # apt install cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool  libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk ant meson libssl-dev ncurses-dev libnuma-dev help2man
 	# pip install pyelftools
 	
 0b) Prerequisite to build on CentOS 7
