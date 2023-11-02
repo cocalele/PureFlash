@@ -38,13 +38,15 @@ assert cp -rp $PFS_BUILD/bin/pfs .
 assert cp -rp $PFS_BUILD/bin/pfdd .
 #assert cp -rp $QEMU_BUILD/qemu-img .
 assert cp -rp $FIO_BUILD/fio .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_eal.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_mempool.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_ring.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_bus_pci.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_kvargs.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_telemetry.so.23 .
-assert cp -f $PUREFLASH_HOME/spdk/dpdk/build/lib/librte_pci.so.23 .
+
+PUREFLASH_HOME=../
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_eal.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_mempool.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_ring.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_bus_pci.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_kvargs.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_telemetry.so.23 .
+assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_pci.so.23 .
 
 
 docker build -f Dockerfile -t pureflash/pureflash:1.9.0 .
