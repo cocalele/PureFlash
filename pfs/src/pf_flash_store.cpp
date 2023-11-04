@@ -684,6 +684,7 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 {
 	S5LOG_INFO("Begin to save metadata at zone:%d", md_zone);
 	int buf_size = 1 << 20;
+	HeadPage head_tmp;
 	void *buf = align_malloc_spdk(LBA_LENGTH, buf_size, NULL);
 	if (!buf)
 	{
@@ -756,12 +757,24 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	}
 	rc = ser.flush_buffer();
 	stream.finalize(md5_result, 0);
+	// store info for rollback
+	head_tmp.current_metadata = head.current_metadata;
+	head_tmp.redolog_phase = head.redolog_phase;
+	head_tmp.current_redolog = head.current_redolog;
 	memset(buf, 0, LBA_LENGTH);
 	head.current_metadata = md_zone;
 	redolog->discard();
 	memcpy(buf, &head, sizeof(head));
+	/*
+	 * metadata/redolog zone & redolog phase & md5 will persist at end
+	 */
 	if (LBA_LENGTH != ioengine->sync_write(buf, LBA_LENGTH, 0))
 	{
+		S5LOG_ERROR("failed to persist head!");
+		// rollback memory info if persist head error
+		head.current_metadata = head_tmp.current_metadata;
+		head.redolog_phase = head_tmp.redolog_phase;
+		head.current_redolog = head_tmp.current_redolog;
 		return -errno;		
 	}
 	S5LOG_INFO("Successed save metadata");
