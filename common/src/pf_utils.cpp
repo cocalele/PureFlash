@@ -223,7 +223,7 @@ const std::string format_string(const char * format, ...)
  * @param is_client , 1 if this socket_fd is client. 0 for server
  * @return a string describe this socket, like TCP://(me)srv_ip:srv_port<=client_ip:client_port
  */
-const std::string get_socket_addr(int sock_fd, bool is_client)
+const std::string get_socket_desc(int sock_fd, bool is_client)
 {
 	struct sockaddr_in local_addr, remote_addr;
 	socklen_t len = sizeof(local_addr);

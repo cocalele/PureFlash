@@ -34,7 +34,7 @@ int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int r
 		S5LOG_ERROR("set TCP_NODELAY failed!");
 	}
 
-	connection_info = get_socket_addr(sock_fd, is_client);
+	connection_info = get_socket_desc(sock_fd, is_client);
 	rc = send_q.init("net_send_q", send_q_depth, TRUE);
 	if (rc)
 		goto release1;
