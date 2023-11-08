@@ -89,12 +89,10 @@ void BufferPool::rmda_unregister_mr()
 
 const char* WcStatusToStr(WcStatus s) {
 	switch(s){
-		case TCP_WC_SUCCESS:
-			return "TCP_WC_SUCCESS";
-		case TCP_WC_FLUSH_ERR:
-			return "TCP_WC_FLUSH_ERR";
-        case RDMA_WC_SUCCESS:
-            return "RDMA_WC_SUCCESS";
+		case WC_SUCCESS:
+			return "WC_SUCCESS";
+		case WC_FLUSH_ERR:
+			return "WC_FLUSH_ERR";
 	}
 	S5LOG_ERROR("Unknown WcStatus:%d", s);
 	return "Unknown";

@@ -57,7 +57,7 @@ static void *cq_poller_proc(void *arg_)
 			//S5LOG_INFO("cq poller get msg!!!!!!, opcode:%d", msg->wr_op);
             if (likely(conn->on_work_complete))
             {
-                conn->on_work_complete(msg, WcStatus::RDMA_WC_SUCCESS, conn, NULL);
+                conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
             }
         }
     }

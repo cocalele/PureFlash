@@ -305,7 +305,7 @@ int pf_query_volume_info(const char* volume_name, const char* cfg_filename, cons
 static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
-	if (unlikely(complete_status != TCP_WC_SUCCESS))
+	if (unlikely(complete_status != WC_SUCCESS))
 	{
 		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", bd->wr_op, WcStatusToStr(WcStatus(complete_status)));
 		if(bd->wr_op == TCP_WR_SEND){
@@ -322,7 +322,7 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 	}
 	//S5LOG_INFO("Op complete opcode:%d, status:%s, len:%d", bd->wr_op, WcStatusToStr(WcStatus(complete_status)), bd->data_len);
 
-	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+	if(complete_status == WcStatus::WC_SUCCESS) {
 
 		if(bd->data_len == sizeof(PfMessageHead) ) {
 			if(bd->cmd_bd->opcode == PfOpCode::S5_OP_WRITE) {
@@ -814,7 +814,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	const static int ms1 = 1000;
-	if (unlikely(wc_status != TCP_WC_SUCCESS && wc_status != RDMA_WC_SUCCESS))
+	if (unlikely(wc_status != WC_SUCCESS))
 	{//network failure has been handled by client_on_tcp_network_done
 		S5LOG_ERROR("Internal error, Op complete unsuccessful opcode:%d, status:%s",
 			wr_bd->wr_op, WcStatusToStr(WcStatus(wc_status)));

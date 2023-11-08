@@ -88,13 +88,13 @@ void PfTcpConnection::flush_wr()
 {
 	if (recv_bd)
 	{
-		on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
+		on_work_complete(recv_bd, WcStatus::WC_FLUSH_ERR, this, recv_bd->cbk_data);
 		dec_ref();
 		recv_bd = NULL;
 	}
 	if (send_bd)
 	{
-		on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
+		on_work_complete(send_bd, WcStatus::WC_FLUSH_ERR, this, send_bd->cbk_data);
 		dec_ref();
 		send_bd = NULL;
 	}
@@ -109,7 +109,7 @@ void PfTcpConnection::flush_wr()
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				on_work_complete(bd, WcStatus::WC_FLUSH_ERR, this, bd->cbk_data);
 				dec_ref();
 			}
 		}
@@ -124,7 +124,7 @@ void PfTcpConnection::flush_wr()
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				on_work_complete(bd, WcStatus::WC_FLUSH_ERR, this, bd->cbk_data);
 				dec_ref();
 			}
 
@@ -326,7 +326,7 @@ int PfTcpConnection::do_receive()
 		{
 			BufferDescriptor* temp_bd = recv_bd;
 			recv_bd = NULL;
-			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, NULL);
+			rc = on_work_complete(temp_bd, WC_SUCCESS, this, NULL);
 			dec_ref();
 			if (unlikely(rc < 0))
 			{
@@ -417,7 +417,7 @@ int PfTcpConnection::do_send()
 			BufferDescriptor* temp_bd = send_bd;
 			send_bd = NULL;
 
-			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, temp_bd->cbk_data);
+			rc = on_work_complete(temp_bd, WC_SUCCESS, this, temp_bd->cbk_data);
 			dec_ref();
 			if (unlikely(rc < 0))
 			{

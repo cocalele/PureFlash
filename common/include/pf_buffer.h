@@ -21,9 +21,8 @@ class PfConnection;
 
 //Work complete status
 enum WcStatus {
-	TCP_WC_SUCCESS = 0,
-	TCP_WC_FLUSH_ERR = 5,
-	RDMA_WC_SUCCESS = 10
+	WC_SUCCESS = 0,
+	WC_FLUSH_ERR = 5,
 };
 const char* WcStatusToStr(WcStatus s);
 

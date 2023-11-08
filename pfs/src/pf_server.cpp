@@ -123,7 +123,7 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 	bd->buf = NULL;//for debug
 	delete bd;
 
-	if(status == WcStatus::TCP_WC_SUCCESS)
+	if(status == WcStatus::WC_SUCCESS)
 	{
 		if(conn->state == CONN_CLOSING)
 		{
@@ -244,7 +244,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	//S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
-	if(likely(complete_status == WcStatus::TCP_WC_SUCCESS)) {
+	if(likely(complete_status == WcStatus::WC_SUCCESS)) {
 
 		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
@@ -298,7 +298,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 		}
 
 	}
-	else if(unlikely(complete_status == TCP_WC_FLUSH_ERR)) {
+	else if(unlikely(complete_status == WC_FLUSH_ERR)) {
 		struct PfServerIocb *iocb;
 		if(bd->wr_op == TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {

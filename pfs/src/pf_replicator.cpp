@@ -258,7 +258,7 @@ PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
-	if(complete_status == WcStatus::TCP_WC_SUCCESS) {
+	if(complete_status == WcStatus::WC_SUCCESS) {
 		PfClientIocb *iocb = bd->client_iocb;
 		if(bd->data_len == sizeof(PfMessageHead)) {
 			if(IS_WRITE_OP(bd->cmd_bd->opcode)) {
@@ -296,7 +296,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 		}
 		//for other status, like data write completion, lets continue wait for reply receive
 		return 0;
-	} else if(unlikely(complete_status == WcStatus::TCP_WC_FLUSH_ERR)) {
+	} else if(unlikely(complete_status == WcStatus::WC_FLUSH_ERR)) {
 		conn->unclean_closed = true;
 		/**
 		 * for replicator, FLUSH_ERR may happen in

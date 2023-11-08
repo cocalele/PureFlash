@@ -75,7 +75,7 @@ static void *rdma_server_event_proc(void* arg)
 static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
-	if(likely(complete_status == WcStatus::RDMA_WC_SUCCESS)) {
+	if(likely(complete_status == WcStatus::WC_SUCCESS)) {
 		if(bd->wr_op == WrOpcode::RDMA_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
@@ -123,7 +123,10 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 		}
 	}
 	else {
-		S5LOG_ERROR("WR complete in unknown status:%d", complete_status);
+		S5LOG_ERROR("WR complete in unexcepted status:%d", complete_status);
+		PfServerIocb* iocb = bd->server_iocb;
+		iocb->dec_ref();
+
 		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
 	}
 	return 0;
