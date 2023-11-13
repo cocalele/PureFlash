@@ -47,6 +47,7 @@ public:
 	std::string peer_ip;
 	int peer_port;
 	int inflying_heartbeat;
+	int inflying_io;
 	bool unclean_closed = false;
 
 	PfConnection();
@@ -77,6 +78,26 @@ public:
 				on_destroy(this);
 			delete this;
 		}
+	}
+
+	inline bool get_throttle()
+	{
+		int current_cnt = __sync_fetch_and_add(&inflying_io, 1);
+		if (current_cnt < io_depth)
+			return true;
+		else{
+			
+				//S5LOG_DEBUG(" throttle by infly:%d iod:%d", inflying_io, io_depth);
+			__sync_fetch_and_sub(&inflying_io, 1);
+		}
+		return false;
+
+		return true;
+	}
+	inline void put_throttle()
+	{
+		//S5LOG_DEBUG("put throttle");
+		__sync_fetch_and_sub(&inflying_io, 1);
 	}
 };
 

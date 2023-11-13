@@ -628,6 +628,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 			init_app_ctx(cfg, 0, 0, 0);
 			// every volume has its own PfClientAppCtx
 			runtime_ctx = new PfClientAppCtx();
+			S5LOG_INFO("init context for volume:%s, iodepth:%d", volume_name, io_depth);
 			runtime_ctx->init(cfg, io_depth, 1, volume_id, io_timeout);
 			assert(runtime_ctx->ref_count == 1);
 			clean.push_back([this]() { runtime_ctx->dec_ref(); });
@@ -1046,6 +1047,9 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				runtime_ctx->iocb_pool.free(io);
 				break;
 			}
+			// set rkey if rdma; 
+			if (client_conn_type == RDMA_TYPE)
+				cmd_bd->cmd_bd->rkey = io->data_bd->mrs[((PfRdmaConnection*)conn)->dev_ctx->idx]->rkey;
 			rc = conn->post_send(cmd_bd);
 			if (rc)	{
 				S5LOG_ERROR("Failed to post_send for cmd");

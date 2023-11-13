@@ -28,6 +28,7 @@ int on_addr_resolved(struct rdma_cm_id* id)
     return 0;
 }
 
+
 #define MAX_WC_CNT 256
 static void *cq_poller_proc(void *arg_)
 {
@@ -202,6 +203,7 @@ int on_route_resolved(struct rdma_cm_id* id)
 		S5LOG_ERROR("rdma_connect failed, errno:%d", errno);
 		return rc;
 	}
+	conn->connection_info = get_rdma_desc(id, true);
 	return 0;
 }
 

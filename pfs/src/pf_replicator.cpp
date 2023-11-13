@@ -17,14 +17,47 @@
 
 extern enum connection_type rep_conn_type;
 
+int PfDelayThread::process_event(int event_type, int arg_i, void* arg_p, void* arg_q)
+{
+	if(event_type == EVT_IO_REQ){
+		int64_t delta = now_time_usec() - (int64_t)arg_q;
+		if(delta > 0){
+			usleep((int)delta);
+		} 
+
+		replicator->event_queue->post_event(EVT_IO_REQ, 0, arg_p);
+	}
+	else {
+		S5LOG_ERROR("Delay thread get unknow event");
+	}
+	return 0;
+}
+
 int PfReplicator::begin_replicate_io(IoSubTask* t)
 {
 	int rc;
+	PfConnection* c = (PfConnection*)conn_pool->get_conn((int)t->store_id);
+	if (c == NULL) {
+		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
+		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
+		return PfMessageStatus::MSG_STATUS_CONN_LOST;
+	}
+	if(!c->get_throttle()){
+		S5LOG_ERROR("too many request to get throttle, retry later");
+		usleep(100);
+		event_queue->post_event(EVT_IO_REQ, 0, t);
+		//delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void* )(now_time_usec()+100));
+		
+		return -EAGAIN;
+
+	}
 	PfClientIocb* io = iocb_pool.alloc();
 	if (unlikely(io == NULL)) {
-		S5LOG_FATAL("Failed to allock IOCB for replicating");
+		S5LOG_ERROR("too many request to alloc IOCB for replicating, retry later");
 		usleep(100);
-		event_queue->post_event(EVT_IO_REQ, 0, t); //requeue the request
+		event_queue->post_event(EVT_IO_REQ, 0, t);
+
+		//delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void*)(now_time_usec() + 100));
 		return -EAGAIN;
 	}
 	io->submit_time = now_time_usec();
@@ -42,14 +75,6 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	io->ulp_arg = t;
 	cmd->opcode = t->opcode;
 	cmd->buf_addr = (__le64) io->data_bd->buf;
-
-	PfConnection* c = (PfConnection *)conn_pool->get_conn((int)t->store_id);
-	if(c == NULL) {
-		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
-		iocb_pool.free(io);
-		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
-		return PfMessageStatus::MSG_STATUS_CONN_LOST;
-	}
 	io->conn = c;
 #ifdef WITH_RDMA
 	if(conn_pool->conn_type == RDMA_TYPE)
@@ -289,15 +314,21 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 				conn->start_recv(iocb->data_bd);
 				return 1;
 			}
+			conn->put_throttle();
 			//receive reply means IO completed for write
 			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
 		} else if(IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)) { //complete of receive data payload
+			conn->put_throttle();
 			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
 		}
 		//for other status, like data write completion, lets continue wait for reply receive
 		return 0;
 	} else if(unlikely(complete_status == WcStatus::WC_FLUSH_ERR)) {
+		//for unclean close, IO will be resend in `handle_conn_close`
 		conn->unclean_closed = true;
+
+
+
 		/**
 		 * for replicator, FLUSH_ERR may happen in
 		 *    1) REPLICATE_WRITE   send head
@@ -316,6 +347,8 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 			conn->replicator->mem_pool.reply_pool.free(bd);
 		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
 			auto io = bd->client_iocb;
+
+			//handle_conn_close will resend IO
 			S5LOG_WARN("Connection:%p error during send head of:%s, will resend IO", conn, PfOpCode2Str(((SubTask*)io->ulp_arg)->opcode));
 //			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
 //				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
@@ -353,20 +386,63 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
-    if(bd->data_len == sizeof(PfMessageReply))
-    {
-        PfClientIocb *iocb = bd->client_iocb;
-        struct PfMessageReply *reply = bd->reply_bd;
-        iocb = conn->replicator->pick_iocb(reply->command_id, reply->command_seq);
-        if (unlikely(iocb == NULL))
-        {
-            S5LOG_WARN("Previous replicating IO back but timeout!");
-            conn->replicator->mem_pool.reply_pool.free(bd);
-            return 0;
-        }
-        return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
-    }
-    return -1;
+	if (complete_status == WcStatus::WC_SUCCESS) {
+		if(bd->data_len == sizeof(PfMessageReply))
+		{
+			PfClientIocb *iocb = bd->client_iocb;
+			struct PfMessageReply *reply = bd->reply_bd;
+			iocb = conn->replicator->pick_iocb(reply->command_id, reply->command_seq);
+			//if (iocb->conn == NULL) {
+			//	S5LOG_ERROR("Pick io with no connection, cid:%d", reply->command_id );
+			//}
+			conn->put_throttle();
+			if (unlikely(iocb == NULL))
+			{
+				S5LOG_WARN("Previous replicating IO back but timeout!");
+				conn->replicator->mem_pool.reply_pool.free(bd);
+				return 0;
+			}
+			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
+		}
+		return 0;
+	} else  if (unlikely(complete_status == WcStatus::WC_FLUSH_ERR)) {
+		conn->unclean_closed = true;
+		/**
+		 * for replicator, FLUSH_ERR may happen in
+		 *    1) REPLICATE_WRITE   send head
+		 *    2)                   
+		 *    3)                   recv reply
+		 *    4) RECOVERY_READ     send head
+		 *    5)                   
+		 *    6)                   recv reply
+		 *
+		 *    In any case, IO should be retried on backup connection, for multi-path may exists.
+		 *    so, in `replicator_on_conn_close` , it will retry IO
+		 */
+		S5LOG_ERROR("replicating connection closed, RDMA://%s", bd->conn->connection_info.c_str());
+		if (bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
+			S5LOG_WARN("Connection:%p error during receive reply, will resend IO", conn);
+			conn->replicator->mem_pool.reply_pool.free(bd);
+			conn->put_throttle();
+		}
+		else if (bd->data_len == sizeof(PfMessageHead)) { //error during send head
+			auto io = bd->client_iocb;
+			S5LOG_WARN("Connection:%p error during send head of:%s, will resend IO", conn, PfOpCode2Str(((SubTask*)io->ulp_arg)->opcode));
+			//			if(((SubTask*)io->ulp_arg)->opcode == PfOpCode::S5_OP_RECOVERY_READ)
+			//				((SubTask*)io->ulp_arg)->complete(PfMessageStatus::MSG_STATUS_CONN_LOST);
+			//			else
+			//				app_context.error_handler->submit_error((IoSubTask*)io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+			//			io->data_bd = NULL;
+			//			conn->replicator->iocb_pool.free(io);
+		}
+		else { //error during send/recv data
+			//for RDMA, should never reach here, since we a in passive mode for data transfer
+			S5LOG_FATAL("Unexcepted state on handle error");
+		}
+		return 0;
+	}
+	S5LOG_FATAL("replicator bd complete in unknown status:%d, conn:%s", complete_status, conn->connection_info.c_str());
+	return -1;
 }
 #endif
 void replicator_on_conn_close(PfConnection* conn)
@@ -422,8 +498,8 @@ int PfReplicator::init(int index)
 	int rc;
 	rep_index = index;
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
-	int rep_iodepth = 64;
-	PfEventThread::init(name, rep_iodepth*2);
+	int rep_iodepth = 256;
+	PfEventThread::init(name, 8192);
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -455,26 +531,27 @@ int PfReplicator::init(int index)
 #endif
 	}
 
-	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), rep_iodepth);
+	int iocb_pool_size = 8192;
+	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), iocb_pool_size);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
 		return rc;
 	}
 	clean.push_back([this](){mem_pool.cmd_pool.destroy();});
 
-	rc = mem_pool.reply_pool.init(sizeof(PfMessageReply), rep_iodepth);
+	rc = mem_pool.reply_pool.init(sizeof(PfMessageReply), iocb_pool_size);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init reply_pool, rc:%d", rc);
 		return rc;
 	}
 	clean.push_back([this](){mem_pool.reply_pool.destroy();});
 
-	rc = iocb_pool.init(rep_iodepth);
+	rc = iocb_pool.init(iocb_pool_size);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init iocb_pool, rc:%d", rc);
 		return rc;
 	}
-	for(int i=0;i<rep_iodepth;i++)
+	for(int i=0;i< iocb_pool_size;i++)
 	{
 		PfClientIocb* io = iocb_pool.alloc();
 		io->cmd_bd = mem_pool.cmd_pool.alloc();
@@ -489,6 +566,10 @@ int PfReplicator::init(int index)
 		mem_pool.reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
+
+	//delay_thread.replicator = this;
+	//delay_thread.init("delay", rep_iodepth*2);
+	//delay_thread.start();
 	clean.cancel_all();
 	return 0;
 }

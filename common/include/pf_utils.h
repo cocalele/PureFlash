@@ -164,6 +164,7 @@ uint64_t now_time_usec();
 #define SEC2US(s) (s*1000000L)
 const std::string format_string(const char * format, ...);
 const std::string get_socket_desc(int sock_fd, bool is_client);
+const std::string get_rdma_desc(struct rdma_cm_id* id, bool is_client);
 void split_string(const std::string& str, char delim, std::vector<std::string>& tokens);
 std::vector<std::string> split_string(const std::string& str, char delim);
 std::vector<std::string> split_string(const std::string& str, const std::string& delim);

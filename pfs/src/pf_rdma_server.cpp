@@ -180,6 +180,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
     }
 	conn->transport = TRANSPORT_RDMA;
 	conn->state = CONN_OK;
+	conn->connection_info = get_rdma_desc(id, false);
 	hs_msg->hs_result = 0;
 	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
 	{

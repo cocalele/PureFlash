@@ -189,7 +189,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 			}
 			else {
 				r->ssd_index = -1;
-				PfReplicator *rp = app_context.replicators[vol->id%app_context.replicators.size()];
+				PfReplicator *rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
 				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');

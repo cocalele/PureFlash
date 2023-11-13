@@ -37,6 +37,8 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 	}
 
 	try {
+		S5LOG_INFO("Connect to server %s://%s, io_depth:%d ...", conn_type == TCP_TYPE?"TCP":"RDMA", ip.c_str(), io_depth);
+
 		if (conn_type == TCP_TYPE) {
 			PfTcpConnection *c = PfTcpConnection::connect_to_server(ip, 49162, poller, vol_id, io_depth, 4/*connection timeout*/);
 			c->add_ref(); //this ref hold by pool, decreased when remove from connection pool
@@ -44,7 +46,8 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			c->on_close = on_conn_closed;
 			c->master = this->owner;
 			c->transport = TRANSPORT_TCP;
-			ip_id_map[ip] = c;
+			c->io_depth = io_depth;
+			ip_id_map[ip] = c;	
 			return c;
 		}
 		else if (conn_type == RDMA_TYPE) {
@@ -55,6 +58,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			c->on_close = on_conn_closed;
 			c->master = this->owner;
 			c->transport = TRANSPORT_RDMA;
+			c->io_depth = io_depth;
 			ip_id_map[ip] = c;
 			return c;
 #else

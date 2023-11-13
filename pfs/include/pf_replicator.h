@@ -12,6 +12,14 @@
 #include "pf_client_priv.h"
 
 class RecoverySubTask;
+class PfDelayThread : public PfEventThread
+{
+
+public:
+	//PfDelayThread(PfReplicator* r) { replicator = r; }
+	PfReplicator* replicator;
+	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
+};
 
 class PfReplicator : public PfEventThread
 {
@@ -51,5 +59,7 @@ public:
 	PfRepConnectionPool *conn_pool;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	struct replicator_mem_pool mem_pool;
+
+	PfDelayThread delay_thread;
 };
 #endif // pf_replicator_h__

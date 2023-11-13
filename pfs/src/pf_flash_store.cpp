@@ -494,7 +494,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 
 	if (unlikely(block_pos == obj_lmt.end()))
 	{
-		S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
+		//S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
 		if (free_obj_queue.is_empty())	{
 			S5LOG_ERROR("Disk:%s is full!", tray_name);
 			app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);

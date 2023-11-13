@@ -134,7 +134,15 @@ int main(int argc, char *argv[])
 		S5LOG_FATAL("Failed to find key(zookeeper:ip) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
+	const char* rep_type = conf_get(fp, "replicator", "conn_type", "tcp", false);
+	if(strcmp(rep_type, "rdma") == 0){
+		S5LOG_INFO("replicate connection type: RDMA");
+		rep_conn_type = RDMA_TYPE;
+	} else {
+		S5LOG_INFO("replicate connection type: TCP");
+		rep_conn_type = TCP_TYPE;
 
+	}
 
 	const char *this_mngt_ip = conf_get(fp, "afs", "mngt_ip", NULL, true);
 	if (!this_mngt_ip)
@@ -268,7 +276,6 @@ int main(int argc, char *argv[])
 
 	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
 	app_context.replicators.reserve(rep_count);
-	rep_count = 0;
 	for(int i=0; i< rep_count; i++) {
 		PfReplicator* rp = new PfReplicator();
 		rc = rp->init(i);

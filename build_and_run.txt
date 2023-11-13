@@ -143,14 +143,21 @@ after build finish, all binary should be found under  * bin * dir
 ## 1) build qemu with pfbd
 ```
    # apt install -y  libglib2.0-dev libpixman-1-dev
+   # apt install -y  libfdt-dev  #need on ARM
    # git clone  https://gitee.com/cocalele/qemu.git
-   # git checkout pfbd
+   # cd qemu
+   # git submodule update --init
+   # #git checkout pfbd
    # mkdir /usr/include/pfbd
    # cp ${PUREFLASH_HOME}/common/include/pf_client_api.h /usr/include/pfbd/pf_client_api.h
    # cp ${PUREFLASH_HOME}/build_deb/bin/libs5common.a /usr/lib/libs5common.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper.a /usr/lib/libzookeeper.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libhashtable.a /usr/lib/libhashtable.a
    # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
+   
+   for arm:
+   # ./configure --disable-linux-io-uring --enable-kvm  --target-list=aarch64-linux-user,aarch64-softmmu
+
 ```
 ## 2) run qemu-img 
 ```

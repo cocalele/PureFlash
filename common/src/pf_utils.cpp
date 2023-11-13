@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "/usr/include/signal.h" //avoid confuse with Ceph's signal.h
+#include <rdma/rdma_cma.h>
 
 #include "pf_log.h"
 
@@ -231,13 +232,13 @@ const std::string get_socket_desc(int sock_fd, bool is_client)
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed get local addr, sock:%d, rc:%d", sock_fd, -errno);
-		return "[Unknow socket addr]";
+		return "[Unknown socket addr]";
 	}
 	rc = getpeername(sock_fd, (struct sockaddr *)&remote_addr, &len);
 	if (rc != 0)
 	{
 		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);
-		return "[Unknow socket addr]";
+		return "[Unknown socket addr]";
 	}
 	std::string remote_str  = inet_ntoa(remote_addr.sin_addr);
 	return format_string("TCP://(me)%s:%d%s%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
@@ -245,6 +246,35 @@ const std::string get_socket_desc(int sock_fd, bool is_client)
 		                 remote_str.c_str(), ntohs(remote_addr.sin_port));
 }
 
+const std::string get_rdma_desc(struct rdma_cm_id* id, bool is_client)
+{
+	struct sockaddr* local_addr, *remote_addr;
+	__be16 local_port, remote_port;
+	local_addr = rdma_get_local_addr(id);
+	remote_addr = rdma_get_peer_addr(id);
+	/* as defined in https://github.com/linux-rdma/rdma-core/librdmacm/rdma_cma.h   
+	* static inline struct sockaddr *rdma_get_local_addr(struct rdma_cm_id *id)
+	* {
+	*	return &id->route.addr.src_addr;
+	* }
+	* 
+	* static inline struct sockaddr *rdma_get_peer_addr(struct rdma_cm_id *id)
+	* {
+	* 	return &id->route.addr.dst_addr;
+	* }
+	* this two function return address of existing member variable.
+	* so we don't need to free the returned pointer
+	*/
+
+	local_port = rdma_get_src_port(id);
+	remote_port = rdma_get_dst_port(id);
+
+	return format_string("RDMA://(me)%s:%d%s%s:%d", inet_ntoa(((struct sockaddr_in*)local_addr)->sin_addr), 
+		ntohs(local_port),
+		is_client ? "=>" : "<=",
+		inet_ntoa(((struct sockaddr_in*)remote_addr)->sin_addr), ntohs(remote_port));
+
+}
 std::vector<std::string> split_string(const std::string& str, char delim)
 {
 	std::vector<std::string> tokens;

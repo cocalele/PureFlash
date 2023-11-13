@@ -10,7 +10,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define PF_MAX_IO_DEPTH 128
+#define PF_MAX_IO_DEPTH 256
 #define PF_MAX_IO_SIZE (128<<10) //max IO
 
 #define S5_LIB_VER 0x00010000

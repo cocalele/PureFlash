@@ -175,7 +175,7 @@ int PfRedoLog::discard()
 }
 int PfRedoLog::log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head)
 {
-	S5LOG_DEBUG("log allocation for key:%s", key->to_string().c_str());
+	//S5LOG_DEBUG("log allocation for key:%s", key->to_string().c_str());
 
 	PfRedoLog::Item *item = (PfRedoLog::Item*)entry_buff;
 	*item = PfRedoLog::Item{phase:phase, type:ItemType::ALLOCATE_OBJ, {*key, *entry, free_list_head } };
@@ -262,7 +262,7 @@ int PfRedoLog::redo_free(Item* e)
 
 int PfRedoLog::write_entry()
 {
-	S5LOG_INFO("record log at phase:%d offset:0x%lx", phase, current_offset);
+	//S5LOG_INFO("record log at phase:%d offset:0x%lx", phase, current_offset);
 	if (store->ioengine->sync_write(entry_buff, LBA_LENGTH, current_offset) == -1)
 	{
 		S5LOG_ERROR("Failed to persist redo log, rc:%d", -errno);
