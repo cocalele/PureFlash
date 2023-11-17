@@ -19,6 +19,8 @@ class PfRedoLog
 		FREE_OBJ = 3,
 		SNAP_SEQ_CHANGE = 4,
 		STATUS_CHANGE = 5,
+
+		_REDO_ITEM_TYPE_COUNT_
 	};
 
 	struct Item{

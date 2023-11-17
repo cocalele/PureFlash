@@ -44,6 +44,7 @@ void sigroutine(int dunno)
 	{
 		case SIGTERM:
 			S5LOG_INFO("Recieve signal SIGTERM.");
+			stop_app();
 			exit(1);
 
 		case SIGINT:

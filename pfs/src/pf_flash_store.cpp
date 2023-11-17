@@ -230,9 +230,15 @@ int PfFlashStore::owner_init()
 			return ret;
 		}
 		post_load_fix();
+		S5LOG_INFO("After post_load_fix, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+			tray_name, obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		post_load_check();
+		S5LOG_INFO("After post_check, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", 
+			tray_name, obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
-		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("Load block map, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", tray_name, obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->start();
@@ -357,7 +363,7 @@ int PfFlashStore::init(const char* tray_name)
 		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
 
-		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("after save metadata, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->start();
@@ -419,6 +425,7 @@ int PfFlashStore::init(const char* tray_name)
 		save_meta_data(NULL, NULL, NULL, head.current_metadata);
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
 		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
+		redolog->start();
 	}
 	else
 		return ret;
@@ -1058,6 +1065,9 @@ int PfFlashStore::compact_meta_data()
 	PfFlashStore *pfs_copy = new PfFlashStore();
 
 	S5LOG_INFO("begin to compact metadata for %s", tray_name);
+	S5LOG_DEBUG("before compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+		tray_name, obj_lmt.size(),
+		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 	/*load metadata at current md zone*/
 	// lmt_entry_pool is thread safe, so we re-use lmt_entry_pool here
@@ -1084,7 +1094,7 @@ int PfFlashStore::compact_meta_data()
 		S5LOG_ERROR("Failed to replay rlog, disk:%s rc:%d", tray_name, rc);
 		goto out2;
 	}
-	/*save meta to oppsite zone*/
+	/*save meta to opposite zone*/
 	rc = save_meta_data(&pfs_copy->free_obj_queue, &pfs_copy->trim_obj_queue, &pfs_copy->obj_lmt,
 		oppsite_md_zone());
 	if (rc) {
@@ -1108,6 +1118,10 @@ out1:
 	pfs_copy->obj_lmt.clear();
 
 	S5LOG_INFO("compact metadata for %s done, rc:%d", tray_name, rc);
+	S5LOG_DEBUG("after compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+		tray_name, obj_lmt.size(),
+		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+
 	return rc;
 }
 
@@ -1270,6 +1284,10 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	{
 		if (redolog->current_offset == redolog->start_offset)
 			return 0;
+		S5LOG_INFO("get event EVT_SAVEMD, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+			tray_name, obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+
 		meta_data_compaction_trigger(COMPACT_TODO, false);
 	}
 	break;
@@ -2413,7 +2431,7 @@ void PfFlashStore::post_load_check()
 	int error_cnt =0;
 	S5LOG_INFO("Check for duplicated snap_seq and offset ...");
 	for(auto it : obj_lmt){
-		S5LOG_INFO("check for key:%s", it.first.to_string().c_str());
+		//S5LOG_INFO("check for key:%s", it.first.to_string().c_str());
 		lmt_entry* head = it.second;
 		int64_t last_off = head->offset;
 		uint32_t last_snap = head->snap_seq;
@@ -2632,13 +2650,19 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
 			return ret;
 		}
+		S5LOG_INFO("After first replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->replay(++head.redolog_phase, OPPOSITE);
+		S5LOG_INFO("After second replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		post_load_fix();
+		S5LOG_INFO("After post_load_fix, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		post_load_check();
 		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-		S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("Resave meta, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		redolog->start();
@@ -2697,10 +2721,11 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 			return ret;
 		}
-		redolog->start();
 		save_meta_data(NULL, NULL, NULL, head.current_metadata);
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
 		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
+		redolog->start();
+
 	}
 	else
 		return ret;
