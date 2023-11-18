@@ -6,12 +6,18 @@
 #include "pf_app_ctx.h"
 #include "pf_message.h"
 
+int PfConnection::total_count=0;
+int PfConnection::closed_count=0;
+int PfConnection::released_count=0;
+
 PfConnection::PfConnection():ref_count(0),master(NULL), state(0), on_destroy(NULL)
 {
+	total_count++;
 }
 
 PfConnection::~PfConnection()
 {
+	released_count++;
 }
 
 int PfConnection::close()
@@ -22,6 +28,7 @@ int PfConnection::close()
 	}
 
 	S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
+	closed_count++;
 	do_close();
 	if(on_close)
 		on_close(this);

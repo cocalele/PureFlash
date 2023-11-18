@@ -52,9 +52,9 @@ static void *cq_poller_proc(void *arg_)
                 continue;
             }
             struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
-            //if(wc[i].status != IBV_WC_SUCCESS){
-            //	S5LOG_WARN("wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s", i, wc[i].status, ibv_wc_status_str(wc[i].status));
-            //}
+            if(wc[i].status != IBV_WC_SUCCESS){
+            	S5LOG_WARN("conn:%p wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s",conn, i, wc[i].status, ibv_wc_status_str(wc[i].status));
+            }
 			//S5LOG_INFO("cq poller get msg!!!!!!, opcode:%d", msg->wr_op);
             if (likely(conn->on_work_complete))
             {
