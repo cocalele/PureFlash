@@ -52,9 +52,9 @@ static void *cq_poller_proc(void *arg_)
                 continue;
             }
             struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
-            if(wc[i].status != IBV_WC_SUCCESS){
-            	S5LOG_WARN("wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s", i, wc[i].status, ibv_wc_status_str(wc[i].status));
-            }
+            //if(wc[i].status != IBV_WC_SUCCESS){
+            //	S5LOG_WARN("wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s", i, wc[i].status, ibv_wc_status_str(wc[i].status));
+            //}
 			//S5LOG_INFO("cq poller get msg!!!!!!, opcode:%d", msg->wr_op);
             if (likely(conn->on_work_complete))
             {
@@ -217,7 +217,7 @@ int on_connection(struct rdma_cm_id *id)
 int on_disconnect(struct rdma_cm_id *id)
 {
 	struct PfRdmaConnection *conn = (struct PfRdmaConnection *)id->context;
-	conn->do_close();
+	conn->close();
 	return 0;
 }
 
@@ -304,6 +304,7 @@ failure_lay1:
 
 PfRdmaConnection::PfRdmaConnection(void)
 {
+	state = CONN_INIT;
     this->event = NULL;
     this->rdma_id = NULL;
     this->ec = NULL;
@@ -311,6 +312,16 @@ PfRdmaConnection::PfRdmaConnection(void)
 
 PfRdmaConnection::~PfRdmaConnection(void)
 {
+	S5LOG_DEBUG("connection:%p %s released", this, connection_info.c_str());
+
+	int rc = 0;
+	rdma_destroy_qp(rdma_id);
+	rc = rdma_destroy_id(rdma_id);
+	if (rc) {
+		S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);
+	}
+	rdma_id = NULL; //nobody should access this, assign value only for debug
+	state = CONN_CLOSED;
 }
 
 int PfRdmaConnection::post_recv(BufferDescriptor* buf)
@@ -445,14 +456,13 @@ int PfRdmaConnection::post_read(BufferDescriptor* buf)
 int PfRdmaConnection::do_close()
 {
 	int rc = 0;
-	struct rdma_cm_id* id = this->rdma_id;
-	struct PfRdmaPoller *rdma_poller = &dev_ctx->prdc_poller_ctx[prc_cq_poller_idx];
-	S5LOG_INFO("Client close rdma connection!");
-	rdma_poller->poller.del_fd(rdma_poller->prp_comp_channel->fd);
-	rdma_destroy_qp(id);
-	rc = rdma_destroy_id(id);
-	if(rc) {
-		S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);
+	//struct rdma_cm_id* id = this->rdma_id;
+	//struct PfRdmaPoller *rdma_poller = &dev_ctx->prdc_poller_ctx[prc_cq_poller_idx];
+	rc = rdma_disconnect(rdma_id);
+	if(rc){
+		//Returns 0 on success, or -1 on error. If an error occurs, errno will be set to indicate the failure reason.
+		rc = -errno;
+		S5LOG_ERROR("Failed to disconnect rdma connection:%p %s, rc:%d", this, connection_info.c_str(), rc);
 	}
 	return rc;
 }

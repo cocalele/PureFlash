@@ -67,6 +67,7 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 {
 	int rc = 0;
 	const static int ms1 = 1000;
+	PfConnection* conn = iocb->conn;
 	if(unlikely(iocb->conn->state != CONN_OK)) {
 		S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
 			 iocb->conn, iocb->conn->connection_info.c_str(), ConnState2Str(iocb->conn->state));
@@ -85,6 +86,19 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 		           io_elapse_time
 		);
 	}
+	if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA) && iocb->complete_status == MSG_STATUS_SUCCESS) {
+		iocb->add_ref();
+		//S5LOG_INFO("rdma post write!!!,ref_count:%d", iocb->ref_count);
+		int rc = ((PfRdmaConnection*)conn)->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
+		if (rc)
+		{
+			iocb->dec_ref();
+			S5LOG_ERROR("post_write, rc:%d", rc);
+		}
+		//continue to send reply, RDMA can ensure the data reach before reply
+	}
+
+
 	PfMessageReply* reply_bd = iocb->reply_bd->reply_bd;
 	PfMessageHead* cmd_bd = iocb->cmd_bd->cmd_bd;
 	reply_bd->command_id = cmd_bd->command_id;
@@ -264,17 +278,6 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 	iocb->dec_ref(); //added in setup_subtask
 	if(iocb->task_mask == 0){
-        PfRdmaConnection *conn = (PfRdmaConnection *)iocb->conn;
-        if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA)) {
-            iocb->add_ref();
-            conn->add_ref();
-			//S5LOG_INFO("rdma post write!!!,ref_count:%d", iocb->ref_count);
-            int rc = conn->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
-            if (rc)
-            {
-            	S5LOG_ERROR("post_write, rc:%d", rc);
-            }
-        }
 		reply_io_to_client(iocb);
 	}
 	return 0;

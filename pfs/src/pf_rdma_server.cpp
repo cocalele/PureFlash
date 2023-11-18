@@ -55,14 +55,20 @@ static void *rdma_server_event_proc(void* arg)
 		}
 		else if (event_copy.event == RDMA_CM_EVENT_ESTABLISHED)
 		{
-			S5LOG_INFO("rdma connection established");
+			struct rdma_cm_id* id = event->id;
+			PfRdmaConnection* conn = (PfRdmaConnection*)id->context;
+			S5LOG_INFO("rdma connection established, %s", conn->connection_info.c_str());
 			rdma_ack_cm_event(event);
 		}
 		else if (event_copy.event == RDMA_CM_EVENT_DISCONNECTED)
 		{
-			// todo: close rdma conn
-			S5LOG_INFO("TODO: close rdma conn");
+			//todo: close rdma conn
 			rdma_ack_cm_event(event);
+			struct rdma_cm_id* id = event_copy.id;
+			PfRdmaConnection* conn = (PfRdmaConnection *)id->context;
+			S5LOG_INFO("get event RDMA_CM_EVENT_DISCONNECTED on conn:%p %s, state:%d", conn, conn->connection_info.c_str(), conn->state);
+			conn->close();
+			conn->dec_ref();
 		}
 		else
 		{
@@ -97,14 +103,18 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 						conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
 			}else{
-				S5LOG_ERROR("RDMA_WR_RECV unkonw data");
+				S5LOG_ERROR("RDMA_WR_RECV unkonw data"); //should never reach here
 			}
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_SEND){
-			//IO complete, start next
-			PfServerIocb *iocb = bd->server_iocb;
-			iocb->re_init();
-			conn->post_recv(iocb->cmd_bd);
+			if (bd->data_len == PF_MSG_REPLY_SIZE) {
+				//IO complete, start next
+				PfServerIocb *iocb = bd->server_iocb;
+				iocb->re_init();
+				conn->post_recv(iocb->cmd_bd);
+			} else {
+				S5LOG_ERROR("RDMA_WR_SEND unkonwn data"); //should never reach here
+			}
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_WRITE) {
 			//read or recovery_read
@@ -123,7 +133,10 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 		}
 	}
 	else {
-		S5LOG_ERROR("WR complete in unexcepted status:%d", complete_status);
+		
+		if(complete_status != WC_FLUSH_ERR){
+			S5LOG_ERROR("WR complete in unexcepted status:%d, conn ref_count:%d", complete_status, conn->ref_count);
+		}
 		PfServerIocb* iocb = bd->server_iocb;
 		iocb->dec_ref();
 
