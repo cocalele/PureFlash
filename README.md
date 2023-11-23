@@ -1,4 +1,4 @@
-For Chinese version, please visist [中文版README](./README_en.md)
+For Chinese version, please visist [中文版README](./README_cn.md)
 
 # 1. What's PureFlash
 
