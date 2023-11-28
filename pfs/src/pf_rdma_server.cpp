@@ -263,6 +263,8 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 		goto release0;
 	}
 	conn->add_ref();
+    S5LOG_INFO("add rdma conn ip:%s to heartbeat checker list", ipstr);
+    client_ip_conn_map[ipstr] = conn;
 	return 0;
 release0:
 	rdma_destroy_qp(id);
