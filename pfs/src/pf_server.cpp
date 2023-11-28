@@ -39,6 +39,12 @@ void *afs_listen_thread(void *param)
 
 	return NULL;
 }
+void *hb_check_conn_thread_start(void *param)
+{
+	((PfTcpServer*)param)->hb_check_conn();
+
+	return NULL;
+}
 
 
 int PfTcpServer::init()
@@ -57,6 +63,12 @@ int PfTcpServer::init()
 	if (rc)
 	{
 		S5LOG_FATAL("Failed to create TCP listen thread failed rc:%d",rc);
+		return rc;
+	}
+	rc = pthread_create(&hb_check_conn_thread, NULL, hb_check_conn_thread_start, this);
+	if (rc)
+	{
+		S5LOG_FATAL("Failed to create TCP heartbeat check conn state thread rc:%d",rc);
 		return rc;
 	}
 	return rc;
@@ -114,6 +126,20 @@ void PfTcpServer::listen_proc()
 release2:
 release1:
 	return;
+}
+
+void PfTcpServer::hb_check_conn()
+{
+    while(1) {
+        for(auto it = client_ip_conn_map.begin(); it != client_ip_conn_map.end(); ++it) {
+            auto c = it->second;
+            auto ip = it->first;
+            S5LOG_WARN("Connection:%s ip:%s in state:%s, will check heartbeat or last_io_time", 
+                c->connection_info.c_str(), ip, ConnState2Str(c->state));
+        }
+        sleep(120);
+    }
+    return;
 }
 
 int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* conn, void* cbk_data)
@@ -340,12 +366,18 @@ int PfTcpServer::accept_connection()
 	socklen_t addr_len = sizeof(client_addr);
 	int rc = 0;
 	BufferDescriptor *bd;
+    char client_ip[INET_ADDRSTRLEN];
 	int connfd = accept(server_socket_fd, (sockaddr*)&client_addr, &addr_len);
 
 	if (connfd < 0) {
 		S5LOG_ERROR("Failed to accept tcp connection, rc:%d", -errno);
 		return -errno;
 	}
+
+    if(inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip)) == NULL){
+        S5LOG_ERROR("get client ip failed, rc:%d", -errno);
+		return -errno;
+    }
 
 	PfTcpConnection* conn = new PfTcpConnection(false);
 	if (conn == NULL)
@@ -407,7 +439,8 @@ int PfTcpServer::accept_connection()
 
 	conn->last_heartbeat_time = now_time_usec();
 	//app_context.ingoing_connections.insert(conn);
-	S5LOG_ERROR("TODO: add to heartbead checker list");
+	S5LOG_INFO("add tcp conn ip:%s to heartbeat checker list", client_ip);
+    client_ip_conn_map[client_ip] = conn;
 	return 0;
 release5:
 	delete (PfHandshakeMessage*)bd->buf;

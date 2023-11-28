@@ -156,18 +156,6 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 
 int PfRedoLog::discard()
 {
-	#if 0
-	this->phase ++;
-	int64_t* p = (int64_t *) entry_buff;
-	p[0] = size;
-	p[1] = phase; //phase in head is 1, and the first item writen in above has phase=0, so redo log will consider it as obsoleted item
-	p[2] = 0xeeeedddd;
-	if (-1 == store->ioengine->sync_write(entry_buff, LBA_LENGTH, start_offset)) {
-		S5LOG_ERROR("Failed to discard redolog, rc:%d", -errno);
-		return -errno;
-	}
-	#endif
-
 	store->head.redolog_phase++;
 	store->head.current_redolog = store->oppsite_redolog_zone();
 
