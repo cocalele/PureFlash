@@ -102,6 +102,8 @@ public:
 #define COMPACT_RUNNING 3
 #define COMPACT_ERROR 4
 	std::atomic<int> to_run_compact;
+	PfFlashStore *compact_tool;
+	int compact_lmt_exist;
 	int is_shared_disk;
 
 	~PfFlashStore();
@@ -143,11 +145,12 @@ public:
 	 */
 	int do_write(IoSubTask* io);
 
-	int save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
-				std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone);
+	int save_meta_data(int md_zone);
+	int compact_tool_init();
 	int compact_meta_data();
 	int meta_data_compaction_trigger(int state, bool force_wait);
 	uint64_t get_meta_position(int meta_type, int which);
+	const char* meta_positon_2str(int meta_type, int which);
 	int oppsite_md_zone();
 	int oppsite_redolog_zone();
 	void delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del, uint32_t prev_snap_seq, uint32_t next_snap_seq);
@@ -165,8 +168,8 @@ private:
 	int read_store_head();
 	int write_store_head();
 	int initialize_store_head();
-	int load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
-		std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone, bool compaction);
+	int load_meta_data(int md_zone, bool compaction);
+	int start_metadata_service(bool init);
 
 	/** these two function convert physical object id (i.e. object in disk space) and offset in disk
 	 *  Note: don't confuse these function with vol_offset_to_block_idx, which do convert
