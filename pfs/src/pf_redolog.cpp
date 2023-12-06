@@ -71,6 +71,7 @@ int PfRedoLog::start()
 					break;
 					case COMPACT_IDLE:
 					case COMPACT_STOP:
+					case COMPACT_ERROR:
 					{
 						rc = pthread_cond_timedwait(&store->md_cond, &store->md_lock, &timeout);
 						if (store->to_run_compact.load() == COMPACT_STOP) {
@@ -89,10 +90,6 @@ int PfRedoLog::start()
 						}
 					}
 					break;
-					case COMPACT_ERROR:
-						S5LOG_FATAL("unexpect compact state for compaction error!");
-						break;
-				
 				}
 				if (done == 1)
 					break;
@@ -108,7 +105,9 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 	int cnt = 0;
 	int rc = 0;
 	int64_t offset = store->get_meta_position(REDOLOG, which);
-	S5LOG_INFO("Start replay redo log at %d log zone, start_phase:%d, offset:0x%lx", which, start_phase, offset);
+	S5LOG_INFO("Start replay redo log at %s log zone, start_phase:%d, offset:0x%lx",
+		store->meta_positon_2str(REDOLOG, which == CURRENT ? store->head.current_redolog : store->oppsite_redolog_zone()), 
+		start_phase, offset);
 	while(1)
 	{
 		if (store->ioengine->sync_read(entry_buff, LBA_LENGTH, offset) == -1) {
@@ -150,7 +149,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 		offset += LBA_LENGTH;
 
 	}
-	S5LOG_INFO("%s log zone:%d redolog replay finished. %d items replayed", store->tray_name, which, cnt);
+	S5LOG_INFO("%s log zone:%s redolog replay finished. %d items replayed", store->tray_name, store->meta_positon_2str(REDOLOG, which), cnt);
 	return 0;
 }
 

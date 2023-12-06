@@ -134,7 +134,7 @@ int MD5Stream_ISA_L::read_calc(void *buf, size_t count, off_t offset)
 
 	rc = read(buf, count, offset);
 	if (rc) {
-		S5LOG_ERROR("Failed to read");
+		S5LOG_ERROR("Failed to read from offset:%lu, rc:%d", offset, rc);
 		return rc;
 	}
 
