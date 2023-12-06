@@ -317,3 +317,13 @@ std::vector<std::string> split_string(const std::string& str, const std::string&
 	return tokens;
 }
 
+#define as_str(s) _as_str(s)
+#define _as_str(s) #s
+const char* get_git_ver()
+{
+#ifndef _GIT_REV
+	return  " ";
+#else
+	return as_str(_GIT_REV);
+#endif
+}

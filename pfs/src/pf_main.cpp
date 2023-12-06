@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 	S5LOG_INFO("====      (o o)             (o o)           ====");
 	S5LOG_INFO("====     (  V  ) PureFlash (  V  )          ====");
 	S5LOG_INFO("====     --m-m---------------m-m--          ====");
-	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
+	S5LOG_INFO("PureFlash pfs start..., version:1.9(commit:%s) build:%s %s", get_git_ver(), __DATE__, __TIME__);
 	//std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);

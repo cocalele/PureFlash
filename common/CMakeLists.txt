@@ -29,6 +29,16 @@ include_directories(../thirdParty/spdk)
 include_directories(../thirdParty/spdk/dpdk/build/include)
 USE_ZOOKEEPER()
 
+execute_process(COMMAND git log --pretty=format:'%h' -n 1
+                OUTPUT_VARIABLE GIT_REV
+                ERROR_QUIET)
+SET_SOURCE_FILES_PROPERTIES(src/pf_utils.cpp PROPERTIES COMPILE_FLAGS -D_GIT_REV=${GIT_REV})
+#add_custom_command(
+#  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
+#  COMMAND sh  -c  "echo char *_GIT_VER= \"`git log --pretty=format:'%h' -n 1`\";" > ${CMAKE_CURRENT_BINARY_DIR}/git_ver.h
+#  
+#  VERBATIM)
+
 set (S5COMMON_SRC 
 	src/pf_cmdopt.c
     src/pf_md5.c
@@ -59,6 +69,7 @@ set (S5COMMON_SRC
 	src/pf_aof_cache.cpp
 	src/pf_ioengine.cpp
 	src/pf_client_store.cpp
+	#${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
 	)
 IF (HAVE_RDMA_H)
 	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
