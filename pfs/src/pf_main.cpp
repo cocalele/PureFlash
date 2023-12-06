@@ -439,7 +439,7 @@ void stop_app()
 		PfFlashStore *tray = app_context.trays[i];
 		tray->sync_invoke([tray]()->int {
 			tray->meta_data_compaction_trigger(COMPACT_STOP, true);
-			return tray->save_meta_data(NULL, NULL, NULL, tray->oppsite_md_zone());
+			return tray->save_meta_data(tray->oppsite_md_zone());
 
 		});
 		app_context.trays[i]->stop();

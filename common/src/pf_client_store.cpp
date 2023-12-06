@@ -27,7 +27,7 @@ int PfClientStore::init(PfClientVolume* vol, const char* dev_name, const char* d
 	//TODO: change io engine according to config file
 	ioengine = new PfAioEngine(tray_name, fd, volume->runtime_ctx);
 	err_clean.push_back([this]() {delete ioengine; });
-	//ioengine = new PfIouringEngine(this);  
+	//ioengine = new PfIouringEngine(this);
 	ret = ioengine->init();
 	if(ret){
 		S5LOG_ERROR("Failed to init ioengine, rc:%d", ret);
