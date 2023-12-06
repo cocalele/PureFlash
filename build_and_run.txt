@@ -142,7 +142,7 @@ after build finish, all binary should be found under  * bin * dir
 ==================
 ## 1) build qemu with pfbd
 ```
-   # apt install -y  libglib2.0-dev libpixman-1-dev
+   # apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
    # apt install -y  libfdt-dev  #need on ARM
    # git clone  https://gitee.com/cocalele/qemu.git
    # cd qemu
@@ -151,13 +151,15 @@ after build finish, all binary should be found under  * bin * dir
    # mkdir /usr/include/pfbd
    # cp ${PUREFLASH_HOME}/common/include/pf_client_api.h /usr/include/pfbd/pf_client_api.h
    # cp ${PUREFLASH_HOME}/build_deb/bin/libs5common.a /usr/lib/libs5common.a
-   # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper.a /usr/lib/libzookeeper.a
+   # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper_mt.a /usr/lib/libzookeeper_mt.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libhashtable.a /usr/lib/libhashtable.a
+   # ( cd ${PUREFLASH_HOME}/thirdParty/spdk/build/lib; cp libspdk_rpc.a libspdk_nvme.a libspdk_env_dpdk.a libspdk_util.a libspdk_log.a libspdk_sock.a libspdk_trace.a  libspdk_json.a libspdk_jsonrpc.a  /usr//lib/)
+   # ( cd ${PUREFLASH_HOME}/thirdParty/spdk/dpdk/build/lib; cp -rp librte_eal.a librte_mempool.a librte_ring.a librte_telemetry.a librte_kvargs.a librte_pci.a librte_bus_pci.a librte_mempool_ring.a /usr/lib/ )
    # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
    
    for arm:
-   # ./configure --disable-linux-io-uring --enable-kvm  --target-list=aarch64-linux-user,aarch64-softmmu
-
+   # ../configure --disable-linux-io-uring --enable-kvm  --target-list=aarch64-linux-user,aarch64-softmmu
+  
 ```
 ## 2) run qemu-img 
 ```
@@ -171,4 +173,11 @@ after build finish, all binary should be found under  * bin * dir
    2) apt install libkmod-dev libkmod2 libnl-3-dev libnl-genl-3-dev
    3) mkdir build && cd build && cmake .. -GNinja && ninja
   
-  
+7. use nbd (not recommended)
+   # apt install autoconf-archive bison flex git libglib2.0-dev
+   # git clone  https://gitee.com/cocalele/pfs-nbd.git
+   # cd pfs-nbd
+   # autoreconf -f -i
+   # ./configure --enable-pfsnbd
+   # modprobe nbd 
+   # pfsnbd  /dev/nbd3 test_v1  

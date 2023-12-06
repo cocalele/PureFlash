@@ -1006,7 +1006,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				if (now_time_usec() > io->submit_time + SEC2US(runtime_ctx->io_timeout)) {
 					io->ulp_handler(io->ulp_arg, -EIO);
 					S5LOG_ERROR("IOError, can't get a usable connection before timeout, volume:%s command id:%d task_sequence:%d, io_cmd :%d",
-						volume_name, io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
+						volume_name.c_str(), io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
 					runtime_ctx->iocb_pool.free(io);
 
 				}
@@ -1047,7 +1047,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				runtime_ctx->iocb_pool.free(io);
 				break;
 			}
-			// set rkey if rdma; 
+			// set rkey if rdma;  TODO: move this operation into PfRdmaConnection::post_send
 			if (client_conn_type == RDMA_TYPE)
 				cmd_bd->cmd_bd->rkey = io->data_bd->mrs[((PfRdmaConnection*)conn)->dev_ctx->idx]->rkey;
 			rc = conn->post_send(cmd_bd);
