@@ -67,6 +67,7 @@ if [ $status -ne 0 ]; then
 fi
 sleep 3
 
+export LD_LIBRARY_PATH=$DIR:$LD_LIBRARY_PATH
 echo "Start PureFlash store..."
 $DIR/pfs -c /etc/pureflash/pfs.conf &> /var/log/pfs.log &
 status=$?

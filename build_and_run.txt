@@ -153,8 +153,10 @@ after build finish, all binary should be found under  * bin * dir
    # cp ${PUREFLASH_HOME}/build_deb/bin/libs5common.a /usr/lib/libs5common.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libzookeeper_mt.a /usr/lib/libzookeeper_mt.a
    # cp ${PUREFLASH_HOME}/build_deb/bin/libhashtable.a /usr/lib/libhashtable.a
-   # ( cd ${PUREFLASH_HOME}/thirdParty/spdk/build/lib; cp libspdk_rpc.a libspdk_nvme.a libspdk_env_dpdk.a libspdk_util.a libspdk_log.a libspdk_sock.a libspdk_trace.a  libspdk_json.a libspdk_jsonrpc.a  /usr//lib/)
-   # ( cd ${PUREFLASH_HOME}/thirdParty/spdk/dpdk/build/lib; cp -rp librte_eal.a librte_mempool.a librte_ring.a librte_telemetry.a librte_kvargs.a librte_pci.a librte_bus_pci.a librte_mempool_ring.a /usr/lib/ )
+   # ( cd ${PUREFLASH_HOME}/build_deb/bin;  cp -rp libspdk* /usr/lib/)
+   # ( cd ${PUREFLASH_HOME}/build_deb/bin; cp -rp librte* /usr/lib/)
+   # ( cd ${PUREFLASH_HOME}/build_deb/bin; cp -rp dpdk /usr/lib/)
+   
    # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
    
    for arm:

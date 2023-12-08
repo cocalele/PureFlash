@@ -181,7 +181,9 @@ int main(int argc, char *argv[])
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
 	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
 		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
-
+	if(app_context.meta_size & ((1LL<<30)-1) ){
+		S5LOG_FATAL("meta_size in config file is not aligned on 1GiB");
+	}
 	const char *engine = conf_get(fp, "engine", "name", NULL, false);
 	if (!engine) {
 		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);

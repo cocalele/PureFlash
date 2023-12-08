@@ -123,6 +123,7 @@ add_custom_command(TARGET s5common POST_BUILD
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_trace.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_json.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_jsonrpc.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_vfio_user.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_eal.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_ring.so*  ${LIBRARY_OUTPUT_PATH}/
@@ -131,4 +132,5 @@ add_custom_command(TARGET s5common POST_BUILD
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_pci.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_bus_pci.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool_ring.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/dpdk ${LIBRARY_OUTPUT_PATH}/
 )
