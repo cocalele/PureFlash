@@ -132,6 +132,10 @@ after build finish, all binary should be found under  * bin * dir
    # ./configure --pfbd-include=${PUREFLASH_HOME}/common/include --pfbd-lib==${PUREFLASH_HOME}/build_deb/bin/
    # make
 ```
+if compiling with s5common support SPDK engine, you shoule specify spdk/dpdk lib with blow parameters:
+```
+   # ./configure --pfbd-include=${PUREFLASH_HOME}/common/include --pfbd-lib==${PUREFLASH_HOME}/build_deb/bin/ --spdk-lib=${PUREFLASH_HOME}/thirdParty/dpdk/build/lib --dpdk-lib=${PUREFLASH_HOME}/thirdParty/spdk/dpdk/build/lib
+```
 ## 2） run fio
 ```
    # pfcli create_volume -v test_v1 -s 2G
