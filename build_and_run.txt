@@ -42,8 +42,7 @@ PureFlash can be build with cmake tools.
 1) check out code
   # git clone https://github.com/cocalele/PureFlash.git
   # set PFHOME=$(pwd)/PureFlash
-  # git submodule init
-  # git submodule update
+  # git submodule update --init --recursive
 
 2) build zookeeper
   # cd thirdParty/zookeeper
@@ -132,6 +131,10 @@ after build finish, all binary should be found under  * bin * dir
    # ./configure --pfbd-include=${PUREFLASH_HOME}/common/include --pfbd-lib==${PUREFLASH_HOME}/build_deb/bin/
    # make
 ```
+if compiling with s5common support SPDK engine, you shoule specify spdk/dpdk lib with blow parameters:
+```
+   # ./configure --pfbd-include=${PUREFLASH_HOME}/common/include --pfbd-lib==${PUREFLASH_HOME}/build_deb/bin/ --spdk-lib=${PUREFLASH_HOME}/thirdParty/dpdk/build/lib --dpdk-lib=${PUREFLASH_HOME}/thirdParty/spdk/dpdk/build/lib
+```
 ## 2） run fio
 ```
    # pfcli create_volume -v test_v1 -s 2G
@@ -175,6 +178,7 @@ after build finish, all binary should be found under  * bin * dir
    2) apt install libkmod-dev libkmod2 libnl-3-dev libnl-genl-3-dev
    3) mkdir build && cd build && cmake .. -GNinja && ninja
   
+
 7. use nbd (not recommended)
    # apt install autoconf-archive bison flex git libglib2.0-dev
    # git clone  https://gitee.com/cocalele/pfs-nbd.git
@@ -183,3 +187,4 @@ after build finish, all binary should be found under  * bin * dir
    # ./configure --enable-pfsnbd
    # modprobe nbd 
    # pfsnbd  /dev/nbd3 test_v1  
+
