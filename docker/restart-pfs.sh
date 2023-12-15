@@ -12,7 +12,7 @@ if [ "$OLD_PID" != "" ]; then
 	echo "OLD_PID:$OLD_PID "
 	kill -2 $OLD_PID
 fi
-
+export LD_LIBRARY_PATH=$DIR:$LD_LIBRARY_PATH
 echo "Restart PureFlash store..."
 nohup $DIR/pfs -c /etc/pureflash/pfs.conf > /var/log/pfs.log 2>&1 &
 status=$?

@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 	S5LOG_INFO("====      (o o)             (o o)           ====");
 	S5LOG_INFO("====     (  V  ) PureFlash (  V  )          ====");
 	S5LOG_INFO("====     --m-m---------------m-m--          ====");
-	S5LOG_INFO("PureFlash pfs start..., version:1.0 build:%s %s", __DATE__, __TIME__);
+	S5LOG_INFO("PureFlash pfs start..., version:1.9(commit:%s) build:%s %s", get_git_ver(), __DATE__, __TIME__);
 	//std::set_terminate(unexpected_exit_handler);
 	g_app_ctx = &app_context;
 	opt_initialize(argc, (const char**)argv);
@@ -181,7 +181,9 @@ int main(int argc, char *argv[])
     app_context.meta_size = conf_get_long(fp, "afs", "meta_size", META_RESERVE_SIZE, FALSE);
 	if(app_context.meta_size < MIN_META_RESERVE_SIZE)
 		S5LOG_FATAL("meta_size in config file is too small, at least %ld", MIN_META_RESERVE_SIZE);
-
+	if(app_context.meta_size & ((1LL<<30)-1) ){
+		S5LOG_FATAL("meta_size in config file is not aligned on 1GiB");
+	}
 	const char *engine = conf_get(fp, "engine", "name", NULL, false);
 	if (!engine) {
 		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);
@@ -439,7 +441,7 @@ void stop_app()
 		PfFlashStore *tray = app_context.trays[i];
 		tray->sync_invoke([tray]()->int {
 			tray->meta_data_compaction_trigger(COMPACT_STOP, true);
-			return tray->save_meta_data(NULL, NULL, NULL, tray->oppsite_md_zone());
+			return tray->save_meta_data(tray->oppsite_md_zone());
 
 		});
 		app_context.trays[i]->stop();

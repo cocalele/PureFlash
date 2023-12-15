@@ -501,6 +501,11 @@ void handle_save_md_disk(struct mg_connection *nc, struct http_message * hm) {
 	mg_printf(nc, "OK");
 }
 
+void handle_stat_conn(struct mg_connection* nc, struct http_message* hm) {
+	std::string rst = format_string("established:%d closed:%d released:%d", PfConnection::total_count, PfConnection::closed_count, PfConnection::released_count);
+	mg_send_head(nc, 200, rst.size(), "Content-Type: text/plain");
+	mg_send(nc, rst.c_str(), rst.length());
+}
 
 void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);

@@ -14,7 +14,7 @@ fi
 
 echo "Restart PureFlash jconductor..."
 JCROOT=$DIR/jconductor
-nohup java  -classpath $DIR/pfconductor.jar:$JCROOT/lib/*  \
+nohup java  -classpath $JCROOT/pfconductor.jar:$JCROOT/lib/*  \
    -Dorg.slf4j.simpleLogger.showDateTime=true \
    -Dorg.slf4j.simpleLogger.dateTimeFormat="[yyyy/MM/dd H:mm:ss.SSS]" \
    -XX:+HeapDumpOnOutOfMemoryError \

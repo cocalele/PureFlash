@@ -29,6 +29,16 @@ include_directories(../thirdParty/spdk)
 include_directories(../thirdParty/spdk/dpdk/build/include)
 USE_ZOOKEEPER()
 
+execute_process(COMMAND git log --pretty=format:'%h' -n 1
+                OUTPUT_VARIABLE GIT_REV
+                ERROR_QUIET)
+SET_SOURCE_FILES_PROPERTIES(src/pf_utils.cpp PROPERTIES COMPILE_FLAGS -D_GIT_REV=${GIT_REV})
+#add_custom_command(
+#  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
+#  COMMAND sh  -c  "echo char *_GIT_VER= \"`git log --pretty=format:'%h' -n 1`\";" > ${CMAKE_CURRENT_BINARY_DIR}/git_ver.h
+#  
+#  VERBATIM)
+
 set (S5COMMON_SRC 
 	src/pf_cmdopt.c
     src/pf_md5.c
@@ -59,6 +69,7 @@ set (S5COMMON_SRC
 	src/pf_aof_cache.cpp
 	src/pf_ioengine.cpp
 	src/pf_client_store.cpp
+	#${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
 	)
 IF (HAVE_RDMA_H)
 	set (S5COMMON_SRC ${S5COMMON_SRC}  	src/pf_rdma_connection.cpp)
@@ -103,4 +114,23 @@ add_executable(aof_helper src/pf_aof_test_helper.cpp )
 TARGET_LINK_LIBRARIES(aof_helper s5common rdmacm ${SPDKLIBS} ${DPDKLIBS} ibverbs pthread uuid zookeeper_mt hashtable curl aio ${GCOV})
 add_custom_command(TARGET s5common POST_BUILD 
 	COMMAND cp -rpfu ${PREBUILD_LIB_DIR}/*.a ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_rpc.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_nvme.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_env_dpdk.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_util.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_log.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_sock.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_trace.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_json.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_jsonrpc.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_vfio_user.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_eal.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_ring.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_telemetry.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_kvargs.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_pci.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_bus_pci.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool_ring.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/dpdk ${LIBRARY_OUTPUT_PATH}/
 )

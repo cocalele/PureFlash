@@ -118,7 +118,7 @@ int  PfFlashStore::format_disk()
 		S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 		return ret;
 	}
-	save_meta_data(NULL, NULL, NULL, head.current_metadata);
+	save_meta_data(head.current_metadata);
 	char uuid_str[64];
 	uuid_unparse(head.uuid, uuid_str);
 	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%lld.", tray_name, uuid_str, obj_count, head.objsize);
@@ -142,7 +142,7 @@ int PfFlashStore::shared_disk_init(const char* tray_name)
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
 	ioengine = new PfAioEngine(tray_name, this->fd, g_app_ctx);
-	//ioengine = new PfIouringEngine(this);  
+	//ioengine = new PfIouringEngine(this);
 	ioengine->init();
 	DeferCall _2([this]() { delete ioengine; ioengine=NULL; });
 
@@ -200,48 +200,12 @@ int PfFlashStore::owner_init()
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
 	ioengine = new PfAioEngine(this->tray_name, fd, g_app_ctx);
-	//ioengine = new PfIouringEngine(this);  
+	//ioengine = new PfIouringEngine(this);
 	ioengine->init();
 
 	if ((ret = read_store_head()) == 0)
 	{
-		ret = load_meta_data(NULL, NULL, NULL, head.current_metadata, false);
-		if (ret) {
-			S5LOG_ERROR("Failed to load meta from disk:%s", tray_name);
-			return ret;
-		}
-		redolog = new PfRedoLog();
-		ret = redolog->init(this);
-		if (ret)
-		{
-			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
-			return ret;
-		}
-		ret = redolog->replay(head.redolog_phase, CURRENT);
-		if (ret)
-		{
-			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
-			return ret;
-		}
-		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
-		if (ret)
-		{
-			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
-			return ret;
-		}
-		post_load_fix();
-		S5LOG_INFO("After post_load_fix, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
-			tray_name, obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-		post_load_check();
-		S5LOG_INFO("After post_check, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", 
-			tray_name, obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
-		S5LOG_INFO("Load block map, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", tray_name, obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-
-		redolog->start();
+		ret = start_metadata_service(false);
 	}
 	else {
 		S5LOG_ERROR("Failed to load head from disk:%s rc:%d", tray_name, ret);
@@ -295,6 +259,25 @@ uint64_t PfFlashStore::get_meta_position(int meta_type, int which)
 	return 0; //never reach here
 }
 
+const char* PfFlashStore::meta_positon_2str(int meta_type, int which)
+{
+	switch (meta_type) {
+		case REDOLOG:
+			if (which == FIRST_REDOLOG_ZONE)
+				return "[FIRST_LOGZONE]" ;
+			else
+				return "[SECOND_LOGZONE]" ;
+		case METADATA:
+			if (which == FIRST_METADATA_ZONE)
+				return "[FIRST_METAZONE]" ;
+			else
+				return "[SECOND_METAZONE]" ;
+		default:
+			S5LOG_FATAL("Unknown type:%d", meta_type);
+	}
+}
+
+
 int PfFlashStore::oppsite_md_zone()
 {
 	return (head.current_metadata == FIRST_METADATA_ZONE) ? SECOND_METADATA_ZONE : FIRST_METADATA_ZONE;
@@ -305,38 +288,12 @@ int PfFlashStore::oppsite_redolog_zone()
 	return (head.current_redolog == FIRST_REDOLOG_ZONE) ? SECOND_REDOLOG_ZONE : FIRST_REDOLOG_ZONE;
 }
 
-/**
- * init flash store from tray. this function will create meta data
- * and initialize the tray if a tray is not initialized.
- *
- * @return 0 on success, negative for error
- * @retval -ENOENT  tray not exist or failed to open
- */
-
-int PfFlashStore::init(const char* tray_name)
+int PfFlashStore::start_metadata_service(bool init)
 {
-	int ret = 0;
-	this->is_shared_disk = false;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
-	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
-	S5LOG_INFO("Loading disk %s ...", tray_name);
-	Cleaner err_clean;
-	fd = open(tray_name, O_RDWR | O_DIRECT);
-	if (fd == -1) {
-		return -errno;
-	}
-	err_clean.push_back([this]() {::close(fd); });
+	int ret;
 
-
-	/*init ioengine first*/
-	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(tray_name, fd, g_app_ctx);
-	//ioengine = new PfIouringEngine(this);  
-	ioengine->init();
-
-	if ((ret = read_store_head()) == 0)
-	{
-		ret = load_meta_data(NULL, NULL, NULL, head.current_metadata, false);
+	if (!init) {
+		ret = load_meta_data(head.current_metadata, false);
 		if (ret)
 			return ret;
 		redolog = new PfRedoLog();
@@ -352,24 +309,27 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
 			return ret;
 		}
+		S5LOG_INFO("After first replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+
 		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
 		if (ret)
 		{
 			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
 			return ret;
 		}
-		post_load_fix();
-		post_load_check();
-		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-
-		S5LOG_INFO("after save metadata, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("After second replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
-		redolog->start();
-	}
-	else if (ret == -EUCLEAN)
-	{
+		post_load_fix();
+		post_load_check();
+		save_meta_data(oppsite_md_zone());
+		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
+		S5LOG_INFO("after save metadata, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+		S5LOG_INFO("load metadata finished, current metadata zone:%s, redo log will record at %s with phase:%ld",
+		meta_positon_2str(METADATA, head.current_metadata), meta_positon_2str(REDOLOG, head.current_redolog), head.redolog_phase);
+	} else {
 		S5LOG_WARN("New disk found, initializing  (%s) now ...", tray_name);
 		if (!is_disk_clean(ioengine))
 		{
@@ -422,22 +382,66 @@ int PfFlashStore::init(const char* tray_name)
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 			return ret;
 		}
-		save_meta_data(NULL, NULL, NULL, head.current_metadata);
+		save_meta_data(head.current_metadata);
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
 		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
-		redolog->start();
+		S5LOG_INFO("current metadata zone:%s, redo log will record at %s with phase:%ld",
+			meta_positon_2str(METADATA, head.current_metadata),meta_positon_2str(REDOLOG, head.current_redolog), head.redolog_phase);
+	}
+
+	compact_tool_init();
+	redolog->start();
+
+	return 0;
+}
+
+/**
+ * init flash store from tray. this function will create meta data
+ * and initialize the tray if a tray is not initialized.
+ *
+ * @return 0 on success, negative for error
+ * @retval -ENOENT  tray not exist or failed to open
+ */
+
+int PfFlashStore::init(const char* tray_name)
+{
+	int ret = 0;
+	this->is_shared_disk = false;
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
+	S5LOG_INFO("Loading disk %s ...", tray_name);
+	Cleaner err_clean;
+	fd = open(tray_name, O_RDWR | O_DIRECT);
+	if (fd == -1) {
+		return -errno;
+	}
+	err_clean.push_back([this]() {::close(fd); });
+
+
+	/*init ioengine first*/
+	//TODO: change io engine according to config file
+	ioengine = new PfAioEngine(tray_name, fd, g_app_ctx);
+	//ioengine = new PfIouringEngine(this);
+	ioengine->init();
+
+	if ((ret = read_store_head()) == 0)
+	{
+		ret = start_metadata_service(false);
+	}
+	else if (ret == -EUCLEAN)
+	{
+		ret = start_metadata_service(true);
 	}
 	else
 		return ret;
 
 	in_obj_offset_mask = head.objsize - 1;
-
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 
 	pthread_mutex_init(&md_lock, NULL);
 	pthread_cond_init(&md_cond, NULL);
 	to_run_compact.store(COMPACT_IDLE);
-
+	compact_lmt_exist = 0;
 
 	err_clean.cancel_all();
 	return ret;
@@ -816,7 +820,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	{
 		memset(buf, 0, buf_size);
 		unsigned long s = std::min(q->queue_depth * sizeof(T) - src, (size_t)buf_size);
-		if (-1 == stream->read_calc(buf, up_align(s, LBA_LENGTH), offset + src + LBA_LENGTH))
+		if (0 != stream->read_calc(buf, up_align(s, LBA_LENGTH), offset + src + LBA_LENGTH))
 		{
 			return -errno;
 		}
@@ -845,10 +849,11 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	 - 1st LBA(4K)  global meta lock
 	 - others, reserve as volume lock
 */
-int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
-	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone)
+int PfFlashStore::save_meta_data(int md_zone)
 {
-	S5LOG_INFO("Begin to save metadata at zone:%d, %d keys in lmt", md_zone, obj_lmt.size());
+	S5LOG_INFO("Begin to save metadata at zone:%s, %d keys in lmt",
+		meta_positon_2str(METADATA, md_zone), obj_lmt.size());
+
 	int buf_size = 1 << 20;
 	HeadPage head_tmp;
 	void *buf = align_malloc_spdk(LBA_LENGTH, buf_size, NULL);
@@ -860,13 +865,6 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	DeferCall _c([buf, this]()->void {
 		free_spdk(buf);
 	});
-
-	if (!fq)
-		fq = &free_obj_queue;
-	if (!tq)
-		tq = &trim_obj_queue;
-	if (!lmt)
-		lmt = &obj_lmt;
 
 	uint64_t fl_position = (md_zone == FIRST_METADATA_ZONE) ? head.free_list_position_first : head.free_list_position_second;
 	uint64_t tl_position = (md_zone == FIRST_METADATA_ZONE) ? head.trim_list_position_first : head.trim_list_position_second;
@@ -880,7 +878,7 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	rc = stream.init();
 	if (rc) return rc;
 	S5LOG_DEBUG("Save free_obj_queue to pos:%ld", fl_position);
-	rc = save_fixed_queue<int32_t>(fq, &stream, fl_position, (char*)buf, buf_size);
+	rc = save_fixed_queue<int32_t>(&free_obj_queue, &stream, fl_position, (char*)buf, buf_size);
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed to save free obj queue, disk:%s rc:%d", tray_name, rc);
@@ -947,27 +945,20 @@ int PfFlashStore::save_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	return 0;
 }
 
-int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue<int32_t> *tq,
-	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> *lmt, int md_zone, bool compaction)
+int PfFlashStore::load_meta_data(int md_zone, bool compaction)
 {
-	S5LOG_INFO("load metadata from md zone:%d, compaction:%d", md_zone, compaction);
+	S5LOG_INFO("load metadata from md zone:%s, compaction:%d",
+		meta_positon_2str(METADATA, md_zone), compaction);
 	int buf_size = 1 << 20;
 	void *buf = align_malloc_spdk(LBA_LENGTH, buf_size, NULL);
 	if (!buf)
 	{
-		S5LOG_ERROR("Failed to alloc memory in save_meta_data");
+		S5LOG_ERROR("Failed to alloc memory in load_meta_data");
 		return -ENOMEM;
 	}
 	DeferCall _c([buf, this]() {
 		free_spdk(buf);
 	});
-
-	if (!fq)
-		fq = &free_obj_queue;
-	if (!tq)
-		tq = &trim_obj_queue;
-	if (!lmt)
-		lmt = &obj_lmt;
 
 	uint64_t fl_position = (md_zone == FIRST_METADATA_ZONE) ? head.free_list_position_first : head.free_list_position_second;
 	uint64_t tl_position = (md_zone == FIRST_METADATA_ZONE) ? head.trim_list_position_first : head.trim_list_position_second;
@@ -984,13 +975,13 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 		S5LOG_ERROR("Failed to init md5 stream, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
-	rc = load_fixed_queue<int32_t>(fq, &stream, fl_position, (char*)buf, buf_size);
+	rc = load_fixed_queue<int32_t>(&free_obj_queue, &stream, fl_position, (char*)buf, buf_size);
 	if(rc)
 	{
 		S5LOG_ERROR("Failed to load free obj queue, disk:%s rc:%d", tray_name, rc);
 		return rc;
 	}
-	rc = load_fixed_queue<int32_t>(tq, &stream, tl_position, (char*)buf, buf_size);
+	rc = load_fixed_queue<int32_t>(&trim_obj_queue, &stream, tl_position, (char*)buf, buf_size);
 	if (rc)
 	{
 		S5LOG_ERROR("Failed to load trim obj queue, disk:%s rc:%d", tray_name, rc);
@@ -998,7 +989,7 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	}
 
 	if (!compaction) {
-		rc = lmt_entry_pool.init(fq->queue_depth * 3);
+		rc = lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
 		if (rc)
 		{
 			S5LOG_ERROR("Failed to init lmt_entry_pool, disk:%s rc:%d", tray_name, rc);
@@ -1007,7 +998,7 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 	}
 
 	uint64_t obj_count = (head.tray_capacity - head.meta_size) >> head.objsize_order;
-	lmt->reserve(obj_count * 2);
+	obj_lmt.reserve(obj_count * 2);
 	if (stream.read_calc(buf, LBA_LENGTH, lmt_position) == -1)
 	{
 		rc = -errno;
@@ -1050,6 +1041,15 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 			tail = tail->prev_snap;
 		}
 
+		delete_matched_entry(&head_entry,
+			[](struct lmt_entry* _entry)->bool {
+				return _entry->status == EntryStatus::RECOVERYING;
+			},
+			[this](struct lmt_entry* _entry)->void {
+				lmt_entry_pool.free(_entry);
+			});
+		if (head_entry)
+			obj_lmt[k] = head_entry;
 	}
 	/*just for update md5*/
 	if (key_count == 0)
@@ -1060,10 +1060,48 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 		S5LOG_ERROR("metadata md5 error!");
 	}
 	S5LOG_INFO("Load block map, key:%d total obj count:%d free obj count:%d", key_count,
-		 fq->queue_depth -1, fq->count());
+		 free_obj_queue.queue_depth -1, free_obj_queue.count());
 
 	return 0;
 
+}
+
+int PfFlashStore::compact_tool_init()
+{
+	int rc = 0;
+	compact_tool = new PfFlashStore();
+	if (!compact_tool) {
+		S5LOG_ERROR("failed to new compact_tool");
+		return -ENOMEM;
+	}
+
+	S5LOG_INFO("begin to init compact tool!");
+	compact_tool->redolog = new PfRedoLog();
+	if (!compact_tool->redolog) {
+		rc = -ENOMEM;
+		S5LOG_ERROR("failed to new redolog!");
+		goto err0;
+	}
+	compact_tool->redolog->init(compact_tool);
+
+	rc = compact_tool->lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
+	if (rc) {
+		S5LOG_ERROR("Failed to init lmt_entry_pool for compact tool, disk:%s rc:%d", tray_name, rc);
+		goto err1;
+	}
+	compact_tool->ioengine = ioengine;
+	compact_tool->ns = ns;
+	compact_tool->head = head;
+	memcpy(compact_tool->tray_name, tray_name, sizeof(tray_name));
+	memcpy(compact_tool->uuid_str, uuid_str, sizeof(uuid_str));
+
+	S5LOG_INFO("init compact tool success!");
+	return 0;
+err1:
+	delete compact_tool->redolog;
+err0:
+	delete compact_tool;
+	return rc;
 }
 
 /*
@@ -1075,68 +1113,62 @@ int PfFlashStore::load_meta_data(PfFixedSizeQueue<int32_t> *fq, PfFixedSizeQueue
 int PfFlashStore::compact_meta_data()
 {
 	int rc;
-	PfFlashStore *pfs_copy = new PfFlashStore();
 
 	S5LOG_INFO("begin to compact metadata for %s", tray_name);
 	S5LOG_DEBUG("before compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
 		tray_name, obj_lmt.size(),
 		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
-	/*load metadata at current md zone*/
-	// lmt_entry_pool is thread safe, so we re-use lmt_entry_pool here
-	rc = load_meta_data(&pfs_copy->free_obj_queue, &pfs_copy->trim_obj_queue, &pfs_copy->obj_lmt,
-		head.current_metadata, true);
+	compact_tool->head = head;
+
+	/*load metadata at current md zone if compact lmt is empty*/
+	if (compact_lmt_exist == 0) {
+		rc = compact_tool->load_meta_data(head.current_metadata, true);
+		if (rc) {
+			S5LOG_ERROR("failed to load metadata while compaction! %s", tray_name);
+			goto out1;
+		}
+	}
+
+	rc = compact_tool->redolog->replay(head.redolog_phase, CURRENT);
 	if (rc) {
-		S5LOG_ERROR("failed to load metadata while compaction! %s", tray_name);
+		S5LOG_ERROR("Failed to replay rlog, disk:%s rc:%d", tray_name, rc);
 		goto out1;
 	}
 
-	/******redolog: replay current log zone******/
-	pfs_copy->redolog = new PfRedoLog();
-	// to re-use lmt_entry_pool, so `init` redolog with `this` ptr.
-	rc = pfs_copy->redolog->init(this);
-	if (rc) {
-		S5LOG_ERROR("Failed to init rlog, disk:%s rc:%d", tray_name, rc);
-		goto out2;
-	}
-	pfs_copy->head = head;
-	pfs_copy->ioengine = ioengine;
-
-	rc = pfs_copy->redolog->replay(head.redolog_phase, CURRENT);
-	if (rc) {
-		S5LOG_ERROR("Failed to replay rlog, disk:%s rc:%d", tray_name, rc);
-		goto out2;
-	}
 	/*save meta to opposite zone*/
-	rc = save_meta_data(&pfs_copy->free_obj_queue, &pfs_copy->trim_obj_queue, &pfs_copy->obj_lmt,
-		oppsite_md_zone());
+	rc = compact_tool->save_meta_data(oppsite_md_zone());
 	if (rc) {
 		S5LOG_ERROR("failed to save metadata while compaction! %s", tray_name);
+		goto out1;
 	}
-
-out2:
-	delete pfs_copy->redolog;
-out1:
-	pfs_copy->free_obj_queue.destroy();
-	pfs_copy->trim_obj_queue.destroy();
-	for(auto it = pfs_copy->obj_lmt.begin();it != pfs_copy->obj_lmt.end();++it) {
-		//lmt_key k= it->first;
-		lmt_entry *head = it->second;
-		while (head) {
-			lmt_entry *p = head;
-			head = head->prev_snap;
-			lmt_entry_pool.free(p);
-		}
-	}
-	pfs_copy->obj_lmt.clear();
+	// metadata/redolog zone & redolog phase & md5 already changed at save_meta_data
+	head = compact_tool->head;
+	compact_lmt_exist = 1;
 
 	S5LOG_INFO("compact metadata for %s done, rc:%d", tray_name, rc);
 	S5LOG_DEBUG("after compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
 		tray_name, obj_lmt.size(),
 		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
+	return 0;
+
+out1:
+	compact_tool->free_obj_queue.destroy();
+	compact_tool->trim_obj_queue.destroy();
+	for(auto it = compact_tool->obj_lmt.begin();it != compact_tool->obj_lmt.end();++it) {
+		lmt_entry *head = it->second;
+		while (head) {
+			lmt_entry *p = head;
+			head = head->prev_snap;
+			compact_tool->lmt_entry_pool.free(p);
+		}
+	}
+	compact_tool->obj_lmt.clear();
+	compact_lmt_exist = 0;
 
 	return rc;
 }
+
 
 /*
 *	state: COMPACT_IDLE, COMPACT_TODO, COMPACT_STOP;
@@ -1161,23 +1193,25 @@ int PfFlashStore::meta_data_compaction_trigger(int state, bool force_wait)
 
 	pthread_mutex_lock(&md_lock);
 	last_state = to_run_compact.load();
-	if (last_state == COMPACT_ERROR) {
+	to_run_compact.store(state);
+	if (state == COMPACT_TODO && last_state == COMPACT_ERROR) {
 		// flush metadata synchronously
 		head.redolog_phase = redolog->phase;
-		rc = save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
+		rc = save_meta_data(oppsite_md_zone());
 		if (rc) {
 			// todo: evict disk
 			S5LOG_FATAL("failed to save metadata synchronously for %s", tray_name);
 		}
+		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, OPPOSITE));
 		to_run_compact.store(COMPACT_IDLE);
 	}
-	to_run_compact.store(state);
+
 	// if last state is COMPACT_ERROR, compatcion is unnecessary
 	if (state == COMPACT_TODO && last_state != COMPACT_ERROR) {
 		/*will persist at metadata compaction thread*/
 		redolog->set_log_phase(head.redolog_phase + 1, get_meta_position(REDOLOG, OPPOSITE));
-		S5LOG_INFO("send signal to save md, new log will record at log zone:%d(%lld), phase:%d",
-			oppsite_redolog_zone(), get_meta_position(REDOLOG, OPPOSITE), redolog->phase);
+		S5LOG_INFO("send signal to save md, new log will record at log zone:%s(%lld), phase:%d",
+			meta_positon_2str(REDOLOG, oppsite_md_zone()), get_meta_position(REDOLOG, OPPOSITE), redolog->phase);
 		pthread_cond_signal(&md_cond); // compaction must be will
 	}
 	pthread_mutex_unlock(&md_lock);
@@ -2647,98 +2681,11 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 
 	if ((ret = read_store_head()) == 0)
 	{
-		ret = load_meta_data(NULL, NULL, NULL, head.current_metadata, false);
-		if (ret)
-			return ret;
-		redolog = new PfRedoLog();
-		ret = redolog->init(this);
-		if (ret)
-		{
-			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
-			return ret;
-		}
-		ret = redolog->replay(head.redolog_phase, CURRENT);
-		if (ret)
-		{
-			S5LOG_ERROR("Failed to replay redo log, rc:%d", ret);
-			return ret;
-		}
-		S5LOG_INFO("After first replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-
-		redolog->replay(++head.redolog_phase, OPPOSITE);
-		S5LOG_INFO("After second replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-		post_load_fix();
-		S5LOG_INFO("After post_load_fix, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
-			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-		post_load_check();
-		save_meta_data(NULL, NULL, NULL, oppsite_md_zone());
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-		S5LOG_INFO("Resave meta, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
-		           free_obj_queue.queue_depth -1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
-
-		redolog->start();
+		ret = start_metadata_service(false);
 	}
 	else if (ret == -EUCLEAN)
 	{
-		S5LOG_WARN("New disk found, initializing  (%s) now ...", tray_name);
-		if(!is_disk_clean(ioengine))
-		{
-			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
-			return ret;
-		}
-		size_t dev_cap = ioengine->get_device_cap();
-		if(dev_cap < (10LL<<30)) {
-			S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap>>30);
-		}
-		ret = clean_meta_area(ioengine, app_context.meta_size);
-		if(ret) {
-			S5LOG_ERROR("Failed to clean meta area with zero, disk:%s, rc:%d", tray_name, ret);
-			return ret;
-
-		}
-		if ((ret = initialize_store_head()) != 0)
-		{
-			S5LOG_ERROR("initialize_store_head failed rc:%d", ret);
-			return ret;
-		}
-		int obj_count = (int) ((head.tray_capacity - head.meta_size) >> head.objsize_order);
-
-		ret = free_obj_queue.init(obj_count);
-		if (ret)
-		{
-			S5LOG_ERROR("free_obj_queue initialize failed ret(%d)", ret);
-			return ret;
-		}
-		for (int i = 0; i < obj_count; i++)
-		{
-			free_obj_queue.enqueue(i);
-		}
-		ret = trim_obj_queue.init(obj_count);
-		if (ret)
-		{
-			S5LOG_ERROR("trim_obj_queue initialize failed ret(%d)", ret);
-			return ret;
-		}
-		ret = lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
-		if (ret) {
-			S5LOG_ERROR("Failed to init lmt_entry_pool, disk:%s rc:%d", tray_name, ret);
-			return ret;
-		}
-
-		obj_lmt.reserve(obj_count * 2);
-		redolog = new PfRedoLog();
-		ret = redolog->init(this);
-		if (ret) {
-			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
-			return ret;
-		}
-		save_meta_data(NULL, NULL, NULL, head.current_metadata);
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
-		redolog->start();
-
+		ret = start_metadata_service(true);
 	}
 	else
 		return ret;

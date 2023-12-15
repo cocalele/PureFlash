@@ -155,6 +155,7 @@ inline uint64_t up_align(uint64_t number, uint64_t alignment)
 {
 	return ((number + alignment - 1) / alignment)*alignment;
 }
+const char* get_git_ver();
 
 #ifdef __cplusplus
 }

@@ -82,9 +82,9 @@ endmacro(USE_SG3_UTILS)
 
 macro(USE_SPDK)
 	message("Begin to compile SPDK")
-	execute_process(COMMAND git submodule update --init
+	execute_process(COMMAND git submodule update --init --recursive
                     WORKING_DIRECTORY ${THIRDPARTY}/spdk)
-	execute_process(COMMAND ./configure --disable-unit-tests --disable-tests
+	execute_process(COMMAND ./configure --disable-unit-tests --disable-tests --disable-examples --disable-apps --with-shared
                     WORKING_DIRECTORY ${THIRDPARTY}/spdk)
 	execute_process(COMMAND make -j 4
                     WORKING_DIRECTORY ${THIRDPARTY}/spdk)

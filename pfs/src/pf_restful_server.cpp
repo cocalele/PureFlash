@@ -94,6 +94,9 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 		else if (strcmp(opcode, "save_md") == 0) {
 			handle_save_md_disk(nc, hm);
 		}
+		else if (strcmp(opcode, "stat_conn") == 0) {
+			handle_stat_conn(nc, hm);//statistics connection
+		}
 		else
 		{
 			S5LOG_ERROR("Unknown debug op:%s", opcode);

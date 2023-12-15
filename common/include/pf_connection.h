@@ -29,6 +29,9 @@ typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_stat
 class PfConnection
 {
 public:
+	static int total_count;
+	static int closed_count;
+	static int released_count;
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
 
