@@ -66,6 +66,8 @@ if [ $status -ne 0 ]; then
   exit $status
 fi
 sleep 3
+ulimit -c unlimited
+echo "/var/crash/core-%p-%e-%t" > /proc/sys/kernel/core_pattern
 
 export LD_LIBRARY_PATH=$DIR:$LD_LIBRARY_PATH
 echo "Start PureFlash store..."

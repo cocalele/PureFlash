@@ -184,13 +184,14 @@ int on_route_resolved(struct rdma_cm_id* id)
 	}
 	conn->qp = id->qp;
 	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
-	hmsg->hsqsize = 128;
+	//TODO: when to release hmsg? 
+	hmsg->hsqsize = (int16_t)conn->io_depth;
 	hmsg->vol_id = conn->vol_id;
 	hmsg->protocol_ver = PROTOCOL_VER;
 	memset(&cm_params, 0, sizeof(cm_params));
 	int outstanding_read = conn->dev_ctx->dev_attr.max_qp_rd_atom;
-	if (outstanding_read > 128)
-		outstanding_read = 128;
+	if (outstanding_read > PF_MAX_IO_DEPTH)
+		outstanding_read = PF_MAX_IO_DEPTH;
 	cm_params.private_data = hmsg;
 	cm_params.private_data_len = sizeof(PfHandshakeMessage);
 	cm_params.responder_resources = (uint8_t)outstanding_read;
@@ -207,9 +208,12 @@ int on_route_resolved(struct rdma_cm_id* id)
 	return 0;
 }
 
-int on_connection(struct rdma_cm_id *id)
+int on_connection(struct rdma_cm_event* evt)
 {
-	struct PfRdmaConnection *conn = (struct PfRdmaConnection *)id->context;
+	struct PfRdmaConnection *conn = (struct PfRdmaConnection *)evt->id->context;
+	struct PfHandshakeMessage* hs_msg = (struct PfHandshakeMessage*)evt->param.conn.private_data;
+	S5LOG_INFO("Request iodepth:%d server return iodepth:%d", conn->io_depth, hs_msg->crqsize);
+	conn->io_depth = hs_msg->crqsize;
 	conn->state = CONN_OK;
 	return 0;
 }
@@ -227,26 +231,31 @@ void* process_event_channel(void *arg) {
 	while(rdma_get_cm_event(ec, &event) == 0) {
 		struct rdma_cm_event event_copy;
 		memcpy(&event_copy, event, sizeof(*event));
-		rdma_ack_cm_event(event);
 		switch(event_copy.event)
 		{
 			case RDMA_CM_EVENT_ADDR_RESOLVED:
-				S5LOG_DEBUG("get event RDMA_CM_EVENT_ADDR_RESOLVED\n");
+				rdma_ack_cm_event(event);
+				S5LOG_DEBUG("get event RDMA_CM_EVENT_ADDR_RESOLVED");
 				on_addr_resolved(event_copy.id);
 				break;
 			case RDMA_CM_EVENT_ROUTE_RESOLVED:
-				S5LOG_DEBUG("get event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+				rdma_ack_cm_event(event);
+				S5LOG_DEBUG("get event RDMA_CM_EVENT_ROUTE_RESOLVED");
 				on_route_resolved(event_copy.id);
 				break;
 			case RDMA_CM_EVENT_ESTABLISHED:
-				S5LOG_DEBUG("get event RDMA_CM_EVENT_ESTABLISHED\n");
-				on_connection(event_copy.id);
+				S5LOG_DEBUG("get event RDMA_CM_EVENT_ESTABLISHED");
+				on_connection(&event_copy);
+				rdma_ack_cm_event(event);
 				break;
 			case RDMA_CM_EVENT_DISCONNECTED:
-				S5LOG_DEBUG("get event RDMA_CM_EVENT_DISCONNECTED\n");
+				rdma_ack_cm_event(event);
+				S5LOG_DEBUG("get event RDMA_CM_EVENT_DISCONNECTED");
 				on_disconnect(event_copy.id);
 				break;
 			default:
+				S5LOG_DEBUG("unhandled  event %s", rdma_event_str(event_copy.event));
+				rdma_ack_cm_event(event);
 				break;
 		}
 	}
@@ -272,6 +281,7 @@ PfRdmaConnection* PfRdmaConnection::connect_to_server(const std::string ip, int 
 		S5LOG_ERROR("rdma_create_event_channel failed, errno:%d", errno);
 		goto failure_lay1;
 	}
+	conn->io_depth = io_depth;
 	rc = rdma_create_id(conn->ec, &conn->rdma_id, NULL, RDMA_PS_TCP);
 	if(rc)
 	{

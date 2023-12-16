@@ -15,6 +15,8 @@
 #include "pf_rdma_connection.h"
 #endif
 
+#define USE_DELAY_THREAD
+
 extern enum connection_type rep_conn_type;
 
 int PfDelayThread::process_event(int event_type, int arg_i, void* arg_p, void* arg_q)
@@ -43,21 +45,25 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}
 	if(!c->get_throttle()){
-		S5LOG_ERROR("too many request to get throttle, retry later");
+		S5LOG_ERROR("too many request to get throttle on conn:%p, retry later", c);
+#ifdef USE_DELAY_THREAD
+		delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void*)(now_time_usec() + 100));
+#else
 		usleep(100);
 		event_queue->post_event(EVT_IO_REQ, 0, t);
-		//delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void* )(now_time_usec()+100));
-		
+#endif		
 		return -EAGAIN;
 
 	}
 	PfClientIocb* io = iocb_pool.alloc();
 	if (unlikely(io == NULL)) {
 		S5LOG_ERROR("too many request to alloc IOCB for replicating, retry later");
+#ifdef USE_DELAY_THREAD
+		delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void*)(now_time_usec() + 100));
+#else
 		usleep(100);
 		event_queue->post_event(EVT_IO_REQ, 0, t);
-
-		//delay_thread.event_queue->post_event(EVT_IO_REQ, 0, t, (void*)(now_time_usec() + 100));
+#endif
 		return -EAGAIN;
 	}
 	io->submit_time = now_time_usec();
@@ -126,7 +132,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 	uint64_t io_elapse_time = (iocb->reply_time - iocb->submit_time) / ms1;
 	if (unlikely(io_elapse_time > 2000))
 	{
-		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, op:%s, since submit:%dms since send:%dms",
+		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, op:%s, since submit:%ulms since send:%ulms",
 				   io_cmd->offset >> SHARD_SIZE_ORDER,
 				   io_cmd->command_id,
 				   PfOpCode2Str(io_cmd->opcode),
@@ -498,8 +504,9 @@ int PfReplicator::init(int index)
 	int rc;
 	rep_index = index;
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
-	int rep_iodepth = 256;
-	PfEventThread::init(name, 8192);
+	int rep_iodepth = 256; //io depth in single connection
+	int rep_iocb_depth = 8192; //total IO's in processing
+	PfEventThread::init(name, rep_iocb_depth);
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -531,7 +538,7 @@ int PfReplicator::init(int index)
 #endif
 	}
 
-	int iocb_pool_size = 8192;
+	int iocb_pool_size = rep_iocb_depth;
 	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), iocb_pool_size);
 	if(rc != 0){
 		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
@@ -566,10 +573,11 @@ int PfReplicator::init(int index)
 		mem_pool.reply_pool.free(rbd);
 		iocb_pool.free(io);
 	}
-
-	//delay_thread.replicator = this;
-	//delay_thread.init("delay", rep_iodepth*2);
-	//delay_thread.start();
+#ifdef USE_DELAY_THREAD
+	delay_thread.replicator = this;
+	delay_thread.init("delay", rep_iocb_depth);
+	delay_thread.start();
+#endif
 	clean.cancel_all();
 	return 0;
 }

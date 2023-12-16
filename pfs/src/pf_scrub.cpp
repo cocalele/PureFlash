@@ -261,7 +261,7 @@ std::string calc_block_md5(int fd, off_t offset, size_t len)
 		return "";
 	}
 
-	md5_ctx_mgr_submit(inner.mgr, &inner.ctxpool[0], (char*)read_buf , len, HASH_ENTIRE);
+	md5_ctx_mgr_submit(inner.mgr, &inner.ctxpool[0], (char*)read_buf , (uint32_t)len, HASH_ENTIRE);
 
 
 	while (CTX_MGR_FLUSH(inner.mgr));

@@ -275,6 +275,7 @@ const char* PfFlashStore::meta_positon_2str(int meta_type, int which)
 		default:
 			S5LOG_FATAL("Unknown type:%d", meta_type);
 	}
+	return NULL;//never here
 }
 
 
@@ -334,7 +335,7 @@ int PfFlashStore::start_metadata_service(bool init)
 		if (!is_disk_clean(ioengine))
 		{
 			S5LOG_ERROR("disk %s is not clean and will not be initialized.", tray_name);
-			return ret;
+			return -EUCLEAN;
 		}
 		size_t dev_cap = ioengine->get_device_cap();
 		if (dev_cap < (10LL << 30)) {

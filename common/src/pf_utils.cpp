@@ -200,6 +200,7 @@ void s5log(int level, const char * format, ...)
 	fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
 	if (level == S5LOG_LEVEL_FATAL){
 		fflush(stderr);
+		fsync(STDERR_FILENO);
 		exit(-1);
 	}
 }
@@ -269,10 +270,14 @@ const std::string get_rdma_desc(struct rdma_cm_id* id, bool is_client)
 	local_port = rdma_get_src_port(id);
 	remote_port = rdma_get_dst_port(id);
 
-	return format_string("RDMA://(me)%s:%d%s%s:%d", inet_ntoa(((struct sockaddr_in*)local_addr)->sin_addr), 
+	char local_buf[32];
+	strcpy(local_buf, inet_ntoa(((struct sockaddr_in*)local_addr)->sin_addr));
+	char remote_buf[32];
+	strcpy(remote_buf, inet_ntoa(((struct sockaddr_in*)remote_addr)->sin_addr));
+	return format_string("RDMA://(me)%s:%d%s%s:%d", local_buf,
 		ntohs(local_port),
 		is_client ? "=>" : "<=",
-		inet_ntoa(((struct sockaddr_in*)remote_addr)->sin_addr), ntohs(remote_port));
+		remote_buf, ntohs(remote_port));
 
 }
 std::vector<std::string> split_string(const std::string& str, char delim)

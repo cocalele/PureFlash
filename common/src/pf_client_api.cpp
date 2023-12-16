@@ -502,26 +502,28 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 		return -ENOMEM;
 	}
 	clean.push_back([this] {delete this->vol_proc;  });
-	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt);
+	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4);
 	if (rc != 0) {
 		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
 		return rc;
 	}
-	rc = data_pool.init(PF_MAX_IO_SIZE, io_depth);
+
+	int resource_cnt = io_depth * 2;
+	rc = data_pool.init(PF_MAX_IO_SIZE, resource_cnt);
 	if (rc != 0) {
 		S5LOG_ERROR("Failed to init data_pool, rc:%d", rc);
 		return rc;
 	}
 	clean.push_back([this]() {data_pool.destroy(); });
 
-	rc = cmd_pool.init(sizeof(PfMessageHead), io_depth);
+	rc = cmd_pool.init(sizeof(PfMessageHead), resource_cnt);
 	if (rc != 0) {
 		S5LOG_ERROR("Failed to init cmd_pool, rc:%d", rc);
 		return rc;
 	}
 	clean.push_back([this]() {cmd_pool.destroy(); });
 
-	rc = reply_pool.init(sizeof(PfMessageReply), io_depth);
+	rc = reply_pool.init(sizeof(PfMessageReply), resource_cnt);
 	if (rc != 0) {
 		S5LOG_ERROR("Failed to init reply_pool, rc:%d", rc);
 		return rc;
@@ -529,7 +531,7 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 	clean.push_back([this]() {reply_pool.destroy(); });
 	mr_registered = false;
 
-	rc = iocb_pool.init(io_depth);
+	rc = iocb_pool.init(resource_cnt);
 	if (rc != 0) {
 		S5LOG_ERROR("Failed to init iocb_pool, rc:%d", rc);
 		return rc;
@@ -539,7 +541,7 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 		S5LOG_ERROR("vol_proc start failed, rc:%d", rc);
 		return rc;
 	}
-	for (int i = 0; i < io_depth; i++)
+	for (int i = 0; i < resource_cnt; i++)
 	{
 		PfClientIocb* io = iocb_pool.alloc();
 		io->cmd_bd = cmd_pool.alloc();
@@ -628,7 +630,7 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 			init_app_ctx(cfg, 0, 0, 0);
 			// every volume has its own PfClientAppCtx
 			runtime_ctx = new PfClientAppCtx();
-			S5LOG_INFO("init context for volume:%s, iodepth:%d", volume_name, io_depth);
+			S5LOG_INFO("init context for volume:%s, iodepth:%d", volume_name.c_str(), io_depth);
 			runtime_ctx->init(cfg, io_depth, 1, volume_id, io_timeout);
 			assert(runtime_ctx->ref_count == 1);
 			clean.push_back([this]() { runtime_ctx->dec_ref(); });
@@ -1218,8 +1220,10 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 		}
 	}
 	auto io = volume->runtime_ctx->iocb_pool.alloc();
-	if (io == NULL)
+	if (io == NULL) {
+		S5LOG_WARN("IOCB pool empty, EAGAIN!");
 		return -EAGAIN;
+	}
 	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
 	//assert(io->data_bd->client_iocb != NULL);
 	io->volume = volume;
@@ -1262,8 +1266,10 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 		}
 	}
 	auto io = volume->runtime_ctx->iocb_pool.alloc();
-	if (io == NULL)
+	if (io == NULL){
+		S5LOG_WARN("IOCB pool empty, EAGAIN!");
 		return -EAGAIN;
+	}
 	//S5LOG_INFO("Alloc iocb:%p, data_bd:%p", io, io->data_bd);
 	//assert(io->data_bd->client_iocb != NULL);
 	io->volume = volume;

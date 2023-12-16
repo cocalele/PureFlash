@@ -55,7 +55,7 @@ public:
 	int init();
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);
 	int submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len);
-	int submit_batch();
+	virtual int submit_batch();
 	std::thread aio_poller;
 	void polling_proc();
 

@@ -188,7 +188,7 @@ int PfspdkEngine::poll_io(int* completions, void* arg)
 	int num_completions;
 	PfspdkEngine* pthis = (PfspdkEngine*)arg;
 
-	num_completions = spdk_nvme_poll_group_process_completions(pthis->group, 0, spdk_engine_disconnect_cb);
+	num_completions = (int)spdk_nvme_poll_group_process_completions(pthis->group, 0, spdk_engine_disconnect_cb);
 
 	if (unlikely(num_completions < 0)) {
 		S5LOG_ERROR("NVMe io group process completion error, num_completions=%d", num_completions);

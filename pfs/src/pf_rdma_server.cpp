@@ -50,7 +50,11 @@ static void *rdma_server_event_proc(void* arg)
 		if(event_copy.event == RDMA_CM_EVENT_CONNECT_REQUEST)
 		{
 			S5LOG_INFO("get connnect request");
-			server->on_connect_request(&event_copy);
+			int rc = server->on_connect_request(&event_copy);
+			if(rc ){
+				S5LOG_ERROR("reject rdma connection, rc:%d", rc);
+				rdma_reject(event_copy.id, NULL, 0);
+			}
 			rdma_ack_cm_event(event);
 		}
 		else if (event_copy.event == RDMA_CM_EVENT_ESTABLISHED)
@@ -156,10 +160,15 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	PfVolume* vol;
 	struct sockaddr * peer_addr = rdma_get_peer_addr(id);
 	char* ipstr = inet_ntoa(((struct sockaddr_in*)peer_addr)->sin_addr);
-
+	int resource_count = 0;
 	S5LOG_INFO("RDMA connection request:vol_id:0x%lx, from:%s", hs_msg->vol_id, ipstr);
 
     PfRdmaConnection *conn = new PfRdmaConnection();
+	Cleaner _clean;
+	_clean.push_back([conn](){
+		conn->close();
+		delete conn;
+	});
     conn->dev_ctx = build_context(id->verbs);
     if(conn->dev_ctx == NULL)
     {
@@ -227,7 +236,8 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 		conn->srv_vol = NULL;
 	}
 	conn->on_work_complete = server_on_rdma_network_done;
-	for (int i=0; i<conn->io_depth; i++)
+	resource_count = conn->io_depth * 2;
+	for (int i=0; i< resource_count; i++)
 	{
 		PfServerIocb* iocb = conn->dispatcher->iocb_pool.alloc();
 		if (iocb == NULL)
@@ -250,12 +260,15 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	}
 	memset(&cm_params, 0, sizeof(cm_params));
 	outstanding_read = conn->dev_ctx->dev_attr.max_qp_rd_atom;
-	if (outstanding_read > 128)
-		outstanding_read = 128;
+	if (outstanding_read > PF_MAX_IO_DEPTH)
+		outstanding_read = PF_MAX_IO_DEPTH;
 	cm_params.responder_resources = (uint8_t)outstanding_read;
 	cm_params.initiator_depth = (uint8_t)outstanding_read;
 	cm_params.retry_count = 7;
 	cm_params.rnr_retry_count = 7;
+	hs_msg->crqsize = conn->io_depth; //return real iodepth to client
+	cm_params.private_data = hs_msg;
+	cm_params.private_data_len = sizeof(PfHandshakeMessage);
 	rc = rdma_accept(id, &cm_params);
 	if (rc)
 	{
@@ -264,6 +277,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	}
 	conn->add_ref();
     S5LOG_INFO("add rdma conn ip:%s to heartbeat checker list", ipstr);
+	_clean.cancel_all();
     client_ip_conn_map[ipstr] = conn;
 	return 0;
 release0:

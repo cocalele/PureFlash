@@ -123,7 +123,6 @@ public:
 	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 
 
-
 	void trim_proc();
 	std::thread trimming_thread;
 
@@ -161,7 +160,7 @@ public:
 	int get_snap_list(volume_id_t volume_id, int64_t offset, std::vector<int>& snap_list);
 	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 	int delete_obj_by_snap_seq(struct lmt_key* key, uint32_t snap_seq);
-	virtual int commit_batch() { return ioengine->submit_batch(); };
+	virtual int commit_batch() override { return ioengine->submit_batch(); };
 private:
 	ThreadPool cow_thread_pool; //TODO: use std::async replace
 	int format_disk();

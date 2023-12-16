@@ -55,7 +55,7 @@ public:
 	int rep_index;
 
 	PfPoller *tcp_poller;
-	PfPoller *rdma_poller;
+	//PfPoller *rdma_poller;
 	PfRepConnectionPool *conn_pool;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	struct replicator_mem_pool mem_pool;
