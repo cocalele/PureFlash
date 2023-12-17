@@ -376,15 +376,22 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 static int client_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
-
-	if (bd->wr_op == RDMA_WR_RECV) {
-		PfClientIocb* iocb = conn->client_ctx->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
-		iocb->reply_bd = bd;
-		bd->client_iocb = iocb;
-		iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
-	}else {
-		//S5LOG_INFO("get opcode:%d", bd->wr_op);
-		//do nothing
+	if(unlikely(complete_status == WC_FLUSH_ERR)){
+		if (bd->wr_op == RDMA_WR_RECV) {
+			conn->client_ctx->reply_pool.free(bd);
+		}
+		//we don't handle wr_op type SEND, which is for IO command request. timeout mechanism will reuse it
+		//also, ref_count is decreased during handle EVT_IO_TIMEOUT
+	} else {
+		if (bd->wr_op == RDMA_WR_RECV) {
+			PfClientIocb* iocb = conn->client_ctx->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
+			iocb->reply_bd = bd;
+			bd->client_iocb = iocb;
+			iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
+		}else {
+			//S5LOG_INFO("get opcode:%d", bd->wr_op);
+			//do nothing
+		}
 	}
 
 	return 0;
