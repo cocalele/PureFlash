@@ -325,10 +325,12 @@ PfRdmaConnection::~PfRdmaConnection(void)
 	S5LOG_DEBUG("connection:%p %s released", this, connection_info.c_str());
 
 	int rc = 0;
-	rdma_destroy_qp(rdma_id);
-	rc = rdma_destroy_id(rdma_id);
-	if (rc) {
-		S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);
+	if(rdma_id){
+		rdma_destroy_qp(rdma_id);
+		rc = rdma_destroy_id(rdma_id);
+		if (rc) {
+			S5LOG_ERROR("rdma_destroy_id  failed, rc:%d", rc);
+		}
 	}
 	rdma_id = NULL; //nobody should access this, assign value only for debug
 	state = CONN_CLOSED;

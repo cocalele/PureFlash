@@ -97,6 +97,9 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 		else if (strcmp(opcode, "stat_conn") == 0) {
 			handle_stat_conn(nc, hm);//statistics connection
 		}
+		else if(strcmp(opcode, "stat_iocb_pool") == 0) {
+			handle_stat_iocb_pool(nc,hm); //free iocb count in dispatcher iocb_pool
+		}
 		else
 		{
 			S5LOG_ERROR("Unknown debug op:%s", opcode);

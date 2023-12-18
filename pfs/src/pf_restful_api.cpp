@@ -507,6 +507,19 @@ void handle_stat_conn(struct mg_connection* nc, struct http_message* hm) {
 	mg_send(nc, rst.c_str(), (int)rst.length());
 }
 
+void handle_stat_iocb_pool(struct mg_connection* nc, struct http_message* hm) {
+
+	std::string summary;
+	for (int i = 0; i < app_context.disps.size(); i++)
+	{
+		std::string rst = format_string("dispatcher %d remain %d\n", i, app_context.disps[i]->iocb_pool.remain());
+		summary += rst;
+	}
+
+	mg_send_head(nc, 200, summary.size(), "Content-Type: text/plain");
+	mg_send(nc, summary.c_str(), (int)summary.length());
+}
+
 void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 	uint64_t vol_id = (uint64_t)get_http_param_as_int64(&hm->query_string, "volume_id", 0, true);
 	uint64_t offset = (uint64_t)get_http_param_as_int64(&hm->query_string, "offset", 0, true);

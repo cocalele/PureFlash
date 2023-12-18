@@ -347,7 +347,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
 			return 0;
 		}
-		iocb->dec_ref();
+		iocb->dec_ref();//will also call conn->dec_ref
 	}
 	else {
 		S5LOG_ERROR("WR complete in unknown status:%d", complete_status);

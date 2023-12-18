@@ -156,4 +156,5 @@ void handle_perf_stat(struct mg_connection* nc, struct http_message* hm);
 void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm);
 void handle_save_md_disk(struct mg_connection* nc, struct http_message* hm);
 void handle_stat_conn(struct mg_connection* nc, struct http_message* hm);
+void handle_stat_iocb_pool(struct mg_connection* nc, struct http_message* hm);
 #endif // pf_restful_api_h__

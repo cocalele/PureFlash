@@ -52,8 +52,8 @@ static void *rdma_server_event_proc(void* arg)
 			S5LOG_INFO("get connnect request");
 			int rc = server->on_connect_request(&event_copy);
 			if(rc ){
-				S5LOG_ERROR("reject rdma connection, rc:%d", rc);
-				rdma_reject(event_copy.id, NULL, 0);
+				S5LOG_ERROR("on_connect_request failed, rc:%d", rc);
+				//rdma_reject(event_copy.id, NULL, 0);
 			}
 			rdma_ack_cm_event(event);
 		}
@@ -123,9 +123,10 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 		else if(bd->wr_op == WrOpcode::RDMA_WR_WRITE) {
 			//read or recovery_read
 			PfServerIocb *iocb = bd->server_iocb;
-            iocb->dec_ref();
+            iocb->dec_ref(); //added in Dispatcher::reply_io_to_client
 		} else if (bd->wr_op == WrOpcode::RDMA_WR_READ) {
 			//data received
+			conn->dec_ref(); //added at above line, post_read
 			PfServerIocb *iocb = bd->server_iocb;
 			iocb->received_time = now_time_usec();
 			if (spdk_engine_used())
@@ -142,8 +143,8 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 			S5LOG_ERROR("WR complete in unexcepted status:%d, conn ref_count:%d", complete_status, conn->ref_count);
 		}
 		PfServerIocb* iocb = bd->server_iocb;
-		iocb->dec_ref();
-
+		iocb->dec_ref(); //will also call conn->dec_ref
+		S5LOG_ERROR("after FLUSH_ERR, conn ref_count:%d", conn->ref_count);
 		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
 	}
 	return 0;
@@ -163,17 +164,24 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	int resource_count = 0;
 	S5LOG_INFO("RDMA connection request:vol_id:0x%lx, from:%s", hs_msg->vol_id, ipstr);
 
-    PfRdmaConnection *conn = new PfRdmaConnection();
 	Cleaner _clean;
+	PfRdmaConnection *conn = new PfRdmaConnection();
+	if(conn == NULL){
+		S5LOG_ERROR("Failed alloc new rdma connection");
+		rc = -ENOMEM;
+		goto release0;
+	}
 	_clean.push_back([conn](){
-		conn->close();
+		//conn->close(); //no need to close, since not accept yet
+		conn->rdma_id = NULL; //avoid duplicated destroy in destructor. rdma id released by release0 branch
 		delete conn;
 	});
     conn->dev_ctx = build_context(id->verbs);
     if(conn->dev_ctx == NULL)
     {
-        S5LOG_ERROR("build_context");
-        return -1;
+        S5LOG_ERROR("Failed to build_context");
+        rc = -1;
+		goto release0;
     }
 
 	conn->prc_cq_poller_idx = conn->dev_ctx->next_server_cq_poller_idx++;
@@ -185,12 +193,14 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
     rc = rdma_create_qp(id, conn->dev_ctx->pd, &qp_attr);
     if(rc)
     {
+		rc = -errno;
         S5LOG_ERROR("rdma_create_qp, errno:%d", errno);
-        return rc;
+
+		goto release0;
     }
     id->context = conn;
     conn->state = CONN_INIT;
-    conn->rdma_id = id;
+	conn->rdma_id = id;
     if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
     {
         S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, PF_MAX_IO_DEPTH);
@@ -210,7 +220,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 		hs_msg->hsqsize=PF_MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
-		rc = EINVAL;
+		rc = -EINVAL;
 		goto release0;
 	}
 	conn->io_depth=hs_msg->hsqsize;
@@ -242,7 +252,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 		PfServerIocb* iocb = conn->dispatcher->iocb_pool.alloc();
 		if (iocb == NULL)
 		{
-			S5LOG_ERROR("iocb_pool alloc");
+			S5LOG_ERROR("Failed to alloc iocb_pool from dispatcher:%p", conn->dispatcher);
 			rc = -EINVAL;
 			goto release0;
 		}
@@ -272,16 +282,20 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	rc = rdma_accept(id, &cm_params);
 	if (rc)
 	{
-		S5LOG_ERROR("rdma accepth, errno:%d", errno);
+		rc = -errno;
+		S5LOG_ERROR("rdma accept, errno:%d", errno);
 		goto release0;
 	}
 	conn->add_ref();
-    S5LOG_INFO("add rdma conn ip:%s to heartbeat checker list", ipstr);
+	S5LOG_INFO("add rdma conn %p :%s to heartbeat checker list",conn, conn->connection_info.c_str());
 	_clean.cancel_all();
     client_ip_conn_map[ipstr] = conn;
 	return 0;
 release0:
+	S5LOG_ERROR("reject rdma connection, rc:%d", rc);
+	rdma_reject(id, NULL, 0);
 	rdma_destroy_qp(id);
+
 	return rc;
 }
 
