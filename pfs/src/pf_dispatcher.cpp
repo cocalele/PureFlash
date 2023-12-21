@@ -87,13 +87,14 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 		);
 	}
 	if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA) && iocb->complete_status == MSG_STATUS_SUCCESS) {
-		iocb->add_ref();
+		//iocb->add_ref(); //iocb still have a valid ref, until reply sending complete
 		//S5LOG_INFO("rdma post write!!!,ref_count:%d", iocb->ref_count);
 		int rc = ((PfRdmaConnection*)conn)->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
 		if (rc)
 		{
 			iocb->dec_ref();
-			S5LOG_ERROR("post_write, rc:%d", rc);
+			S5LOG_ERROR("Failed to post_write, rc:%d", rc);
+			return;
 		}
 		//continue to send reply, RDMA can ensure the data reach before reply
 	}
@@ -108,7 +109,8 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 	rc = iocb->conn->post_send(iocb->reply_bd);
 	if (rc)
 	{
-		S5LOG_ERROR("post_send, rc:%d", rc);
+		iocb->dec_ref();
+		S5LOG_ERROR("Failed to post_send, rc:%d", rc);
 	}
 }
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)

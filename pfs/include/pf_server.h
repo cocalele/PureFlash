@@ -54,7 +54,7 @@ public:
 	int init(int port);
 	int server_socket_fd;
 	pthread_t rdma_listen_t;
-    std::map<std::string, PfConnection*> client_ip_conn_map;
+	std::map<uintptr_t, PfConnection*> client_ip_conn_map;
 	struct rdma_event_channel* ec;
 	struct rdma_cm_id* cm_id;
 	int on_connect_request(struct rdma_cm_event *evt);
