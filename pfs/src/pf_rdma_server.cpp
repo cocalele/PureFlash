@@ -70,9 +70,10 @@ static void *rdma_server_event_proc(void* arg)
 			rdma_ack_cm_event(event);
 			struct rdma_cm_id* id = event_copy.id;
 			PfRdmaConnection* conn = (PfRdmaConnection *)id->context;
-			S5LOG_INFO("get event RDMA_CM_EVENT_DISCONNECTED on conn:%p %s, state:%d", conn, conn->connection_info.c_str(), conn->state);
+			S5LOG_INFO("get event RDMA_CM_EVENT_DISCONNECTED on conn:%p %s, state:%d ref_count:%d", conn, 
+				conn->connection_info.c_str(), conn->state, conn->ref_count);
 			conn->close();
-			conn->dec_ref();
+			conn->dec_ref(); //added in on_connect_request
 		}
 		else
 		{
@@ -85,6 +86,7 @@ static void *rdma_server_event_proc(void* arg)
 static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
 {
 	PfRdmaConnection* conn = (PfRdmaConnection*)_conn;
+	int rc = 0;
 	if(likely(complete_status == WcStatus::WC_SUCCESS)) {
 		if(bd->wr_op == WrOpcode::RDMA_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
@@ -94,9 +96,12 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 				iocb->data_bd->data_len = bd->cmd_bd->length;
 				if (bd->cmd_bd->opcode == S5_OP_WRITE || bd->cmd_bd->opcode == S5_OP_REPLICATE_WRITE) {
 					iocb->data_bd->data_len = bd->cmd_bd->length;
-					conn->add_ref();
+					//conn->add_ref();
 					//S5LOG_INFO("get %d write", bd->cmd_bd->opcode);
-					conn->post_read(iocb->data_bd, bd->cmd_bd->buf_addr, bd->cmd_bd->rkey);
+					if((rc = conn->post_read(iocb->data_bd, bd->cmd_bd->buf_addr, bd->cmd_bd->rkey)) != 0) {
+						S5LOG_ERROR("Failed call post_read, rc:%d", rc);
+						iocb->dec_ref();
+					}
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
@@ -115,18 +120,23 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 				//IO complete, start next
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->re_init();
-				conn->post_recv(iocb->cmd_bd);
+				rc = conn->post_recv(iocb->cmd_bd);
+				if(unlikely(rc)){
+					S5LOG_ERROR("Failed call post_recv, rc:%d", rc);
+					iocb->dec_ref();
+					return 0;
+				}
 			} else {
 				S5LOG_ERROR("RDMA_WR_SEND unkonwn data"); //should never reach here
 			}
 		}
 		else if(bd->wr_op == WrOpcode::RDMA_WR_WRITE) {
 			//read or recovery_read
-			PfServerIocb *iocb = bd->server_iocb;
-            iocb->dec_ref(); //added in Dispatcher::reply_io_to_client
+			//PfServerIocb *iocb = bd->server_iocb;
+            //iocb->dec_ref(); //added in Dispatcher::reply_io_to_client
 		} else if (bd->wr_op == WrOpcode::RDMA_WR_READ) {
 			//data received
-			conn->dec_ref(); //added at above line, post_read
+			//conn->dec_ref(); //added at above line, post_read
 			PfServerIocb *iocb = bd->server_iocb;
 			iocb->received_time = now_time_usec();
 			if (spdk_engine_used())
@@ -140,14 +150,23 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 	else {
 		
 		if(complete_status != WC_FLUSH_ERR){
-			S5LOG_ERROR("WR complete in unexcepted status:%d, conn ref_count:%d", complete_status, conn->ref_count);
+			S5LOG_ERROR("WR complete in unexpected status:%d, conn ref_count:%d", complete_status, conn->ref_count);
 		}
-		PfServerIocb* iocb = bd->server_iocb;
-		iocb->dec_ref(); //will also call conn->dec_ref
-		S5LOG_ERROR("after FLUSH_ERR, conn ref_count:%d", conn->ref_count);
-		//throw std::logic_error(format_string("%s Not implemented", __FUNCTION__);
+		else if (bd->wr_op != WrOpcode::RDMA_WR_WRITE) {
+			//don't call dec_ref for RDMA write, since each time post_write call in Dispatcher::reply_io_to_client, a post_send 
+			//is also called immediately. We rely on the FLUSH_ERROR of Reply SEND to reclaim iocb
+			PfServerIocb* iocb = bd->server_iocb;
+			iocb->dec_ref(); //will also call conn->dec_ref
+		}
+		//S5LOG_ERROR("after FLUSH_ERR, conn ref_count:%d", conn->ref_count);
 	}
 	return 0;
+}
+static void remove_from_conn_map(PfConnection* _conn)
+{
+	//PfRdmaConnection* conn = (PfRdmaConnection * )_conn;
+
+	app_context.rdma_server->client_ip_conn_map.erase(uintptr_t(_conn));
 }
 
 int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
@@ -276,7 +295,7 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 	cm_params.initiator_depth = (uint8_t)outstanding_read;
 	cm_params.retry_count = 7;
 	cm_params.rnr_retry_count = 7;
-	hs_msg->crqsize = conn->io_depth; //return real iodepth to client
+	hs_msg->crqsize = (int16_t)conn->io_depth; //return real iodepth to client
 	cm_params.private_data = hs_msg;
 	cm_params.private_data_len = sizeof(PfHandshakeMessage);
 	rc = rdma_accept(id, &cm_params);
@@ -286,10 +305,12 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 		S5LOG_ERROR("rdma accept, errno:%d", errno);
 		goto release0;
 	}
-	conn->add_ref();
-	S5LOG_INFO("add rdma conn %p :%s to heartbeat checker list",conn, conn->connection_info.c_str());
+	conn->add_ref(); //dec_ref in rdma_server_event_proc, handling DISCONNECT event
+	S5LOG_INFO("accept rdma conn %p :%s ",conn, conn->connection_info.c_str());
 	_clean.cancel_all();
-    client_ip_conn_map[ipstr] = conn;
+	conn->on_destroy= remove_from_conn_map;
+    client_ip_conn_map[uintptr_t(conn)] = conn;
+
 	return 0;
 release0:
 	S5LOG_ERROR("reject rdma connection, rc:%d", rc);
