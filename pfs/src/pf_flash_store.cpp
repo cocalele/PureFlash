@@ -1070,7 +1070,8 @@ int PfFlashStore::load_meta_data(int md_zone, bool compaction)
 int PfFlashStore::compact_tool_init()
 {
 	int rc = 0;
-	compact_tool = new PfFlashStore();
+	// compact tool without thread in thread pool
+	compact_tool = new PfFlashStore(0);
 	if (!compact_tool) {
 		S5LOG_ERROR("failed to new compact_tool");
 		return -ENOMEM;
