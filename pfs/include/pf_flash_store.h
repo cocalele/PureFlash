@@ -105,7 +105,7 @@ public:
 	PfFlashStore *compact_tool;
 	int compact_lmt_exist;
 	int is_shared_disk;
-
+	PfFlashStore(int32_t n_threads = 4) : cow_thread_pool(n_threads) {}
 	~PfFlashStore();
 	/**
 	 * init flash store from device. this function will create meta data
