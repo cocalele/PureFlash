@@ -508,7 +508,8 @@ void handle_stat_conn(struct mg_connection* nc, struct http_message* hm) {
 	char verbose[16];
 	int found = mg_get_http_var(&hm->query_string, "verbose", verbose, sizeof(verbose));
 	if(found){
-		for(auto it = app_context.rdma_server->client_ip_conn_map.begin(); it != app_context.rdma_server->client_ip_conn_map.end(); ++it) {
+		std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
+		for(auto it = app_context.client_ip_conn_map.begin(); it != app_context.client_ip_conn_map.end(); ++it) {
 			std::string line = format_string("%p %s, state:%d, ref_count:%d, volume:%s\n", it->second, it->second->connection_info.c_str(), 
 				it->second->state, it->second->ref_count, it->second->srv_vol ? it->second->srv_vol->name : "<NA>");
 			rst += line;

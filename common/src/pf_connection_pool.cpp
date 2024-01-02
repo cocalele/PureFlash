@@ -45,7 +45,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			c->on_work_complete = on_work_complete;
 			c->on_close = on_conn_closed;
 			c->master = this->owner;
-			c->transport = TRANSPORT_TCP;
+			c->conn_type = TCP_TYPE;
 			c->io_depth = io_depth;
 			ip_id_map[ip] = c;	
 			return c;
@@ -57,7 +57,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 			c->on_work_complete = on_work_complete;
 			c->on_close = on_conn_closed;
 			c->master = this->owner;
-			c->transport = TRANSPORT_RDMA;
+			c->conn_type = RDMA_TYPE;
 			c->io_depth = io_depth;
 			ip_id_map[ip] = c;
 			return c;

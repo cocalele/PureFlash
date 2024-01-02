@@ -70,3 +70,18 @@ reference count is used to manage object life cycle. include:
     
   on any time a bd is posted to network, its related resource should be reserved by ref_cnt. resource include:
   1) connection this bd was posted into. 2) Server/Client IOCB this bd belongs to. 
+
+
+RDMA_FLUSH_ERROR BUG
+===============
+在正常情况下，当关闭一个RDMA连接时，尚未完成的WR(Work Request)会以FLUSH_ERROR状态完成，在cq里面能收到这些完成(WC)。
+此时应用可以释放这些WR的资源，用于下一次IO处理。
+
+但实际测试看，在异常关闭（IO超时而关闭）时，应用收到的WC数量缺失了，这样就无法进行资源回收。积累太多了后导致无法接受新的客户端请求。
+
+为避免陷入到资源耗尽的状态，PureFlash使用这样的强制释放机制： 
+    1. 周期检查所有的connection, 如果已经close够一定时间，却没有被Release：
+    2. 就检查used_iocb里面的iocb，如果其connection和自己一样，就说明是自己用的，没有被释放的。就对他dec_ref （而不是直接归还iocb_pool, 防止subtask仍然没有完成）
+    3. 处理flush_error， 以及Post_xxx失败，以及reply_to_client里面因为失败而iocb->dec_ref()时，
+        -> 要及时把conn置null，并对conn->dec_ref，防止上面step2 检查误判 
+	        -> 置成NULL而不管Iocb->ref_cnt的话，iocb对connection的引用关系就被破坏了，因为可以不管iocb的生命周期而对conn->dec_ref

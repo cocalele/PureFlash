@@ -52,7 +52,9 @@ class PfVolume;
 class PfAfsAppContext : public PfAppCtx
 {
 public:
-	std::set<PfConnection*> ingoing_connections;
+	std::map<uintptr_t, PfConnection*> client_ip_conn_map;
+	std::mutex conn_map_lock;
+
 	std::string mngt_ip;
 	int store_id;
 	PfZkClient zk_client;
@@ -65,7 +67,7 @@ public:
 	std::vector<PfDispatcher*> disps;
 	std::vector<PfReplicator*> replicators;
 
-	int dis_index;
+	//int dis_index;
 
 	pthread_mutex_t lock;
 	std::map<uint64_t, PfVolume*> opened_volumes;
@@ -77,6 +79,7 @@ public:
 
 	BackgroundTaskManager bg_task_mgr;
 	int next_client_disp_id; //to assign shared client connection to dispatcher
+	std::thread cron_thread;
 
 	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);
@@ -85,6 +88,8 @@ public:
 	PfAfsAppContext();
 
 	PfDispatcher *get_dispatcher(uint64_t vol_id);
+	void remove_connection(PfConnection* _conn);
+	void add_connection(PfConnection* _conn);
 
 };
 extern PfAfsAppContext app_context;

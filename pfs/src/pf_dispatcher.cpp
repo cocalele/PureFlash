@@ -58,6 +58,26 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 	case EVT_IO_COMPLETE:
 		rc = dispatch_complete((SubTask*)arg_p);
 		break;
+	case EVT_FORCE_RELEASE_CONN:
+		{
+			PfRdmaConnection* c = (PfRdmaConnection*)arg_p;
+			if(c->conn_type != RDMA_TYPE){
+				c->dec_ref();//added before this EVENT send
+				return 0;
+			}
+			
+			S5LOG_DEBUG("Check conn:%p ref_cnt:%d", c, c->ref_count);
+			int i=0;
+			for (PfServerIocb* iocb : c->used_iocb) {
+				if (iocb->conn == c) {
+					iocb->dec_ref_on_error();
+					i++;
+				}
+			}
+			S5LOG_DEBUG("%d iocb released", i);
+			c->dec_ref();
+			return 0;
+		}
 	default:
 		S5LOG_ERROR("Unknown event:%d", event_type);
 	}
@@ -68,12 +88,17 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 	int rc = 0;
 	const static int ms1 = 1000;
 	PfConnection* conn = iocb->conn;
-	if(unlikely(iocb->conn->state != CONN_OK)) {
-		S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
-			 iocb->conn, iocb->conn->connection_info.c_str(), ConnState2Str(iocb->conn->state));
-		iocb->dec_ref();
+	if(unlikely(iocb->conn == NULL || iocb->conn->state != CONN_OK)) {
+		if(iocb->conn){
+			S5LOG_WARN("Give up to reply IO cid:%d on connection:%p:%s for state:%s", iocb->cmd_bd->cmd_bd->command_id,
+				iocb->conn, iocb->conn->connection_info.c_str(), ConnState2Str(iocb->conn->state));
+		} else {
+			S5LOG_WARN("Give up to reply IO cid:%d for connection is NULL", iocb->cmd_bd->cmd_bd->command_id);
+		}
+		iocb->dec_ref_on_error();
 		return;
 	}
+
 	uint64_t io_end_time = now_time_usec();
 	uint64_t io_elapse_time = (io_end_time - iocb->received_time) / ms1;
 
@@ -86,13 +111,14 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 		           io_elapse_time
 		);
 	}
-	if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->transport == TRANSPORT_RDMA) && iocb->complete_status == MSG_STATUS_SUCCESS) {
+
+	if (IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode) && (conn->conn_type == RDMA_TYPE) && iocb->complete_status == MSG_STATUS_SUCCESS) {
 		//iocb->add_ref(); //iocb still have a valid ref, until reply sending complete
 		//S5LOG_INFO("rdma post write!!!,ref_count:%d", iocb->ref_count);
 		int rc = ((PfRdmaConnection*)conn)->post_write(iocb->data_bd, iocb->cmd_bd->cmd_bd->buf_addr, iocb->cmd_bd->cmd_bd->rkey);
 		if (rc)
 		{
-			iocb->dec_ref();
+			iocb->dec_ref_on_error();
 			S5LOG_ERROR("Failed to post_write, rc:%d", rc);
 			return;
 		}
@@ -109,7 +135,7 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 	rc = iocb->conn->post_send(iocb->reply_bd);
 	if (rc)
 	{
-		iocb->dec_ref();
+		iocb->dec_ref_on_error();
 		S5LOG_ERROR("Failed to post_send, rc:%d", rc);
 	}
 }
@@ -262,7 +288,9 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 
 static void server_complete(SubTask* t, PfMessageStatus comp_status) {
 	t->complete_status = comp_status;
-	((PfServerIocb*)t->parent_iocb)->conn->dispatcher->event_queue->post_event(EVT_IO_COMPLETE, 0, t);
+	//assert(((PfServerIocb*)t->parent_iocb)->ref_count ); // 为0 ，这是不应该的。
+
+	app_context.disps[((PfServerIocb*)t->parent_iocb)->disp_index]->event_queue->post_event(EVT_IO_COMPLETE, 0, t);
 }
 static void server_complete_with_metaver(SubTask* t, PfMessageStatus comp_status, uint16_t meta_ver) {
 	if (meta_ver > ((PfServerIocb*)t->parent_iocb)->complete_meta_ver)
@@ -278,7 +306,8 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 //			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
 	iocb->task_mask &= (~sub_task->task_mask);
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
-	iocb->dec_ref(); //added in setup_subtask
+	iocb->dec_ref(); //added in setup_subtask. In most case, should never dec to 0
+
 	if(iocb->task_mask == 0){
 		reply_io_to_client(iocb);
 	}
@@ -382,4 +411,36 @@ int PfDispatcher::prepare_shards(PfVolume* vol)
 		delete old_shard;
 	}
 	return 0;
+}
+
+
+void PfServerIocb::free_to_pool()
+{
+	//S5LOG_DEBUG("Iocb released:%p", this);
+	PfConnection* conn_tmp = conn;
+	complete_meta_ver = 0;
+	complete_status = MSG_STATUS_SUCCESS;
+	vol_id = 0;
+	is_timeout = FALSE;
+	task_mask = 0;
+	conn = NULL;
+	if (conn_tmp != NULL) {
+
+		conn_tmp->dec_ref();
+	}
+	app_context.disps[disp_index]->iocb_pool.free(this);
+}
+
+void PfServerIocb::dec_ref_on_error() {
+	if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
+		free_to_pool();
+	}
+	else {
+		PfConnection* conn_tmp = conn;
+		if (conn_tmp) {
+			conn = NULL;
+			conn_tmp->dec_ref();
+		}
+	}
+
 }
