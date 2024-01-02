@@ -156,7 +156,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 int PfRedoLog::discard()
 {
 	store->head.redolog_phase++;
-	store->head.current_redolog = store->oppsite_redolog_zone();
+	store->head.current_redolog = (uint8_t)store->oppsite_redolog_zone();
 
 	return 0;
 }

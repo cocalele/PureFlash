@@ -86,7 +86,7 @@ public:
 
 	bool is_client; //is this a client side connection
 
-
+	std::vector<PfServerIocb*> used_iocb;
 };
 
 #ifdef __cplusplus

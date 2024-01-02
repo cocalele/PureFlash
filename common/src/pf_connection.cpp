@@ -32,6 +32,7 @@ int PfConnection::close()
 	do_close();
 	if(on_close)
 		on_close(this);
+	close_time = now_time_usec();
 	return 0;
 }
 

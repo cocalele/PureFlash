@@ -25,7 +25,6 @@
 
 #include "pf_iotask.h"
 
-
 struct PfServerIocb;
 class PfFlashStore;
 struct lmt_entry;
@@ -83,8 +82,10 @@ public:
 
 	inline void add_ref() { __sync_fetch_and_add(&ref_count, 1); }
     inline void dec_ref();
+	void dec_ref_on_error();
 	inline void re_init();
-
+private:
+	void free_to_pool();
 };
 
 class PfDispatcher : public PfEventThread
@@ -117,19 +118,10 @@ public:
 };
 
 
-inline void PfServerIocb::dec_ref() {
-    if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
-		//S5LOG_DEBUG("Iocb released:%p", this);
-		PfConnection *conn_tmp = conn;
-		complete_meta_ver=0;
-	    complete_status = MSG_STATUS_SUCCESS;
-		vol_id=0;
-	    is_timeout = FALSE;
-	    task_mask = 0;
-		conn = NULL;
-        conn_tmp->dispatcher->iocb_pool.free(this);
-	    conn_tmp->dec_ref();
-    }
+ inline void PfServerIocb::dec_ref() {
+	if (__sync_sub_and_fetch(&ref_count, 1) == 0) {
+		free_to_pool();
+	}
 }
 
 inline void PfServerIocb::re_init()

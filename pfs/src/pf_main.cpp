@@ -16,7 +16,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
-
+#include <sys/prctl.h>
+#include <pthread.h>
 #include <execinfo.h>
 #include <pf_message.h>
 
@@ -28,10 +29,14 @@
 #include "pf_app_ctx.h"
 #include "pf_message.h"
 #include "pf_spdk.h"
+#include "pf_main.h"
+
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
 void stop_app();
+void server_cron_proc(void); //pf_server.cpp
+
 PfAfsAppContext app_context;
 enum connection_type rep_conn_type = TCP_TYPE; //TCP:0  RDMA:1
 struct spdk_mempool * g_msg_mempool;
@@ -326,8 +331,10 @@ int main(int argc, char *argv[])
 	}while(rc == ZNODEEXISTS);
 	signal(SIGTERM, sigroutine);
 	signal(SIGINT, sigroutine);
+	app_context.cron_thread = std::thread([]() {
+		server_cron_proc();
+		});
 	init_restful_server(); //never return
-	while(sleep(1) == 0);
 
 	S5LOG_INFO("toe_daemon exit.");
 	return rc;
@@ -455,5 +462,14 @@ void stop_app()
 	}
 }
 
+void PfAfsAppContext::remove_connection(PfConnection* _conn)
+{
+	std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
+	client_ip_conn_map.erase(uintptr_t(_conn));
+}
 
-
+void PfAfsAppContext::add_connection(PfConnection* _conn)
+{
+	std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
+	client_ip_conn_map[(uintptr_t)_conn]=_conn;
+}
