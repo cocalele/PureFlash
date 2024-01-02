@@ -18,7 +18,7 @@ class PfLocalReplica : public PfReplica
 public:
 	virtual int submit_io(IoSubTask* subtask);
 public:
-	PfFlashStore* disk;
+	std::shared_ptr<PfFlashStore> disk;
 };
 
 class PfSyncRemoteReplica : public PfReplica
@@ -26,7 +26,7 @@ class PfSyncRemoteReplica : public PfReplica
 public:
 	virtual int submit_io(IoSubTask* subtask);
 public:
-	PfReplicator* replicator;
+	std::shared_ptr<PfReplicator> replicator;
 };
 
 #endif // pf_replica_h__

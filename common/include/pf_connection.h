@@ -1,5 +1,6 @@
 #ifndef pf_connection_h__
 #define pf_connection_h__
+#include <memory>
 #include "pf_buffer.h"
 
 #define CONN_INIT 0
@@ -41,7 +42,7 @@ public:
 		PfReplicator* replicator;
 		void* master;
 	};
-    PfDispatcher* dispatcher;
+	std::shared_ptr<PfDispatcher> dispatcher;
 	int state;
 	int transport;
 	uint64_t last_heartbeat_time;

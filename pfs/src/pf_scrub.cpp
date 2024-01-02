@@ -45,7 +45,7 @@ int Scrub::feed_data(void* buf, size_t len, size_t off)
 	return 0;
 }
 
-std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
+std::string Scrub::cal_replica(std::shared_ptr<PfFlashStore> s, replica_id_t rep_id) {
 	//int iodepth = PARALLEL_NUM;
 	size_t read_size = MD5_BUF_LEN*PARALLEL_NUM;
 	void* read_buf = memalign(LBA_LENGTH, read_size);
@@ -116,7 +116,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 std::string calc_block_md5(int fd, off_t offset, size_t len);
 
 
-int Scrub::cal_object(PfFlashStore* s, replica_id_t rep_id, int64_t obj_idx, std::list<SnapshotMd5 >& result)
+int Scrub::cal_object(std::shared_ptr<PfFlashStore> s, replica_id_t rep_id, int64_t obj_idx, std::list<SnapshotMd5 >& result)
 {
 	list<tuple<uint32_t, string> > rsts;
 	uint64_t base_off = rep_id.shard_index() * SHARD_SIZE;

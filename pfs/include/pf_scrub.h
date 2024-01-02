@@ -33,8 +33,8 @@ public:
 	Scrub() noexcept;
 	~Scrub();
 	int feed_data(void* buf, size_t len, size_t off);
-	std::string cal_replica(PfFlashStore* s, replica_id_t rep_id);
-	static int cal_object(PfFlashStore* s, replica_id_t rep_id, int64_t obj_idx, std::list<SnapshotMd5 >& rst);
+	std::string cal_replica(std::shared_ptr<PfFlashStore> s, replica_id_t rep_id);
+	static int cal_object(std::shared_ptr<PfFlashStore> s, replica_id_t rep_id, int64_t obj_idx, std::list<SnapshotMd5 >& rst);
 private:
 	HASH_CTX_MGR *mgr = NULL;
 	HASH_CTX *ctxpool = NULL, *ctx = NULL;

@@ -61,9 +61,9 @@ public:
 
 	PfTcpServer* tcp_server;
 	PfRdmaServer* rdma_server;
-	std::vector<PfFlashStore*> trays;
-	std::vector<PfDispatcher*> disps;
-	std::vector<PfReplicator*> replicators;
+	std::vector<std::shared_ptr<PfFlashStore>> trays;
+	std::vector<std::shared_ptr<PfDispatcher>> disps;
+	std::vector<std::shared_ptr<PfReplicator>> replicators;
 
 	int dis_index;
 
@@ -84,9 +84,8 @@ public:
 	void PfRdmaUnRegisterMr();
 	PfAfsAppContext();
 
-	PfDispatcher *get_dispatcher(uint64_t vol_id);
+	std::shared_ptr<PfDispatcher> get_dispatcher(uint64_t vol_id);
 
 };
 extern PfAfsAppContext app_context;
 #endif
-

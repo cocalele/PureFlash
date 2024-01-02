@@ -189,7 +189,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 			}
 			else {
 				r->ssd_index = -1;
-				PfReplicator *rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
+				auto rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
 				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');
@@ -336,7 +336,7 @@ void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm) 
 		r.ret_code = -ENOENT;
 		r.reason = format_string("ssd:%s not found", ssd_uuid.c_str());
 	} else {
-		PfFlashStore *disk = app_context.trays[ssd_idx];
+		auto disk = app_context.trays[ssd_idx];
 		disk->delete_snapshot(int64_to_shard_id(SHARD_ID(rep_id)),snap_seq, prev_seq, next_seq);
 	}
 
@@ -427,7 +427,7 @@ void handle_recovery_replica(struct mg_connection *nc, struct http_message * hm)
 		send_reply_to_client(r, nc);
 		return;
 	}
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	BackgroundTask* t = app_context.bg_task_mgr.initiate_task(TaskType::RECOVERY, format_string("recovery 0x%llx", rep_id),
 			[disk, rep_id, from_ip=std::move(from_ip), from, from_ssd_uuid=std::move(from_ssd_uuid), obj_size, meta_ver](BackgroundTask* t)->RestfulReply*{
 		int rc = disk->recovery_replica(replica_id_t(rep_id), from_ip, from , from_ssd_uuid, obj_size, (uint16_t)meta_ver);
@@ -463,7 +463,7 @@ void handle_clean_disk(struct mg_connection *nc, struct http_message * hm) {
 		mg_printf(nc, "ERROR");
 		return;
 	}
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	S5LOG_WARN("Clean disk:%s", disk->tray_name);
 	disk->sync_invoke([disk]()->int{
 		for(auto it = disk->obj_lmt.begin();it!=disk->obj_lmt.end();++it) {
@@ -491,7 +491,7 @@ void handle_save_md_disk(struct mg_connection *nc, struct http_message * hm) {
 		mg_printf(nc, "ERROR");
 		return;
 	}
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	S5LOG_INFO("save metadata disk:%s", disk->tray_name);
 	disk->sync_invoke([disk]()->int{
 		disk->meta_data_compaction_trigger(COMPACT_TODO, false);
@@ -534,7 +534,7 @@ void handle_get_snap_list(struct mg_connection *nc, struct http_message * hm) {
 		return;
 	}
 	reply.op = "get_snap_list_reply";
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	int rc = disk->sync_invoke([disk, vol_id, offset, &reply]()->int{
 		return disk->get_snap_list(volume_id_t(vol_id), offset, reply.snap_list);
 	});
@@ -554,7 +554,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 		send_reply_to_client(reply, nc);
 		return;
 	}
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	int rc = disk->sync_invoke([disk, rep_id]()->int{
 		return disk->delete_replica(replica_id_t(rep_id));
 	});
@@ -594,7 +594,7 @@ void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm) 
 		return;
 	}
 
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	Scrub scrub;
 	reply.md5 = scrub.cal_replica(disk, int64_to_replica_id(rep_id));
 	send_reply_to_client(reply, nc);
@@ -616,7 +616,7 @@ void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm) {
 		return;
 	}
 
-	PfFlashStore* disk = app_context.trays[i];
+	auto disk = app_context.trays[i];
 	int64_t logic_offset = rep_id.shard_index() * SHARD_SIZE + obj_idx *disk->head.objsize;
 	reply.offset_in_vol = logic_offset;
 

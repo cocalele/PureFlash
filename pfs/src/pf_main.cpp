@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
 	app_context.disps.reserve(disp_count);
 	for (int i = 0; i < disp_count; i++)
 	{
-		app_context.disps.push_back(new PfDispatcher());
+		app_context.disps.push_back(std::shared_ptr<PfDispatcher>(new PfDispatcher()));
 		rc = app_context.disps[i]->init(i);
 		if (rc) {
 			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
@@ -227,7 +227,8 @@ int main(int argc, char *argv[])
 		if(devname == NULL)
 			break;
 		int shared = conf_get_int(fp, name.c_str(), "shared", 0, false);
-		auto s = new PfFlashStore();
+	        auto s = std::shared_ptr<PfFlashStore>(new PfFlashStore());
+
 		s->is_shared_disk = shared;
 		if (app_context.engine == SPDK)
 			rc = s->spdk_nvme_init(devname);
@@ -242,10 +243,13 @@ int main(int argc, char *argv[])
 			app_context.trays.push_back(s);
 		}
 		if(shared) {
-			register_shared_disk(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+			rc = register_shared_disk(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 			s->event_queue->post_event(EVT_WAIT_OWNER_LOCK, 0, 0, 0);
 		} else {
-			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+			rc = register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
+		}
+                if (rc) {
+			S5LOG_ERROR("Failed register tray:%s, rc:%d", devname, rc);
 		}
 		s->start();
 	}
@@ -280,7 +284,7 @@ int main(int argc, char *argv[])
 	int rep_count = conf_get_int(app_context.conf, "replicator", "count", 2, FALSE);
 	app_context.replicators.reserve(rep_count);
 	for(int i=0; i< rep_count; i++) {
-		PfReplicator* rp = new PfReplicator();
+		auto rp = std::shared_ptr<PfReplicator>(new PfReplicator());
 		rc = rp->init(i);
 		if(rc) {
 			S5LOG_ERROR("Failed init replicator[%d], rc:%d", i, rc);
@@ -368,7 +372,7 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 	return pos->second;
 }
 
-PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) 
+std::shared_ptr<PfDispatcher> PfAfsAppContext::get_dispatcher(uint64_t vol_id) 
 {
 	//if(vol_id == 0){
 		next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
@@ -438,7 +442,7 @@ void stop_app()
 	app_context.tcp_server->stop();
 	for(int i=0;i<app_context.trays.size();i++)
 	{
-		PfFlashStore *tray = app_context.trays[i];
+		std::shared_ptr<PfFlashStore> tray = app_context.trays[i];
 		tray->sync_invoke([tray]()->int {
 			tray->meta_data_compaction_trigger(COMPACT_STOP, true);
 			return tray->save_meta_data(tray->oppsite_md_zone());
@@ -454,6 +458,3 @@ void stop_app()
 		app_context.replicators[i]->destroy();
 	}
 }
-
-
-
