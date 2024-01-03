@@ -40,6 +40,75 @@ struct scc_cow_context
 
 struct RecoveryContext;
 
+class PfRedoLog {
+	struct transaction_t {
+		int64_t phase;
+		typedef enum {
+			ALLOCATE_OBJ = 1,
+			TRIM_OBJ = 2,
+			FREE_OBJ = 3,
+			SNAP_SEQ_CHANGE = 4,
+			STATUS_CHANGE = 5,
+			_REDO_ITEM_TYPE_COUNT_
+		} op_t; 
+		op_t    op;
+		union {
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				int free_queue_head;
+			} allocate;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				int trim_queue_tail;
+			} trim;
+			struct {
+				int obj_id;
+				int trim_queue_head;
+				int free_queue_tail;
+			} free;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				uint32_t old_snap_seq;
+			} snap_seq_change;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				int old_status;
+			} state_change;  
+		};
+	}
+	void** write_buf;
+	PfRedoLog(void** write_buf) : write_buf(write_buf) {}
+
+	void op_allocate(int64_t phase, const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head) {
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t*)*write_buf;
+		*t = PfRedoLog::transaction_t{phase:phase, op:op_t::ALLOCATE_OBJ, {*key, *entry, free_list_head}};
+	}
+
+	void op_trim(int64_t phase, const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail) {
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t*)*write_buf;
+		*t = PfRedoLog::transaction_t{phase:phase, op:op_t::TRIM_OBJ, {*key, *entry, trim_list_tail}};
+	}
+
+	void op_free(int64_t phase, int block_id, int trim_list_head, int free_list_tail) {
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t*)*write_buf;
+		*t = PfRedoLog::transaction_t{phase:phase, op:op_t::FREE_OBJ, {block_id, trim_list_head, free_list_tail}};
+	}
+
+	void op_status_change(int64_t phase, const lmt_key* key, const lmt_entry* entry, EntryStatus old_state) {
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t*)*write_buf;
+		*t = PfRedoLog::transaction_t{phase:phase, op:op_t::STATUS_CHANGE, {*key, *entry, old_status}};
+	}
+
+	void op_snap_change(int64_t phase, const struct lmt_key* key, const struct lmt_entry* entry, int old_seq) {
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t*)*write_buf;
+		*t = PfRedoLog::transaction_t{phase:phase, op:op_t::SNAP_SEQ_CHANGE, {*key, *entry, old_seq}};
+	}
+};
+
 class PfFlashStore : public PfEventThread
 {
 public:
@@ -105,7 +174,14 @@ public:
 	PfFlashStore *compact_tool;
 	int compact_lmt_exist;
 	int is_shared_disk;
-	PfFlashStore(int32_t n_threads = 4) : cow_thread_pool(n_threads) {}
+
+    // for redo log
+	uint64_t start_offset;
+	uint64_t current_offset;
+	PfRedoLog t;
+	void* log_t_buf;
+
+	PfFlashStore(int32_t n_threads = 4) : cow_thread_pool(n_threads), t(&log_t_buf) {}
 	~PfFlashStore();
 	/**
 	 * init flash store from device. this function will create meta data
@@ -161,6 +237,7 @@ public:
 	int delete_obj(struct lmt_key* , struct lmt_entry* entry);
 	int delete_obj_by_snap_seq(struct lmt_key* key, uint32_t snap_seq);
 	virtual int commit_batch() override { return ioengine->submit_batch(); };
+	int Replay(int which);
 private:
 	ThreadPool cow_thread_pool; //TODO: use std::async replace
 	int format_disk();
@@ -189,6 +266,9 @@ private:
 
 	void post_load_fix();
 	void post_load_check();
+    
+	void start_compaction_thread();
+	int _write_log();
 
 	friend class PfRedoLog;
 };

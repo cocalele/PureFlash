@@ -111,6 +111,7 @@ int  PfFlashStore::format_disk()
 	DeferCall _2([this]() {trim_obj_queue.destroy(); });
 
 	obj_lmt.clear(); //ensure no entry in LMT
+	/*
 	redolog = new PfRedoLog();
 	DeferCall _3([this]() {delete redolog; redolog=NULL; });
 	ret = redolog->init(this);
@@ -118,6 +119,7 @@ int  PfFlashStore::format_disk()
 		S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 		return ret;
 	}
+	*/
 	save_meta_data(head.current_metadata);
 	char uuid_str[64];
 	uuid_unparse(head.uuid, uuid_str);
@@ -297,6 +299,7 @@ int PfFlashStore::start_metadata_service(bool init)
 		ret = load_meta_data(head.current_metadata, false);
 		if (ret)
 			return ret;
+		/*
 		redolog = new PfRedoLog();
 		ret = redolog->init(this);
 		if (ret)
@@ -304,7 +307,9 @@ int PfFlashStore::start_metadata_service(bool init)
 			S5LOG_ERROR("reodolog initialize failed rc:%d", ret);
 			return ret;
 		}
-		ret = redolog->replay(head.redolog_phase, CURRENT);
+		//ret = redolog->replay(head.redolog_phase, CURRENT);
+		*/
+		ret = Replay(CURRENT);
 		if (ret)
 		{
 			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
@@ -313,7 +318,9 @@ int PfFlashStore::start_metadata_service(bool init)
 		S5LOG_INFO("After first replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
-		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
+		//ret = redolog->replay(++head.redolog_phase, OPPOSITE);
+		++head.redolog_phase;
+		ret = Replay(OPPOSITE);
 		if (ret)
 		{
 			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
@@ -325,7 +332,10 @@ int PfFlashStore::start_metadata_service(bool init)
 		post_load_fix();
 		post_load_check();
 		save_meta_data(oppsite_md_zone());
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
+		//redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
+		// for redo log
+		start_offset = get_meta_position(REDOLOG, CURRENT);
+		current_offset = start_offset;
 		S5LOG_INFO("after save metadata, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		S5LOG_INFO("load metadata finished, current metadata zone:%s, redo log will record at %s with phase:%ld",
@@ -377,22 +387,26 @@ int PfFlashStore::start_metadata_service(bool init)
 		}
 
 		obj_lmt.reserve(obj_count * 2);
+		/*
 		redolog = new PfRedoLog();
 		ret = redolog->init(this);
 		if (ret) {
 			S5LOG_ERROR("reodolog initialize failed ret(%d)", ret);
 			return ret;
-		}
+		}*/
 		save_meta_data(head.current_metadata);
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
+		// for redo log
+		start_offset = get_meta_position(REDOLOG, CURRENT);
+		current_offset = start_offset;
+		//redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
 		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
 		S5LOG_INFO("current metadata zone:%s, redo log will record at %s with phase:%ld",
 			meta_positon_2str(METADATA, head.current_metadata),meta_positon_2str(REDOLOG, head.current_redolog), head.redolog_phase);
 	}
 
 	compact_tool_init();
-	redolog->start();
-
+	//redolog->start();
+	start_compaction_thread();
 	return 0;
 }
 
@@ -445,6 +459,11 @@ int PfFlashStore::init(const char* tray_name)
 	compact_lmt_exist = 0;
 
 	err_clean.cancel_all();
+
+	log_t_buf = align_malloc_spdk(LBA_LENGTH, LBA_LENGTH, NULL);
+	if (log_t_buf == NULL)
+		return -ENOMEM;
+	memset(log_t_buf, 0, LBA_LENGTH);
 	return ret;
 }
 
@@ -521,11 +540,13 @@ int PfFlashStore::do_write(IoSubTask* io)
 			waiting_io : NULL
 		};
 		obj_lmt[key] = entry;
-		int rc = redolog->log_allocation(&key, entry, free_obj_queue.head);
+		//int rc = redolog->log_allocation(&key, entry, free_obj_queue.head);
+		t.op_allocate(head.redolog_phase, &key, entry, free_obj_queue.head);
+		rc = _write_log();	
 		if (rc)
 		{
 			app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
-			S5LOG_ERROR("log_allocation error, rc:%d", rc);
+			S5LOG_ERROR("_write_log error, rc:%d", rc);
 			return 0;
 		}
 
@@ -586,11 +607,13 @@ int PfFlashStore::do_write(IoSubTask* io)
 					waiting_io : NULL
 			};
 			obj_lmt[key] = cow_entry;
-			int rc = redolog->log_allocation(&key, cow_entry, free_obj_queue.head);
+			//int rc = redolog->log_allocation(&key, cow_entry, free_obj_queue.head);
+			t.op_allocate(head.redolog_phase, &key, cow_entry, free_obj_queue.head);
+			rc = _write_log();
 			if (rc)
 			{
 				app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
-				S5LOG_ERROR("log_allocation error, rc:%d", rc);
+				S5LOG_ERROR("_write_log error, rc:%d", rc);
 				return -EIO;
 			}
 			io->next = cow_entry->waiting_io;
@@ -928,7 +951,10 @@ int PfFlashStore::save_meta_data(int md_zone)
 	head_tmp.current_redolog = head.current_redolog;
 	memset(buf, 0, LBA_LENGTH);
 	head.current_metadata = (uint8_t)md_zone;
-	redolog->discard();
+	//redolog->discard();	
+	head.redolog_phase++;
+	head.current_redolog = oppsite_redolog_zone();
+
 	memcpy(buf, &head, sizeof(head));
 	/*
 	 * metadata/redolog zone & redolog phase & md5 will persist at end
@@ -1078,6 +1104,7 @@ int PfFlashStore::compact_tool_init()
 	}
 
 	S5LOG_INFO("begin to init compact tool!");
+	/*
 	compact_tool->redolog = new PfRedoLog();
 	if (!compact_tool->redolog) {
 		rc = -ENOMEM;
@@ -1085,6 +1112,7 @@ int PfFlashStore::compact_tool_init()
 		goto err0;
 	}
 	compact_tool->redolog->init(compact_tool);
+	*/
 
 	rc = compact_tool->lmt_entry_pool.init(free_obj_queue.queue_depth * 2);
 	if (rc) {
@@ -1132,7 +1160,8 @@ int PfFlashStore::compact_meta_data()
 		}
 	}
 
-	rc = compact_tool->redolog->replay(head.redolog_phase, CURRENT);
+	//rc = compact_tool->redolog->replay(head.redolog_phase, CURRENT);
+	rc = compact_tool->Replay(CURRENT);
 	if (rc) {
 		S5LOG_ERROR("Failed to replay rlog, disk:%s rc:%d", tray_name, rc);
 		goto out1;
@@ -1198,22 +1227,26 @@ int PfFlashStore::meta_data_compaction_trigger(int state, bool force_wait)
 	to_run_compact.store(state);
 	if (state == COMPACT_TODO && last_state == COMPACT_ERROR) {
 		// flush metadata synchronously
-		head.redolog_phase = redolog->phase;
+		//head.redolog_phase = redolog->phase;
 		rc = save_meta_data(oppsite_md_zone());
 		if (rc) {
 			// todo: evict disk
 			S5LOG_FATAL("failed to save metadata synchronously for %s", tray_name);
 		}
-		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, OPPOSITE));
+		start_offset = get_meta_position(REDOLOG, CURRENT);
+		current_offset = start_offset;
+		//redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, OPPOSITE));
 		to_run_compact.store(COMPACT_IDLE);
 	}
 
 	// if last state is COMPACT_ERROR, compatcion is unnecessary
 	if (state == COMPACT_TODO && last_state != COMPACT_ERROR) {
 		/*will persist at metadata compaction thread*/
-		redolog->set_log_phase(head.redolog_phase + 1, get_meta_position(REDOLOG, OPPOSITE));
+		start_offset = get_meta_position(REDOLOG, CURRENT);
+		current_offset = start_offset;
+		//redolog->set_log_phase(head.redolog_phase + 1, get_meta_position(REDOLOG, OPPOSITE));
 		S5LOG_INFO("send signal to save md, new log will record at log zone:%s(%lld), phase:%d",
-			meta_positon_2str(REDOLOG, oppsite_md_zone()), get_meta_position(REDOLOG, OPPOSITE), redolog->phase);
+			meta_positon_2str(REDOLOG, oppsite_md_zone()), get_meta_position(REDOLOG, OPPOSITE), head.redolog_phase);
 		pthread_cond_signal(&md_cond); // compaction must be will
 	}
 	pthread_mutex_unlock(&md_lock);
@@ -1331,7 +1364,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	break;
 	case EVT_SAVEMD:
 	{
-		if (redolog->current_offset == redolog->start_offset)
+		if (current_offset == start_offset)
 			return 0;
 		S5LOG_INFO("get event EVT_SAVEMD, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
 			tray_name, obj_lmt.size(),
@@ -1356,10 +1389,9 @@ void PfFlashStore::begin_cow(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEn
 	auto f = cow_thread_pool.commit([this, key, srcEntry, dstEntry]{do_cow_entry(key, srcEntry, dstEntry);});
 }
 
-
+//this function called in thread pool, not the store's event thread
 void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *dstEntry)
-{//this function called in thread pool, not the store's event thread
-	
+{
 	int failed = 0;
 	sem_t cow_sem;
 	int cow_depth = 8;
@@ -1398,7 +1430,10 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 		EntryStatus old_status = dstEntry->status;
 		dstEntry->status = EntryStatus::NORMAL;
 
-		redolog->log_status_change(key, dstEntry, old_status);
+		//redolog->log_status_change(key, dstEntry, old_status);
+		t.op_status_change(head.redolog_phase, key, dstEntry, old_status);
+		_write_log();
+
 		IoSubTask*t = dstEntry->waiting_io;
 		dstEntry->waiting_io = NULL;
 		while (t) {
@@ -1614,7 +1649,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		//keep Ot for used by Lns
 		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lns;
-		redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		//redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		t.op_snap_change(head.redolog_phase, &key, target_entry, old_snap);
+		_write_log();
 		//delete_obj(&key, prev_entry);// we can also delete Pps, since it's not needed
 	}
 	else if( (Lps < Pps) /*A1*/ && next_entry == NULL /*B3*/) {
@@ -1679,7 +1716,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		 */
 		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lns;
-		redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		//redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		t.op_snap_change(head.redolog_phase, &key, target_entry, old_snap);
+		_write_log();
 	}
 	else if( (Pps <= Lps) /*A2*/  && next_entry == NULL /*B3*/) {
 		/* 	=case A2 B3=
@@ -1749,7 +1788,9 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		S5LOG_INFO("del snapshot state A3-B*");
 		uint32_t old_snap = target_entry->snap_seq;
 		target_entry->snap_seq = Lps;
-		redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		//redolog->log_snap_seq_change(&key, target_entry, old_snap);
+		t.op_snap_change(head.redolog_phase, &key, target_entry, old_snap);
+		_write_log();
 	}
 	else {
 		S5LOG_FATAL("del snapshot encounter unexpected state: vol_id:0x%llx slba:%lld Lps:%d Lts:%d Lns:%d Pps:%d Pts:%d Pns:%d",
@@ -1769,7 +1810,9 @@ int PfFlashStore::delete_obj_by_snap_seq(struct lmt_key* key, uint32_t snap_seq)
 		},
 		[key, this](struct lmt_entry* _entry)->void {
 			trim_obj_queue.enqueue((int)offset_to_obj_id(_entry->offset));
-			redolog->log_trim(key, _entry, trim_obj_queue.tail);
+			//redolog->log_trim(key, _entry, trim_obj_queue.tail);
+			t.op_trim(head.redolog_phase, key, _entry, trim_obj_queue.tail);
+			_write_log();
 			lmt_entry_pool.free(_entry);
 		});
 	if (pos->second == NULL)
@@ -1789,7 +1832,9 @@ int PfFlashStore::delete_obj(struct lmt_key* key, struct lmt_entry* entry)
 	                     },
 	                     [key, this](struct lmt_entry* _entry)->void {
 		                     trim_obj_queue.enqueue((int)offset_to_obj_id(_entry->offset));
-		                     redolog->log_trim(key, _entry, trim_obj_queue.tail);
+		                     //redolog->log_trim(key, _entry, trim_obj_queue.tail);
+							t.op_trim(head.redolog_phase, key, _entry, trim_obj_queue.tail);
+							_write_log();
 		                     lmt_entry_pool.free(_entry);
 	                     });
 	if(pos->second == NULL)
@@ -1889,7 +1934,9 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 					prev_snap : head->prev_snap,
 					waiting_io : NULL
 			};
-			int rc = redolog->log_allocation(key, data_entry, free_obj_queue.head);
+			//int rc = redolog->log_allocation(key, data_entry, free_obj_queue.head);
+			t.op_allocate(head.redolog_phase, key, data_entry, free_obj_queue.head);
+			rc = _write_log();	
 			if (rc) {
 				lmt_entry_pool.free(data_entry);
 				free_obj_queue.enqueue(obj_id);
@@ -1963,7 +2010,10 @@ int PfFlashStore::finish_recovery_object(lmt_key* key, lmt_entry * head, size_t 
 					min, max);
 		EntryStatus old_status = data_entry->status;
 		data_entry->status  = EntryStatus::NORMAL;
-		redolog->log_status_change(key, data_entry, old_status);
+		//redolog->log_status_change(key, data_entry, old_status);
+		t.op_status_change(head.redolog_phase, key, data_entry, old_status);
+		_write_log();
+
 		obj_lmt[*key] = data_entry;
 		return 0;
 	});
@@ -2237,7 +2287,9 @@ int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx
 					prev_snap : NULL,
 					waiting_io : NULL
 			};
-			int rc2 = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
+			//int rc2 = redolog->log_allocation(&key, target_entry, free_obj_queue.head);
+			t.op_allocate(head.redolog_phase, &key, target_entry, free_obj_queue.head);
+			rc2 = _write_log();
 			if (rc2)
 			{
 				lmt_entry_pool.free(target_entry);
@@ -2359,7 +2411,9 @@ int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx
 		if (target_entry->status != EntryStatus::NORMAL) {
 			EntryStatus old = target_entry->status;
 			target_entry->status = EntryStatus::NORMAL;
-			return redolog->log_status_change(&key, target_entry, old);
+			//return redolog->log_status_change(&key, target_entry, old);
+			t.op_status_change(head.redolog_phase, &key, target_entry, old);
+			_write_log();
 		}
 		return 0;
 		});
@@ -2435,7 +2489,10 @@ void PfFlashStore::trim_proc()
 					return -ENOENT;
 				int id = trim_obj_queue.dequeue();
 				free_obj_queue.enqueue(id);
-				return redolog->log_free(id, trim_obj_queue.head, free_obj_queue.tail);
+				//return redolog->log_free(id, trim_obj_queue.head, free_obj_queue.tail);
+				t.op_free(head.redolog_phase, id, trim_obj_queue.head, free_obj_queue.tail);
+				return _write_log();
+
 			});
 			if(rc == -ENOENT)
 				break;
@@ -2697,4 +2754,208 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 	
 	return ret;
+}
+
+int PfFlashStore::Replay(int which)
+{
+	int cnt = 0;
+	int rc = 0;
+	int64_t offset = get_meta_position(REDOLOG, which);
+	S5LOG_INFO("Start replay redo log at %s log zone, start_phase:%d, offset:0x%lx",
+		meta_positon_2str(REDOLOG, which == CURRENT ? head.current_redolog : oppsite_redolog_zone()), head.redolog_phase, offset);
+	while(1)
+	{
+		if (ioengine->sync_read(log_t_buf, LBA_LENGTH, offset) == -1) {
+			S5LOG_ERROR("Failed to read redo log, rc:%d", -errno);
+			return -errno;
+		}
+		PfRedoLog::transaction_t *t = (PfRedoLog::transaction_t *)log_t_buf;
+		if (t->phase != head.redolog_phase)
+			break;
+
+		S5LOG_DEBUG("replay redo log item type:%d", t->op);
+
+		switch (t->op)
+		{
+			case op_t::ALLOCATE_OBJ:
+				struct lmt_entry* entry = lmt_entry_pool.alloc();
+				if (entry == NULL)
+				{
+					rc = -ENOMEM;
+				}
+				*entry = t->allocate.bentry;
+				entry->init_for_redo();
+				auto pos = obj_lmt.find(t->allocate.bkey);
+				if(pos == obj_lmt.end()) {
+					obj_lmt[t->allocate.bkey] = entry;
+				} else {
+					rc = insert_lmt_entry_list(&pos->second, entry, [entry](lmt_entry* item)->bool {
+							return item->snap_seq > entry->snap_seq;
+						},
+						[entry](lmt_entry* item)->bool {
+							return item->snap_seq == entry->snap_seq;
+						}
+					);
+					if(rc == -EEXIST){
+						//duplicated entry, free it
+						lmt_entry_pool.free(entry);
+					}
+				}
+				free_obj_queue.head = t->allocate.free_queue_head;
+				break;
+			case op_t::FREE_OBJ:
+				free_obj_queue.tail = t->free.free_queue_tail;
+				int tail = t->free.free_queue_tail - 1;
+				if (tail < 0)
+					tail = free_obj_queue.queue_depth - 1;
+				free_obj_queue.data[tail] = t->free.obj_id;
+				trim_obj_queue.head = t->free.trim_queue_head;
+				break;
+			case op_t::TRIM_OBJ:
+				trim_obj_queue.tail = t->trim.trim_queue_tail;
+				int tail = t->trim.trim_queue_tail - 1;
+				if (tail < 0)
+					tail = trim_obj_queue.queue_depth - 1;
+				trim_obj_queue.data[tail] = (int32_t)offset_to_obj_id(t->trim.bentry.offset);
+
+				auto pos = obj_lmt.find(t->trim.bkey);
+				if(pos == obj_lmt.end())
+					return 0;
+				delete_matched_entry(&pos->second,
+									[e](struct lmt_entry* _entry)->bool {
+										return _entry->offset == t->trim.bentry.offset;
+									},
+									[this](struct lmt_entry* _entry)->void {
+										lmt_entry_pool.free(_entry);
+									});
+				if(pos->second == NULL)
+					obj_lmt.erase(pos);
+				break;
+			case op_t::SNAP_SEQ_CHANGE:
+				auto pos = obj_lmt.find(t->snap_seq_change.bkey);
+				if (pos != obj_lmt.end())
+				{
+					for (struct lmt_entry* h = pos->second; h != NULL; h = h->prev_snap)
+					{
+						if (h->offset == t->snap_seq_change.bentry.offset)
+						{
+							if (h->snap_seq == t->snap_seq_change.old_snap_seq)
+								h->snap_seq = t->snap_seq_change.bentry.snap_seq;
+							break;
+						}
+					}
+				}
+				break;
+			case op_t::STATUS_CHANGE:
+				auto pos = obj_lmt.find(t->state_change.bkey);
+				if (pos != obj_lmt.end())
+				{
+					for (struct lmt_entry* h = pos->second; h != NULL; h = h->prev_snap)
+					{
+						if (h->offset == t->state_change.bentry.offset)
+						{
+							if (h->status == t->state_change.old_status)
+								h->status = t->state_change.bentry.status;
+							break;
+						}
+					}
+				}
+				break;
+			default:
+				S5LOG_FATAL("Unknown redo log type:%d", *op);
+				rc = -1;
+		}
+		if (rc)
+		{
+			S5LOG_ERROR("Failed to replay log, ssd:%s, entry at:%lx", tray_name, offset);
+			return rc;
+		}
+		cnt++;
+		offset += LBA_LENGTH;
+
+	}
+	S5LOG_INFO("%s log zone:%s redolog replay finished. %d items replayed", tray_name, meta_positon_2str(REDOLOG, CURRENT), cnt);
+	return 0;
+}
+
+
+int PfFlashStore::_write_log() {
+	if (ioengine->sync_write(log_t_buf, LBA_LENGTH, current_offset) == -1)
+	{
+		S5LOG_ERROR("Failed to persist redo log, rc:%d", -errno);
+		return -errno;
+	}
+	current_offset += LBA_LENGTH;
+	if (current_offset >= start_offset + size)
+	{
+		return meta_data_compaction_trigger(COMPACT_TODO, true);
+	}
+}
+
+int PfFlashStore::start_compaction_tread() {
+	auto_save_thread = std::thread([this]() {
+		int rc;
+		struct timespec timeout;
+		struct timeval now;
+		char name[256] = {0};
+		sprintf(name, "md_%s", tray_name);
+		prctl(PR_SET_NAME, name);
+		while (1)
+		{
+			if (0 != gettimeofday(&now, NULL)) {
+				S5LOG_ERROR("failed to gettimeofday");
+				continue;
+			}
+			timeout.tv_sec = now.tv_sec + STORE_META_AUTO_SAVE_INTERVAL;
+			timeout.tv_nsec = now.tv_usec * 1000;
+			int done = 0;
+			pthread_mutex_lock(&md_lock);
+			while (1) {
+				S5LOG_INFO("compaction:now state is %d", to_run_compact.load());
+				switch (to_run_compact.load())
+				{
+					case COMPACT_TODO:
+					{
+						to_run_compact.store(COMPACT_RUNNING);
+						rc = compact_meta_data();
+						if (rc) {
+							S5LOG_ERROR("failed to compact metadata");
+							to_run_compact.store(COMPACT_ERROR);
+							event_queue->post_event(EVT_SAVEMD, 0, NULL, NULL);
+						} else {
+							to_run_compact.store(COMPACT_IDLE);
+						}
+						done = 1;
+					}
+					break;
+					case COMPACT_IDLE:
+					case COMPACT_STOP:
+					case COMPACT_ERROR:
+					{
+						rc = pthread_cond_timedwait(&md_cond, &md_lock, &timeout);
+						if (to_run_compact.load() == COMPACT_STOP) {
+							S5LOG_ERROR("compaction is skip");
+							done = 1;
+							break;
+						}
+						if (rc == 0) {
+							S5LOG_INFO("metadata compatcion thread waked up, state:%d", to_run_compact.load());
+						}else if (rc == ETIMEDOUT) {
+							event_queue->post_event(EVT_SAVEMD, 0, NULL, NULL);
+							done = 1;
+						}else {
+							S5LOG_ERROR("cond wait get error rc:%d\n", rc);
+							done = 1;
+						}
+					}
+					break;
+				}
+				if (done == 1)
+					break;
+			}
+			pthread_mutex_unlock(&md_lock);
+		}
+
+	});
+	return 0;
 }
