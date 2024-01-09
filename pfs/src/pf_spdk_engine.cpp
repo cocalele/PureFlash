@@ -109,7 +109,7 @@ uint64_t PfspdkEngine::sync_write(void* buffer, uint64_t buf_size, uint64_t offs
 		return rc;
 	}
 
-	while (result == 0) {
+	if (result == 0) {
 		rc = spdk_nvme_qpair_process_completions(qpair[0], 1);
 		if (rc < 0) {
 			S5LOG_ERROR("NVMe io qpair process completion error, rc=%d", rc);
