@@ -46,11 +46,17 @@ int PfspdkEngine::init()
 			goto qpair_failed;
 		}
 
-		if (spdk_nvme_poll_group_add(group, qpair[i])) {
-			rc = -EINVAL;
-			S5LOG_ERROR("failed to add poll group, i=%d", i);
-			spdk_nvme_ctrlr_free_io_qpair(qpair[i]);
-			goto qpair_failed;
+		// default qpair[0] is used for in compact thread
+		// so qpair[0] cannot be added to group.
+		// if the spdk thread will harvest qpair[0] completion events, 
+		// which will cause the compact thread to loop
+		if (i != 0) {
+			if (spdk_nvme_poll_group_add(group, qpair[i])) {
+				rc = -EINVAL;
+				S5LOG_ERROR("failed to add poll group, i=%d", i);
+				spdk_nvme_ctrlr_free_io_qpair(qpair[i]);
+				goto qpair_failed;
+			}			
 		}
 
 		if (spdk_nvme_ctrlr_connect_io_qpair(ns->ctrlr, qpair[i])) {
