@@ -1,4 +1,5 @@
 
+#include <sstream>
 #include "pf_ioengine.h"
 #include "pf_message.h"
 #include "pf_buffer.h"
@@ -45,12 +46,17 @@ int PfspdkEngine::init()
 			S5LOG_ERROR("failed to alloc io qpair, i=%d", i);
 			goto qpair_failed;
 		}
-
-		if (spdk_nvme_poll_group_add(group, qpair[i])) {
-			rc = -EINVAL;
-			S5LOG_ERROR("failed to add poll group, i=%d", i);
-			spdk_nvme_ctrlr_free_io_qpair(qpair[i]);
-			goto qpair_failed;
+		// default qpair[0] is used for in spdk thread
+		// so only qpair[0] can be added to group.
+		// if the spdk thread will harvest all qpair completion events, 
+		// which will cause the compact and other thread to loop
+		if (i == 0) {
+			if (spdk_nvme_poll_group_add(group, qpair[i])) {
+				rc = -EINVAL;
+				S5LOG_ERROR("failed to add poll group, i=%d", i);
+				spdk_nvme_ctrlr_free_io_qpair(qpair[i]);
+				goto qpair_failed;
+			}			
 		}
 
 		if (spdk_nvme_ctrlr_connect_io_qpair(ns->ctrlr, qpair[i])) {
@@ -92,17 +98,51 @@ void PfspdkEngine::spdk_nvme_disconnected_qpair_cb(struct spdk_nvme_qpair* qpair
 	return;
 }
 
+struct spdk_nvme_qpair* PfspdkEngine::get_qpair_by_thread() {
+		struct spdk_nvme_qpair* qp;
+		std::stringstream ss;
+		ss << std::this_thread::get_id();
+		uint64_t thread_id = std::stoull(ss.str());
+		std::lock_guard<std::mutex> _l(mtx);
+		auto pos = qpair_map.find(thread_id);
+		if (pos != qpair_map.end()) {
+			qp = pos->second;
+		} else {
+			int i;
+			// on performance grounds,
+			// qpair[0] will not add to qpair_map.
+			for (i = 1; i < num_qpairs; i++) {
+				bool found = false;
+				auto iter = qpair_map.begin();
+				while(iter != qpair_map.end()) {
+					if (qpair[i] == iter->second) {
+						found = true;
+						break;
+					}
+					iter++;
+				}
+				if (!found) {
+					qpair_map[thread_id] = qpair[i];
+					qp = qpair[i];
+				}
+			}
+		}
+		assert(qp);
+		return qp;
+}
+
 uint64_t PfspdkEngine::sync_write(void* buffer, uint64_t buf_size, uint64_t offset)
 {
 	int rc;
 	int result = 0;
 	uint64_t lba, lba_cnt;
+	auto qpair = get_qpair_by_thread();
 
 	if (spdk_nvme_bytes_to_blocks(offset, &lba, buf_size, &lba_cnt) != 0) {
 		return -EINVAL;
 	}
 
-	rc = spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[0], buffer, NULL, lba, (uint32_t)lba_cnt,
+	rc = spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair, buffer, NULL, lba, (uint32_t)lba_cnt,
 		spdk_sync_io_complete, &result, 0, 0, 0);
 	if (rc) {
 		S5LOG_ERROR("nvme write failed! rc = %d", rc);
@@ -110,7 +150,7 @@ uint64_t PfspdkEngine::sync_write(void* buffer, uint64_t buf_size, uint64_t offs
 	}
 
 	while (result == 0) {
-		rc = spdk_nvme_qpair_process_completions(qpair[0], 1);
+		rc = spdk_nvme_qpair_process_completions(qpair, 1);
 		if (rc < 0) {
 			S5LOG_ERROR("NVMe io qpair process completion error, rc=%d", rc);
 			return rc;
@@ -125,12 +165,13 @@ uint64_t PfspdkEngine::sync_read(void* buffer, uint64_t buf_size, uint64_t offse
 	int rc;
 	int result = 0;
 	uint64_t lba, lba_cnt;
+	auto qpair = get_qpair_by_thread();
 
 	if (spdk_nvme_bytes_to_blocks(offset, &lba, buf_size, &lba_cnt) != 0) {
 		return -EINVAL;
 	}
 
-	rc = spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[0], buffer, NULL, lba, (uint32_t)lba_cnt,
+	rc = spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair, buffer, NULL, lba, (uint32_t)lba_cnt,
 		spdk_sync_io_complete, &result, 0, 0, 0);
 	if (rc) {
 		S5LOG_ERROR("nvme read failed! rc = %d", rc);
@@ -138,7 +179,7 @@ uint64_t PfspdkEngine::sync_read(void* buffer, uint64_t buf_size, uint64_t offse
 	}
 
 	while (result == 0) {
-		rc = spdk_nvme_qpair_process_completions(qpair[0], 1);
+		rc = spdk_nvme_qpair_process_completions(qpair, 1);
 		if (rc < 0) {
 			S5LOG_ERROR("NVMe io qpair process completion error, rc=%d", rc);
 			return rc;
@@ -167,10 +208,10 @@ int PfspdkEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t 
 	}
 
 	if (IS_READ_OP(io->opcode))
-		spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[1], data_bd->buf, NULL, lba, (uint32_t)lba_cnt,
+		spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[0], data_bd->buf, NULL, lba, (uint32_t)lba_cnt,
 			spdk_io_complete, io, 0, 0, 0);
 	else
-		spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[1], data_bd->buf, NULL, lba, (uint32_t)lba_cnt,
+		spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[0], data_bd->buf, NULL, lba, (uint32_t)lba_cnt,
 			spdk_io_complete, io, 0, 0, 0);
 
 
@@ -248,10 +289,10 @@ int PfspdkEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_
 
 	int rc = 0;
 	if (IS_READ_OP(io->opcode))
-		rc = spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[1], io->buf, NULL, lba, (uint32_t)lba_cnt,
+		rc = spdk_nvme_ns_cmd_read_with_md(ns->ns, qpair[0], io->buf, NULL, lba, (uint32_t)lba_cnt,
 			spdk_cow_io_complete, io, 0, 0, 0);
 	else
-		rc = spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[1], io->buf, NULL, lba, (uint32_t)lba_cnt,
+		rc = spdk_nvme_ns_cmd_write_with_md(ns->ns, qpair[0], io->buf, NULL, lba, (uint32_t)lba_cnt,
 			spdk_cow_io_complete, io, 0, 0, 0);
 	return rc;
 }
@@ -285,7 +326,7 @@ int PfspdkEngine::submit_scc(uint64_t media_len, off_t src, off_t dest,
 
 	range.slba = lba_src;
 	range.nlb = (uint16_t)lba_cnt;
-	return spdk_nvme_ns_cmd_copy(ns->ns, qpair[1], &range, 1, lba_dest, scc_complete, context);
+	return spdk_nvme_ns_cmd_copy(ns->ns, qpair[0], &range, 1, lba_dest, scc_complete, context);
 }
 
 void PfspdkEngine::scc_complete(void* arg, const struct spdk_nvme_cpl* cpl)

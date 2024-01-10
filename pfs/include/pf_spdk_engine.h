@@ -27,10 +27,12 @@ struct ns_entry {
  *  first qpair is for sync IO
  *
  */
-#define QPAIRS_CNT 2
+#define QPAIRS_CNT 8
 
 class PfspdkEngine : public PfIoEngine
 {
+	std::mutex mtx;
+	std::map<uint64_t, struct spdk_nvme_qpair*> qpair_map; // thread->qpair
 	struct ns_entry* ns;
 	int num_qpairs;
 	struct spdk_nvme_qpair** qpair;
@@ -53,6 +55,7 @@ public:
 	void spdk_nvme_disconnected_qpair_cb(struct spdk_nvme_qpair* qpair, void* poll_group_ctx);
 	uint64_t spdk_nvme_bytes_to_blocks(uint64_t offset_bytes, uint64_t* offset_blocks,
 		uint64_t num_bytes, uint64_t* num_blocks);
+	struct spdk_nvme_qpair* get_qpair_by_thread();
 
 };
 
