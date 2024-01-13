@@ -74,7 +74,6 @@ static void *rdma_server_event_proc(void* arg)
 				conn->connection_info.c_str(), conn->state, conn->ref_count);
 			conn->close();
 			conn->dec_ref(); //added in on_connect_request
-
 		}
 		else
 		{
@@ -149,7 +148,6 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 		}
 	}
 	else {
-		S5LOG_DEBUG("FLUSH_ERROR on %p, bd:%p", conn, bd);
 		if(complete_status != WC_FLUSH_ERR){
 			S5LOG_ERROR("WR complete in unexpected status:%d, conn ref_count:%d", complete_status, conn->ref_count);
 		}
@@ -159,7 +157,7 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 			PfServerIocb* iocb = bd->server_iocb;
 			iocb->dec_ref_on_error(); //will also call conn->dec_ref
 		}
-		//S5LOG_ERROR("after FLUSH_ERR, conn ref_count:%d", conn->ref_count);
+		S5LOG_DEBUG("FLUSH_ERROR on %p, bd:%p, opcode:%d processed", conn, bd, bd->wr_op);
 	}
 	return 0;
 }

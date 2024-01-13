@@ -304,13 +304,15 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	PfServerIocb* iocb = (PfServerIocb * )sub_task->parent_iocb;
 //	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
 //			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
+	
+	//uint32_t old_mask = iocb->task_mask;
 	iocb->task_mask &= (~sub_task->task_mask);
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
-	iocb->dec_ref(); //added in setup_subtask. In most case, should never dec to 0
 
-	if(iocb->task_mask == 0){
+	if(iocb->task_mask == 0 /*&& old_mask != 0*/){
 		reply_io_to_client(iocb);
 	}
+	iocb->dec_ref(); //added in setup_subtask. In most case, should never dec to 0
 	return 0;
 }
 
@@ -428,6 +430,7 @@ void PfServerIocb::free_to_pool()
 
 		conn_tmp->dec_ref();
 	}
+	assert(disp_index >= 0 && disp_index < app_context.disps.size());
 	app_context.disps[disp_index]->iocb_pool.free(this);
 }
 
