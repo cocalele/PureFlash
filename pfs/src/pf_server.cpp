@@ -466,7 +466,6 @@ void server_cron_proc(void)
 	{
 		if (sleep(10) != 0)
 			return;
-		S5LOG_DEBUG("Timer thread running");
 		uint64_t now = now_time_usec();
 #define CLOSE_TIMEOUT_US 180000000ULL
 		std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
