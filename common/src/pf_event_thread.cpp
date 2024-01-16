@@ -1,6 +1,6 @@
 #include <sys/prctl.h>
 #include <string.h>
-
+#include "spdk/env.h"
 #include "pf_event_thread.h"
 #include "pf_app_ctx.h"
 
@@ -105,7 +105,7 @@ void PfEventThread::stop()
 
 }
 
-void * thread_proc_eventq(void* arg)
+void* thread_proc_eventq(void* arg)
 {
 	PfEventThread* pThis = (PfEventThread*)arg;
 	prctl(PR_SET_NAME, pThis->name);
@@ -140,18 +140,26 @@ void * thread_proc_eventq(void* arg)
 	return NULL;
 }
 
-#define BATH_PROCESS 8
-void* thread_proc_spdkr(void* arg)
+static void thread_update_stats(PfEventThread *thread, uint64_t end,
+			uint64_t start, int rc)
 {
-	PfEventThread* pThis = (PfEventThread*)arg;
-	prctl(PR_SET_NAME, pThis->name);
-	int rc = 0, i = 0;
-	void *events[BATH_PROCESS];
-	PfSpdkQueue *eq = (PfSpdkQueue *)pThis->event_queue;
-	eq->set_thread_queue();
+	if (rc == 0) {
+		thread->stats.idle_tsc += end - start;
+	} else if (rc > 0) {
+		thread->stats.busy_tsc += end - start;
+	}
+	/* Store end time to use it as start time of the next event thread poll. */
+	thread->tsc_last = end;
+}
 
-	while((rc = eq->get_events(BATH_PROCESS, events)) >= 0) {
-		for (i = 0; i < rc; i++) {
+#define BATH_PROCESS 8
+static int event_queue_run_batch(PfEventThread *thread) {
+	int rc = 0;
+	void *events[BATH_PROCESS];
+	PfSpdkQueue *eq = (PfSpdkQueue *)thread->event_queue;
+	eq->set_thread_queue();
+	if ((rc = eq->get_events(BATH_PROCESS, events)) >= 0) {
+		for (int i = 0; i < rc; i++) {
 			struct pf_spdk_msg *event = (struct pf_spdk_msg *)events[i];
 			switch (event->event.type)
 			{
@@ -164,23 +172,47 @@ void* thread_proc_spdkr(void* arg)
 				}
 				case EVT_THREAD_EXIT:
 				{
-					S5LOG_INFO("exit thread:%s", pThis->name);
-					return NULL;
+					S5LOG_INFO("exit thread:%s", thread->name);
+					thread->exiting = true;
+					break;
 				}
 				default:
 				{	
-					pThis->process_event(event->event.type, event->event.arg_i, event->event.arg_p, event->event.arg_q);
+					thread->process_event(event->event.type, event->event.arg_i, event->event.arg_p, event->event.arg_q);
 					break;
 				}
 			}
 			eq->put_event(events[i]);
 		}
-		if (pThis->func_priv) {
-			int com = 0;
-			pThis->func_priv(&com, pThis->arg_v);
-		}
 	}
+	return rc > 0 ? PF_POLLER_BUSY : PF_POLLER_IDLE;
+}
 
+static int func_run(PfEventThread *thread) {
+	int rc = 0;
+	if (thread->func_priv) {
+		thread->func_priv(&rc, thread->arg_v);
+	}
+	return rc > 0 ? PF_POLLER_BUSY : PF_POLLER_IDLE;
+}
+
+static int thread_poll(PfEventThread *thread) {
+	int rc = 0;
+	rc = event_queue_run_batch(thread);
+	rc = func_run(thread);
+	return rc;
+}
+
+void* thread_proc_spdkr(void* arg)
+{
+	PfEventThread* pThis = (PfEventThread*)arg;
+	prctl(PR_SET_NAME, pThis->name);
+	pThis->tsc_last = spdk_get_ticks();
+	while(!pThis->exiting) {
+		int rc = 0;
+		rc = thread_poll(pThis);
+		thread_update_stats(pThis, spdk_get_ticks(), pThis->tsc_last, rc);
+	}
 	return NULL;
 }
 
