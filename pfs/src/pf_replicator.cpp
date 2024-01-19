@@ -270,14 +270,14 @@ void PfReplicator::PfRepConnectionPool::connect_peer(int store_id)
 PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 {
 	auto pos = peers.find(store_id);
-	if(unlikely(pos == peers.end())) {
+	if (unlikely(pos == peers.end())) {
 		S5LOG_ERROR("Peer IP for store_id:%d not found", store_id);
 		return NULL;
 	}
 	PeerAddr& addr = pos->second;
-	if(addr.conn != NULL && addr.conn->state == CONN_OK)
+	if (addr.conn != NULL && addr.conn->state == CONN_OK)
 		return addr.conn;
-	for(int i=0;i<addr.ip.size();i++){
+	for (int i = 0; i < addr.ip.size(); i++) {
 		addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx], conn_type);
 		if(addr.conn)
 			return addr.conn;

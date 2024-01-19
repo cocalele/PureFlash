@@ -48,6 +48,7 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	}
 	return 0;
 }
+
 int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
 	int rc = 0;
@@ -63,6 +64,7 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 	}
 	return rc;
 }
+
 static inline void reply_io_to_client(PfServerIocb *iocb)
 {
 	int rc = 0;
@@ -111,6 +113,7 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 		S5LOG_ERROR("post_send, rc:%d", rc);
 	}
 }
+
 int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 {
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;

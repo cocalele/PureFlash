@@ -32,6 +32,7 @@ const char* HealthStatus2Str(HealthStatus code)
 			return buf;
 	}
 }
+
 PfVolume& PfVolume::operator=(PfVolume&& vol)
 {
 	this->meta_ver = vol.meta_ver;
