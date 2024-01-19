@@ -49,6 +49,19 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	return 0;
 }
 
+int PfDispatcher::delete_volume(uint64_t  vol_id)
+{
+	assert(vol_id);
+	auto pos = opened_volumes.find(vol_id);
+	if (pos != opened_volumes.end())
+	{
+		PfVolume* vol = pos->second;
+		vol->dec_ref();
+		opened_volumes.erase(pos);
+	}
+	return 0;
+}
+
 int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
 	int rc = 0;

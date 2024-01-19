@@ -99,6 +99,7 @@ public:
 
 	//PfDispatcher(const std::string &name);
 	int prepare_volume(PfVolume* vol);
+	int delete_volume(uint64_t vol_id);
 	inline int dispatch_io(PfServerIocb *iocb);
 	int dispatch_complete(SubTask*);
 	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);

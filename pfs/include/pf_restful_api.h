@@ -24,6 +24,7 @@ public:
 	std::string status;
 	std::string rep_ports;
 };
+
 class ShardArg
 {
 public:
@@ -32,6 +33,15 @@ public:
 	int primary_rep_index;
 	std::string status;
 };
+
+class DeleteVolumeArg
+{
+public:
+	std::string op;
+	std::string volume_name;
+	uint64_t volume_id;
+};
+
 class PrepareVolumeArg
 {
 public:
@@ -123,6 +133,7 @@ void from_json(const nlohmann::json& j, RestfulReply& p) ;
 void from_json(const nlohmann::json& j, ReplicaArg& p);
 void from_json(const nlohmann::json& j, ShardArg& p);
 void from_json(const nlohmann::json& j, PrepareVolumeArg& p);
+void from_json(const nlohmann::json& j, DeleteVolumeArg& p);
 void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
 void to_json(nlohmann::json& j, const RestfulReply& r);
 void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
@@ -138,6 +149,7 @@ std::string get_http_param_as_string(const struct mg_str *http_str, const char *
 int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *name, int64_t def_val, bool mandatory=false);
 
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm);
+void handle_delete_volume(struct mg_connection *nc, struct http_message * hm);
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm);
 void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm);

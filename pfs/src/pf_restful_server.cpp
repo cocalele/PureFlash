@@ -33,6 +33,8 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 		try {
 			if (strcmp(opcode, "prepare_volume") == 0)
 				handle_prepare_volume(nc, hm);
+			else if (strcmp(opcode, "delete_volume") == 0)
+				handle_delete_volume(nc, hm);
 			else if (strcmp(opcode, "set_meta_ver") == 0)
 				handle_set_meta_ver(nc, hm);
 			else if (strcmp(opcode, "set_snap_seq") == 0)
