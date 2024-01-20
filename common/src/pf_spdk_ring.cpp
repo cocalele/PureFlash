@@ -62,7 +62,6 @@ int PfSpdkQueue::init(const char* name, int size, enum spdk_ring_type mode)
     if (rc == 0) {
         for(i = 0; i < MEMPOOL_CACHE_SIZE; i++) {
             SLIST_INSERT_HEAD(&this->msg_cache, msgs[i], link);
-            cahce_cnt++;
         }
         for (i = MEMPOOL_CACHE_SIZE; i < MEMPOOL_CACHE_SIZE * 2; i++) {
              SLIST_INSERT_HEAD(&this->msg_cache_locked, msgs[i], link);
@@ -85,12 +84,22 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
     size_t rc;
     if (tls_queue) {
         msg = SLIST_FIRST(&tls_queue->msg_cache);
+        if (unlikely(msg == NULL)) {
+            S5LOG_ERROR("failed to alloc msg from tls_queue's msg_cache");
+            return NULL;
+        }
         SLIST_REMOVE_HEAD(&tls_queue->msg_cache, link);
-    }else{
+        msg->lock_cache_msg = false;
+    } else {
         pthread_spin_lock(&lock);
         msg = SLIST_FIRST(&msg_cache_locked);
+        if (unlikely(msg == NULL)) {
+            S5LOG_ERROR("failed to alloc msg from msg_cache_locked");
+            return NULL;
+        }
         SLIST_REMOVE_HEAD(&msg_cache_locked, link);
         pthread_spin_unlock(&lock);
+        msg->lock_cache_msg = true;
     }
 
     msg->event.type = type;
@@ -98,7 +107,7 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
     msg->event.arg_p = arg_p;
 
     rc = spdk_ring_enqueue(messages, (void **)&msg, 1, NULL);
-    if (rc != 1){
+    if (rc != 1) {
         S5LOG_ERROR("failed to enqueue event");
         return -1;
     }
@@ -171,7 +180,7 @@ void PfSpdkQueue::put_event(void *msg)
         pthread_spin_lock(&lock);
         SLIST_INSERT_HEAD(&msg_cache_locked, (struct pf_spdk_msg *)msg, link);
         pthread_spin_unlock(&lock);
-    }else {
+    } else {
         SLIST_INSERT_HEAD(&msg_cache, (struct pf_spdk_msg *)msg, link);
     }
 }

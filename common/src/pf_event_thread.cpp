@@ -157,7 +157,6 @@ static int event_queue_run_batch(PfEventThread *thread) {
 	int rc = 0;
 	void *events[BATH_PROCESS];
 	PfSpdkQueue *eq = (PfSpdkQueue *)thread->event_queue;
-	eq->set_thread_queue();
 	if ((rc = eq->get_events(BATH_PROCESS, events)) >= 0) {
 		for (int i = 0; i < rc; i++) {
 			struct pf_spdk_msg *event = (struct pf_spdk_msg *)events[i];
@@ -208,6 +207,8 @@ void* thread_proc_spdkr(void* arg)
 	PfEventThread* pThis = (PfEventThread*)arg;
 	prctl(PR_SET_NAME, pThis->name);
 	pThis->tsc_last = spdk_get_ticks();
+	PfSpdkQueue *eq = (PfSpdkQueue *)pThis->event_queue;
+	eq->set_thread_queue();
 	while(!pThis->exiting) {
 		int rc = 0;
 		rc = thread_poll(pThis);

@@ -101,7 +101,6 @@ public:
     SLIST_HEAD(, pf_spdk_msg)  msg_cache;
 	SLIST_HEAD(, pf_spdk_msg)  msg_cache_locked;
 	struct spdk_mempool * msg_mempool;
-    int cahce_cnt;
 	int event_fd;
 	pthread_spinlock_t lock;
 

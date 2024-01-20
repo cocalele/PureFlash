@@ -191,8 +191,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				shard->duty_rep_index = j;
 				if (r->is_primary)
 					shard->is_primary_node = TRUE;
-			}
-			else {
+			} else {
 				r->ssd_index = -1;
 				PfReplicator *rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
 				((PfSyncRemoteReplica*)r)->replicator = rp;
