@@ -368,13 +368,10 @@ PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
 	return pos->second;
 }
 
-PfDispatcher *PfAfsAppContext::get_dispatcher(uint64_t vol_id) 
+PfDispatcher *PfAfsAppContext::get_dispatcher() 
 {
-	//if(vol_id == 0){
-		next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
-		return disps[next_client_disp_id];
-	//}
-	//return disps[VOL_ID_TO_VOL_INDEX(vol_id)%disps.size()];
+	next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
+	return disps[next_client_disp_id];
 }
 
 int PfAfsAppContext::PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx)

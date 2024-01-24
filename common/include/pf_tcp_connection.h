@@ -22,10 +22,10 @@ public:
 	virtual int post_write(BufferDescriptor* buf);
 	virtual int do_close();
 
-	void start_send(BufferDescriptor* bd);
-	void start_send(BufferDescriptor* bd, void* buf);
-	void start_recv(BufferDescriptor* bd);
-	void start_recv(BufferDescriptor* bd, void* buf);
+	int start_send(BufferDescriptor* bd);
+	int start_send(BufferDescriptor* bd, void* buf);
+	int start_recv(BufferDescriptor* bd);
+	int start_recv(BufferDescriptor* bd, void* buf);
 
 	static void on_send_q_event(int fd, uint32_t event, void* c);
 	static void on_recv_q_event(int fd, uint32_t event, void* c);
