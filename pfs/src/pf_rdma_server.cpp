@@ -234,9 +234,9 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 			goto release0;
 		}
 		conn->srv_vol = vol;
-		conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+		conn->dispatcher = app_context.get_dispatcher();
 	} else if (hs_msg->vol_id != -1ULL) {
-		conn->dispatcher = app_context.get_dispatcher(0);
+		conn->dispatcher = app_context.get_dispatcher();
 		S5LOG_DEBUG("get shared client connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), conn->dispatcher->disp_index);
 		conn->srv_vol = NULL;
 	} else {

@@ -30,7 +30,7 @@ int PfConnection::close()
 	S5LOG_INFO("Close connection conn:%p, %s", this, connection_info.c_str());
 	closed_count++;
 	do_close();
-	if(on_close)
+	if (on_close)
 		on_close(this);
 	return 0;
 }

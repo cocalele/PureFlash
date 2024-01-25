@@ -53,7 +53,7 @@ int PfTcpServer::init()
 	conf_file_t conf=app_context.conf;
 	poller_cnt = conf_get_int(conf, "tcp_server", "poller_count", 8, FALSE);
 	pollers = new PfPoller[poller_cnt];
-	for(int i=0;i<poller_cnt;i++)
+	for(int i = 0; i < poller_cnt; i++)
 	{
 		rc = pollers[i].init(format_string("TCP_srv_poll_%d", i).c_str(), 512);
 		if (rc != 0)
@@ -149,10 +149,8 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 	bd->buf = NULL;//for debug
 	delete bd;
 
-	if(status == WcStatus::WC_SUCCESS)
-	{
-		if(conn->state == CONN_CLOSING)
-		{
+	if (status == WcStatus::WC_SUCCESS) {
+		if (conn->state == CONN_CLOSING) {
 			S5LOG_WARN("Handshake sent but connection in state:%d is to be closed, conn:%s", conn->state, conn->connection_info.c_str());
 			conn->state = CONN_OK;//to make close works correctly
 			conn->close();
@@ -163,13 +161,12 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 		conn->on_work_complete = server_on_tcp_network_done;
 		conn->state = CONN_OK;
 
-		for(int i=0;i<conn->io_depth*2;i++)
-		{
+		for (int i = 0; i < conn->io_depth * 2; i++) {
 			auto io = conn->dispatcher->iocb_pool.alloc();
-			if(io == NULL)
+			if (io == NULL)
 			{
 				S5LOG_ERROR("No enough memory for connection:%s", conn->connection_info.c_str());
-				conn->close();
+				// conn->close(); // will be closed in PfTcpConnection::do_send
 				rc = -ENOMEM;
 				goto release0;
 			}
@@ -177,16 +174,13 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 			conn->add_ref();
 			io->conn = conn;
 			rc = conn->post_recv(io->cmd_bd);
-			if(rc)
-			{
+			if (rc) {
 				io->dec_ref();
 				S5LOG_ERROR("Failed to post_recv:%d  for rc:%d", i, rc);
 				break;
 			}
 		}
-	}
-	else
-	{
+	} else {
 		S5LOG_ERROR("Failed send handshake for connection:%s", conn->connection_info.c_str());
 		conn->state = CONN_OK;//to make close works correctly
 		conn->close(); //this will cause dec_ref, in on_server_conn_close
@@ -213,7 +207,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 		rc = -EINVAL;
 		goto release0;
 	}
-	conn->io_depth=hs_msg->hsqsize;
+	conn->io_depth = hs_msg->hsqsize;
 	bd->data_len = sizeof(PfHandshakeMessage);
 	if(hs_msg->vol_id != 0) {
 		vol = app_context.get_opened_volume(hs_msg->vol_id);
@@ -225,28 +219,12 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 			goto release0;
 		}
 		conn->srv_vol = vol;
-		conn->dispatcher = app_context.get_dispatcher(hs_msg->vol_id);
+		conn->dispatcher = app_context.get_dispatcher();
 	} else if (hs_msg->vol_id != -1ULL) {
-		conn->dispatcher = app_context.get_dispatcher(0);
-		S5LOG_DEBUG("get shared client connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), conn->dispatcher->disp_index);
-		conn->srv_vol = NULL;
-	} else {
-		static int rep_disp_id  = 0;
-		S5LOG_INFO("get replicating connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), rep_disp_id);
-		conn->dispatcher = app_context.disps[rep_disp_id];
-		rep_disp_id = (int) ((rep_disp_id+1)%app_context.disps.size());
+		conn->dispatcher = app_context.get_dispatcher();
+		S5LOG_DEBUG("get replicating connection: %p(%s), assign to dispatcher:%d", conn, conn->connection_info.c_str(), conn->dispatcher->disp_index);
 		conn->srv_vol = NULL;
 	}
-//	rc = conn->init_mempools();
-//	if(rc != 0)
-//	{
-//		S5LOG_ERROR("No enough memory to accept connection, volume:%s, conn:%s", vol->name, conn->connection_info.c_str());
-//		hs_msg->hs_result = (int16_t)-rc; //return a positive value
-//		conn->state = CONN_CLOSING;
-//		rc = -EINVAL;
-//	}
-	//conn->send_q.init("send_q", conn->io_depth, TRUE);
-	//conn->recv_q.init(conn->io_depth*2);
 release0:
 	S5LOG_INFO("Reply handshake for conn:%s", conn->connection_info.c_str());
 	conn->on_work_complete = on_tcp_handshake_sent;
@@ -270,10 +248,10 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 {
 	PfTcpConnection* conn = (PfTcpConnection*)_conn;
 	//S5LOG_DEBUG("network Tx/Rx done, len:%d, op:%s status:%s", bd->data_len, OpCodeToStr(bd->wr_op), WcStatusToStr(complete_status));
-	if(likely(complete_status == WcStatus::WC_SUCCESS)) {
+	if (likely(complete_status == WcStatus::WC_SUCCESS)) {
 
-		if(bd->wr_op == WrOpcode::TCP_WR_RECV ) {
-			if(bd->data_len == PF_MSG_HEAD_SIZE) {
+		if (bd->wr_op == WrOpcode::TCP_WR_RECV ) {
+			if (bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
 				struct PfServerIocb *iocb = bd->server_iocb;
 				iocb->vol_id = bd->cmd_bd->vol_id;
@@ -290,8 +268,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					else
 						conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for read
 				}
-			}
-			else {
+			} else {
 				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
@@ -301,10 +278,10 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					conn->dispatcher->event_queue->post_event(EVT_IO_REQ, 0, iocb); //for write
 			}
 		}
-		else if(bd->wr_op == WrOpcode::TCP_WR_SEND){
+		else if (bd->wr_op == WrOpcode::TCP_WR_SEND) {
 			//IO complete, start next
 			PfServerIocb *iocb = bd->server_iocb;
-			if(bd->data_len == sizeof(PfMessageReply) && IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)
+			if (bd->data_len == sizeof(PfMessageReply) && IS_READ_OP(iocb->cmd_bd->cmd_bd->opcode)
 					&& iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS) {
 				//message head sent complete
 				conn->add_ref(); //data_bd reference to connection
@@ -323,27 +300,23 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 			S5LOG_ERROR("Unknown op code:%d", bd->wr_op);
 		}
 
-	}
-	else if(unlikely(complete_status == WC_FLUSH_ERR)) {
+	} else if (unlikely(complete_status == WC_FLUSH_ERR)) {
 		struct PfServerIocb *iocb;
-		if(bd->wr_op == TCP_WR_RECV ) {
+		if (bd->wr_op == TCP_WR_RECV ) {
 			if(bd->data_len == PF_MSG_HEAD_SIZE) {
 				//message head received
 				iocb = bd->server_iocb;
 //				S5LOG_DEBUG("Connection closed, io:%p in receiving cmd", iocb);
-			}
-			else {
+			} else {
 				//data received
 				iocb = bd->server_iocb;
 //				S5LOG_DEBUG("Connection closed, io:%p in receiving data", iocb);
 			}
-		}
-		else if(bd->wr_op == TCP_WR_SEND){
+		} else if (bd->wr_op == TCP_WR_SEND) {
 			//IO complete, start next
 			iocb = bd->server_iocb;
 //			S5LOG_DEBUG("Connection closed, io:%p in sending reply", iocb);
-		}
-		else {
+		} else {
 			S5LOG_ERROR("Connection closed, with unknown op code:%d", bd->wr_op);
 			return 0;
 		}

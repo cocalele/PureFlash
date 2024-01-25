@@ -86,26 +86,24 @@ int PfTcpConnection::do_close()
 
 void PfTcpConnection::flush_wr()
 {
-	if (recv_bd)
-	{
+	if (recv_bd) {
 		on_work_complete(recv_bd, WcStatus::WC_FLUSH_ERR, this, recv_bd->cbk_data);
 		dec_ref();
 		recv_bd = NULL;
 	}
-	if (send_bd)
-	{
+
+	if (send_bd) {
 		on_work_complete(send_bd, WcStatus::WC_FLUSH_ERR, this, send_bd->cbk_data);
 		dec_ref();
 		send_bd = NULL;
 	}
+
 	PfFixedSizeQueue<S5Event>* q;
 	int rc;
-	if(!recv_q.is_empty()) {
+	if (!recv_q.is_empty()) {
 		rc = recv_q.get_events(&q);
-		if(rc == 0)
-		{
-			while(!q->is_empty())
-			{
+		if(rc == 0) {
+			while(!q->is_empty()) {
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
@@ -115,22 +113,20 @@ void PfTcpConnection::flush_wr()
 		}
 	}
 
-	if(!send_q.is_empty()) {
+	if (!send_q.is_empty()) {
 		rc = send_q.get_events(&q);
-		if(rc == 0)
-		{
-			while(!q->is_empty())
-			{
+		if(rc == 0) {
+			while(!q->is_empty()) {
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
 				on_work_complete(bd, WcStatus::WC_FLUSH_ERR, this, bd->cbk_data);
 				dec_ref();
 			}
-
 		}
 	}
 }
+
 void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 {
 	//S5LOG_DEBUG("on_send_q_event called, event:%d", event);
@@ -167,48 +163,51 @@ void PfTcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 		conn->start_recv((BufferDescriptor*)evt.arg_p);
 	}
 }
-void PfTcpConnection::start_recv(BufferDescriptor* bd)
+
+int PfTcpConnection::start_recv(BufferDescriptor* bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	recv_bd = bd;
 	recv_buf = bd->buf;
 	wanted_recv_len = bd->data_len;
 	recved_len = 0;
-	do_receive();
+	return do_receive();
 }
-void PfTcpConnection::start_recv(BufferDescriptor* bd, void* buf)
+
+int PfTcpConnection::start_recv(BufferDescriptor* bd, void* buf)
 {
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	recv_bd = bd;
 	recv_buf = buf;
 	wanted_recv_len = bd->data_len;
 	recved_len = 0;
-	do_receive();
+	return do_receive();
 }
-void PfTcpConnection::start_send(BufferDescriptor* bd)
+
+int PfTcpConnection::start_send(BufferDescriptor* bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	send_bd = bd;
 	send_buf = bd->buf;
 	wanted_send_len = bd->data_len;
 	sent_len = 0;
-	do_send();
+	return do_send();
 }
 
-void PfTcpConnection::start_send(BufferDescriptor* bd, void* buf)
+int PfTcpConnection::start_send(BufferDescriptor* bd, void* buf)
 {
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	send_bd = bd;
 	send_buf = buf;
 	wanted_send_len = bd->data_len;
 	sent_len = 0;
-	do_send();
+	return do_send();
 }
 
 void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)c;
-
+	
 	//send_q, recv_q is valid after connection close
 	//if(conn->state == CONN_CLOSED){
 	//	S5LOG_WARN("connection:%p (%s) has been closed!", conn, conn->connection_info.c_str());
@@ -243,7 +242,7 @@ void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 	{
 		conn->do_send();
 	}
-}
+	}
 
 int PfTcpConnection::rcv_with_error_handle()
 {
@@ -395,11 +394,14 @@ int PfTcpConnection::do_send()
 			}
 			S5Event evt;
 			rc = send_q.get_event(&evt);
-			if(unlikely(rc)){
+			if (unlikely(rc)) {
 				S5LOG_ERROR("Get event from send_q failed");
-			}
-			else {
-				start_send((BufferDescriptor*) evt.arg_p);
+			} else {
+				rc = start_send((BufferDescriptor*) evt.arg_p);
+				if (unlikely(rc)) {
+					S5LOG_ERROR("start send failed, rc=%d",rc);
+					return rc;
+				}
 				continue;
 			}
 
