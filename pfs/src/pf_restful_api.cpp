@@ -165,6 +165,17 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		S5LOG_INFO("Convert to shard:%d with %d replicas", i, arg.shards[i].replicas.size());
 		for (int j = 0; j < arg.shards[i].replicas.size(); j++)
 		{
+			if (app_context.shard_to_replicator) {
+				// case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
+				// case2：primary shard is not asigned to this store but slave shard is asigned to this store, 
+				// 		  only alloc PfLocalReplica
+				// case3: no shard is asigned to this store, do noting
+				if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id && 
+					app_context.store_id != arg.shards[i].replicas[j].store_id) {
+					continue;
+				}				
+			}
+			
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
 			bool is_local = (rarg.store_id == app_context.store_id);
 			PfReplica * r;
@@ -193,7 +204,12 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 					shard->is_primary_node = TRUE;
 			} else {
 				r->ssd_index = -1;
-				PfReplicator *rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
+				PfReplicator *rp = NULL;
+				if (app_context.shard_to_replicator) {
+					rp = app_context.get_replicator();
+				} else {
+					rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
+				}
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
 				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');

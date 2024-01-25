@@ -44,11 +44,12 @@ public:
 	std::string conf_file_name;
 	conf_file_t conf;
 	int engine;
+	bool shard_to_replicator = false;
 	struct PfRdmaDevContext *dev_ctx[MAX_RDMA_DEVICE];
 	virtual int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx) = 0 ;
 	virtual void PfRdmaUnRegisterMr() = 0;
 	bool rdma_client_only;
-	PfAppCtx():cow_buf_pool(COW_OBJ_SIZE), engine(AIO)
+	PfAppCtx():cow_buf_pool(COW_OBJ_SIZE), engine(AIO), shard_to_replicator(false)
 	{
 		for (int i = 0 ; i < MAX_RDMA_DEVICE; i++)
 			dev_ctx[i] = NULL;

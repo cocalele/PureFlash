@@ -84,8 +84,10 @@ public:
 	void PfRdmaUnRegisterMr();
 	PfAfsAppContext();
 
-	PfDispatcher *get_dispatcher(uint64_t vol_id);
+	PfDispatcher *get_dispatcher();
 
+	int next_shard_replicator_id; //to assign volume shard to replicator
+	PfReplicator *get_replicator();
 };
 extern PfAfsAppContext app_context;
 #endif

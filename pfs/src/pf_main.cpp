@@ -184,11 +184,20 @@ int main(int argc, char *argv[])
 	if(app_context.meta_size & ((1LL<<30)-1) ){
 		S5LOG_FATAL("meta_size in config file is not aligned on 1GiB");
 	}
+
+	const char *srb = conf_get(fp, "select_replicator_by", "name", NULL, false);
+	if (!srb) {
+		S5LOG_INFO("Failed to find key(select_replicator_by:name) in conf(%s).", s5daemon_conf);
+	}
+	if (strcmp(srb, "volume_shard") == 0)
+		app_context.shard_to_replicator = true;
+	
 	const char *engine = conf_get(fp, "engine", "name", NULL, false);
 	if (!engine) {
 		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
 	}
+
 	if (strcmp(engine, "io_uring") == 0)
 		app_context.engine = IO_URING;
 	else if (strcmp(engine, "spdk") == 0)
@@ -356,6 +365,7 @@ PfAfsAppContext::PfAfsAppContext() : recovery_buf_pool(64<<20)
 		S5LOG_FATAL("Failed to init recovery_buf_pool");
 	}
 	next_client_disp_id = 0;
+	next_shard_replicator_id = 0;
 }
 
 PfVolume* PfAfsAppContext::get_opened_volume(uint64_t vol_id)
@@ -372,6 +382,12 @@ PfDispatcher *PfAfsAppContext::get_dispatcher()
 {
 	next_client_disp_id = (next_client_disp_id + 1) % (int)app_context.disps.size();
 	return disps[next_client_disp_id];
+}
+
+PfReplicator *PfAfsAppContext::get_replicator() 
+{
+	next_shard_replicator_id = (next_shard_replicator_id + 1) % (int)app_context.replicators.size();
+	return replicators[next_shard_replicator_id];
 }
 
 int PfAfsAppContext::PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx)

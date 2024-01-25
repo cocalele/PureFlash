@@ -65,6 +65,9 @@ public:
 	void inline setup_subtask(PfShard* s, PfOpCode opcode)
 	{
 		for (int i = 0; i < s->rep_count; i++) {
+			if (s->replicas[i] == NULL) {
+				continue;
+			}
 			if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 				subtasks[i]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
 				subtasks[i]->opcode = opcode;  //subtask opcode will be OP_WRITE or OP_REPLICATE_WRITE
