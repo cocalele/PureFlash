@@ -10,9 +10,6 @@
 const char* ConnState2Str(int conn_state);
 
 
-#define TRANSPORT_TCP 1
-#define TRANSPORT_RDMA 2
-
 #define PROTOCOL_VER 1
 class PfClientVolume;
 class PfDispatcher;
@@ -43,7 +40,7 @@ public:
 	};
     PfDispatcher* dispatcher;
 	int state;
-	int transport;
+	connection_type conn_type;
 	uint64_t last_heartbeat_time;
 	int io_depth;
 	std::string connection_info;
@@ -52,7 +49,7 @@ public:
 	int inflying_heartbeat;
 	int inflying_io;
 	bool unclean_closed = false;
-
+	uint64_t close_time = 0;
 	PfConnection();
 	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
