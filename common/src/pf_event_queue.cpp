@@ -75,6 +75,11 @@ int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
 	//current_queue->tail = (current_queue->tail + 1) % current_queue->queue_depth;
 }
 
+int PfEventQueue::post_event_locked(int type, int arg_i, void* arg_p)
+{
+	return 0;
+}
+
 /**
  * get events in queue. events are fetched via _@param q_. q may be empty if there
  * are no events.

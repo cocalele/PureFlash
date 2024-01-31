@@ -132,16 +132,16 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	auto pos = opened_volumes.find(cmd->vol_id);
 
-	if(unlikely(pos == opened_volumes.end())){
+	if (unlikely(pos == opened_volumes.end())) {
 		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x not opened", PfOpCode2Str(cmd->opcode), cmd->vol_id);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_STATE;
 		iocb->complete_meta_ver = -1;
 		reply_io_to_client(iocb);
 		return 0;
 	}
+
 	PfVolume* vol = pos->second;
-	if(unlikely(cmd->meta_ver != vol->meta_ver))
-	{
+	if (unlikely(cmd->meta_ver != vol->meta_ver)) {
 		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%x meta_ver:%d diff than client:%d",
 			  PfOpCode2Str(cmd->opcode), cmd->opcode,  cmd->vol_id, vol->meta_ver, cmd->meta_ver);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
@@ -149,6 +149,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		reply_io_to_client(iocb);
 		return 0;
 	}
+
 	//S5LOG_DEBUG("dispatch_io, op:%s, volume:%s ", PfOpCode2Str(cmd->opcode), vol->name);
 	if(unlikely(cmd->snap_seq == SNAP_SEQ_HEAD))
 		cmd->snap_seq = vol->snap_seq;
@@ -201,7 +202,7 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 {
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
-	if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)){
+	if (unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
 		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
 		            vol->id, vol->name, s->id, s->duty_rep_index);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN;
@@ -210,12 +211,12 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	}
 	iocb->setup_subtask(s, cmd->opcode);
 	for (int i = 0; i < vol->rep_count; i++) {
-		if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
+		if (s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 			int rc = 0;
 			iocb->subtasks[i]->rep_id = s->replicas[i]->id;
 			iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 			rc = s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
-			if(rc) {
+			if (rc) {
 				S5LOG_ERROR("submit_io, rc:%d", rc);
 			}
 		} else {
@@ -308,7 +309,7 @@ int PfDispatcher::init_mempools(int disp_index)
 		goto release1;
 	S5LOG_INFO("Allocate data_pool with max IO size:%d, depth:%d", PF_MAX_IO_SIZE, pool_size * 2);
 	if (spdk_engine_used())
-		mem_pool.data_pool.dma_buffer_used = 1;
+		mem_pool.data_pool.dma_buffer_used = true;
 	rc = mem_pool.data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);
 	if (rc)
 		goto release2;
@@ -316,9 +317,9 @@ int PfDispatcher::init_mempools(int disp_index)
 	if (rc)
 		goto release3;
 	rc = iocb_pool.init(pool_size * 2);
-	if(rc)
+	if (rc)
 		goto release4;
-	for(int i=0;i<pool_size*2;i++)
+	for (int i = 0; i < pool_size * 2; i++)
 	{
 		PfServerIocb *cb = iocb_pool.alloc();
 		cb->cmd_bd = mem_pool.cmd_pool.alloc();
@@ -331,9 +332,9 @@ int PfDispatcher::init_mempools(int disp_index)
 		cb->reply_bd = mem_pool.reply_pool.alloc();
 		cb->reply_bd->data_len =  sizeof(PfMessageReply);
 		cb->reply_bd->server_iocb = cb;
-		for(int i=0;i<3;i++) {
+		for (int i = 0; i < 3; i++) {
 			cb->subtasks[i] = &cb->io_subtasks[i];
-			cb->subtasks[i]->rep_index =i;
+			cb->subtasks[i]->rep_index = i;
 			cb->subtasks[i]->task_mask = 1 << i;
 			cb->subtasks[i]->parent_iocb = cb;
 			cb->subtasks[i]->ops = &_server_task_complete_ops;

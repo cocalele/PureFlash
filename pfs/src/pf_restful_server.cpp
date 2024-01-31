@@ -59,6 +59,8 @@ static void handle_api(struct mg_connection *nc, int ev, void *p) {
 				handle_cal_object_md5(nc, hm);
 			else if (strcmp(opcode, "prepare_shards") == 0)
 				handle_prepare_shards(nc, hm);
+			else if (strcmp(opcode, "get_thread_stats") == 0)
+				handle_get_thread_stats(nc, hm);
 			else {
 				S5LOG_ERROR("Unknown op:%s", opcode);
 				string cstr = format_string("Unknown op:%s", opcode);
