@@ -187,7 +187,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		{
 			if (app_context.shard_to_replicator) {
 				// case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
-				// case2£ºprimary shard is not asigned to this store but slave shard is asigned to this store, 
+				// case2: primary shard is not asigned to this store but slave shard is asigned to this store, 
 				// 		  only alloc PfLocalReplica
 				// case3: no shard is asigned to this store, do noting
 				if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id && 
@@ -228,7 +228,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				if (app_context.shard_to_replicator) {
 					rp = app_context.get_replicator();
 				} else {
-					rp = app_context.replicators[(vol->i24)%app_context.replicators.size()];
+					rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
 				}
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
@@ -380,7 +380,7 @@ static void _thread_get_stats(void *arg)
 		sem_post(&ctx->sem);
 	} else {
 		// continue to get next thread stat
-		ctx->ctx.threads[ctx->ctx.next_thread_id]->post_event_locked(EVT_GET_STAT, 0, ctx);
+		((PfSpdkQueue *)ctx->ctx.threads[ctx->ctx.next_thread_id])->post_event_locked(EVT_GET_STAT, 0, ctx);
 	}
 }
 
@@ -411,7 +411,7 @@ void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm)
 	}
 
 	if (ctx->ctx.num_threads > 0) {
-		ctx->ctx.threads[ctx->ctx.next_thread_id]->post_event_locked(EVT_GET_STAT, 0, ctx);
+		((PfSpdkQueue *)ctx->ctx.threads[ctx->ctx.next_thread_id])->post_event_locked(EVT_GET_STAT, 0, ctx);
 	}
 	sem_wait(&ctx->sem);
 	sem_destroy(&ctx->sem);

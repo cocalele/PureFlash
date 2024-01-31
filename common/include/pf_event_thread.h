@@ -57,7 +57,7 @@ struct get_stats_ctx {
 	int next_thread_id;
 	int num_threads;
 	std::vector<pfqueue*> threads;
-    std::vector<thread_stat> thread_stats;
+	std::vector<thread_stat> thread_stats;
 	uint64_t now;
 };
 

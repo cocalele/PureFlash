@@ -58,7 +58,6 @@ public:
 	int event_fd;
 
 	virtual int post_event(int type, int arg_i, void* arg_p, void* arg_q = NULL) = 0;
-	virtual int post_event_locked(int type, int arg_i, void* arg_p) = 0;
 	virtual void destroy() = 0;
 	virtual int sync_invoke(std::function<int()> f) = 0;
 };
@@ -78,7 +77,6 @@ public:
 	int init(const char* name, int size, BOOL semaphore_mode);
 	void destroy();
 	int post_event(int type, int arg_i, void* arg_p, void* arg_q=NULL);
-	int post_event_locked(int type, int arg_i, void* arg_p);
 	int get_events(PfFixedSizeQueue<S5Event>** /*out*/ q);
 	int get_event(S5Event* /*out*/ evt);
 	inline bool is_empty() { return current_queue->is_empty();}
