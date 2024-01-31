@@ -144,6 +144,7 @@ int init_restful_server()
 	// Set up HTTP server parameters
 	mg_set_protocol_http_websocket(c);
 	S5LOG_INFO("Start restful server on port:%s", port);
+	S5LOG_INFO("PureFlash started OK");
 	while (1)
 		mg_mgr_poll(&mgr, 1000);
 

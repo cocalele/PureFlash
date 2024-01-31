@@ -30,12 +30,9 @@ public:
 	PfPoller* pollers;
 	int poller_cnt;
 	pthread_t			listen_s5toe_thread; 		///< The thread to receive toe msg request
-	pthread_t			hb_check_conn_thread;       /* use heartbeat check conn state */
 	int server_socket_fd;
-    std::map<std::string, PfConnection*> client_ip_conn_map; /* ref: ip_id_map */
 	int init();
 	void listen_proc();
-	void hb_check_conn();
 	int accept_connection();
 	void stop();
 private:
@@ -54,7 +51,6 @@ public:
 	int init(int port);
 	int server_socket_fd;
 	pthread_t rdma_listen_t;
-    std::map<std::string, PfConnection*> client_ip_conn_map;
 	struct rdma_event_channel* ec;
 	struct rdma_cm_id* cm_id;
 	int on_connect_request(struct rdma_cm_event *evt);

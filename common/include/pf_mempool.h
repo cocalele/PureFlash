@@ -69,6 +69,7 @@ public:
 		int rc = free_obj_queue.enqueue_nolock(p);
 		pthread_spin_unlock(&lock);
 		if (rc != 0) {
+			S5LOG_ERROR("Failed to free obj:%p, pool is full", p);
 			throw std::runtime_error("call free to full memory pool");
 		}
 	}

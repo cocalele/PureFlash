@@ -39,7 +39,6 @@ static void *cq_poller_proc(void *arg_)
     void *cq_ctx;
     int n;
     ibv_get_cq_event(prp_poller->prp_comp_channel, &cq, &cq_ctx);
-    ibv_ack_cq_events(cq, 1);
     ibv_req_notify_cq(cq, 0);
     while((n = ibv_poll_cq(cq, MAX_WC_CNT, wc)))
     {   
@@ -53,7 +52,8 @@ static void *cq_poller_proc(void *arg_)
             }
             struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
             if(wc[i].status != IBV_WC_SUCCESS){
-            	S5LOG_WARN("conn:%p wc[%d].status != IBV_WC_SUCCESS, wc.status:%d, %s",conn, i, wc[i].status, ibv_wc_status_str(wc[i].status));
+            	S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc",
+					conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status), msg->wr_op, wc[i].opcode, i,n);
             }
 			//S5LOG_INFO("cq poller get msg!!!!!!, opcode:%d", msg->wr_op);
             if (likely(conn->on_work_complete))
@@ -61,6 +61,7 @@ static void *cq_poller_proc(void *arg_)
                 conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
             }
         }
+		ibv_ack_cq_events(cq, n);
     }
     return NULL;
 }

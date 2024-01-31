@@ -10,11 +10,14 @@
  * This file implements the apis to initialize/release this server, and the functions to handle request messages.
  */
 
+#include <sys/types.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/prctl.h>
+#include <pthread.h>
 
 #include "pf_server.h"
 #include "pf_tcp_connection.h"
@@ -39,12 +42,6 @@ void *afs_listen_thread(void *param)
 
 	return NULL;
 }
-void *hb_check_conn_thread_start(void *param)
-{
-	((PfTcpServer*)param)->hb_check_conn();
-
-	return NULL;
-}
 
 
 int PfTcpServer::init()
@@ -65,12 +62,7 @@ int PfTcpServer::init()
 		S5LOG_FATAL("Failed to create TCP listen thread failed rc:%d",rc);
 		return rc;
 	}
-	rc = pthread_create(&hb_check_conn_thread, NULL, hb_check_conn_thread_start, this);
-	if (rc)
-	{
-		S5LOG_FATAL("Failed to create TCP heartbeat check conn state thread rc:%d",rc);
-		return rc;
-	}
+
 	return rc;
 }
 
@@ -126,20 +118,6 @@ void PfTcpServer::listen_proc()
 release2:
 release1:
 	return;
-}
-
-void PfTcpServer::hb_check_conn()
-{
-    while(1) {
-        for(auto it = client_ip_conn_map.begin(); it != client_ip_conn_map.end(); ++it) {
-            auto c = it->second;
-            auto ip = it->first;
-            S5LOG_WARN("Connection:%s ip:%s in state:%s, will check heartbeat or last_io_time", 
-                c->connection_info.c_str(), ip, ConnState2Str(c->state));
-        }
-        sleep(120);
-    }
-    return;
 }
 
 int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* conn, void* cbk_data)
@@ -400,7 +378,7 @@ int PfTcpServer::accept_connection()
 	bd->data_len = bd->buf_capacity;
 	conn->on_work_complete = on_tcp_handshake_recved;
 	conn->add_ref(); //decreased in `server_on_conn_close`
-	conn->transport = TRANSPORT_TCP;
+	conn->conn_type = TCP_TYPE;
 	conn->on_close = server_on_conn_close;
 	conn->on_destroy = server_on_conn_destroy;
 	rc = conn->post_recv(bd);
@@ -413,7 +391,7 @@ int PfTcpServer::accept_connection()
 	conn->last_heartbeat_time = now_time_usec();
 	//app_context.ingoing_connections.insert(conn);
 	S5LOG_INFO("add tcp conn ip:%s to heartbeat checker list", client_ip);
-    client_ip_conn_map[client_ip] = conn;
+	app_context.add_connection(conn);
 	return 0;
 release5:
 	delete (PfHandshakeMessage*)bd->buf;
@@ -452,4 +430,30 @@ void PfTcpServer::stop()
 		pollers[i].destroy();
 	}
 	S5LOG_INFO("TCP server stopped");
+}
+
+void server_cron_proc(void)
+{
+	prctl(PR_SET_NAME, "cron_srv");
+	while (1)
+	{
+		if (sleep(10) != 0)
+			return;
+		uint64_t now = now_time_usec();
+#define CLOSE_TIMEOUT_US 180000000ULL
+		std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
+		for (auto it = app_context.client_ip_conn_map.begin(); it != app_context.client_ip_conn_map.end(); ++it) {
+			PfConnection* c = it->second;
+
+			if(c->state == CONN_CLOSED && now > c->close_time + CLOSE_TIMEOUT_US){
+				c->add_ref();//dec on process EVT_FORCE_RELEASE_CONN
+				S5LOG_WARN("Connection:%p %s closed but not release", c, c->connection_info.c_str());
+				c->dispatcher->event_queue->post_event(EVT_FORCE_RELEASE_CONN, 0, c);
+			}
+
+			//TODO: check heartbeat here
+			//S5LOG_WARN("Connection:%s  in state:%s, will check heartbeat or last_io_time",
+			//	c->connection_info.c_str(), ConnState2Str(c->state));
+		}
+	}
 }

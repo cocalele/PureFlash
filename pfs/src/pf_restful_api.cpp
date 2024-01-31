@@ -17,6 +17,7 @@
 #include "pf_scrub.h"
 #include "pf_stat.h"
 #include "pf_event_queue.h"
+#include "pf_server.h"
 
 using nlohmann::json;
 using namespace std;
@@ -186,7 +187,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		{
 			if (app_context.shard_to_replicator) {
 				// case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
-				// case2：primary shard is not asigned to this store but slave shard is asigned to this store, 
+				// case2£ºprimary shard is not asigned to this store but slave shard is asigned to this store, 
 				// 		  only alloc PfLocalReplica
 				// case3: no shard is asigned to this store, do noting
 				if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id && 
@@ -227,7 +228,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				if (app_context.shard_to_replicator) {
 					rp = app_context.get_replicator();
 				} else {
-					rp = app_context.replicators[(vol->id>>24)%app_context.replicators.size()];
+					rp = app_context.replicators[(vol->i24)%app_context.replicators.size()];
 				}
 				((PfSyncRemoteReplica*)r)->replicator = rp;
 
@@ -638,7 +639,27 @@ void handle_save_md_disk(struct mg_connection *nc, struct http_message * hm) {
 }
 
 void handle_stat_conn(struct mg_connection* nc, struct http_message* hm) {
-	std::string rst = format_string("established:%d closed:%d released:%d", PfConnection::total_count, PfConnection::closed_count, PfConnection::released_count);
+	std::string rst = format_string("established:%d closed:%d released:%d\n", PfConnection::total_count, PfConnection::closed_count, PfConnection::released_count);
+	
+	char verbose[16];
+	int found = mg_get_http_var(&hm->query_string, "verbose", verbose, sizeof(verbose));
+	if(found){
+		std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
+		for(auto it = app_context.client_ip_conn_map.begin(); it != app_context.client_ip_conn_map.end(); ++it) {
+			std::string line = format_string("%p %s, state:%d, ref_count:%d, volume:%s\n", it->second, it->second->connection_info.c_str(), 
+				it->second->state, it->second->ref_count, it->second->srv_vol ? it->second->srv_vol->name : "<NA>");
+			rst += line;
+		}
+
+		for(auto rp : app_context.replicators){
+			for (auto it = rp->conn_pool->ip_id_map.begin(); it != rp->conn_pool->ip_id_map.end(); ++it) {
+				std::string line = format_string("%p %s, state:%d, ref_count:%d, REPLICATING\n", it->second, it->second->connection_info.c_str(),
+					it->second->state, it->second->ref_count);
+				rst += line;
+			}
+
+		}
+	}
 	mg_send_head(nc, 200, rst.size(), "Content-Type: text/plain");
 	mg_send(nc, rst.c_str(), (int)rst.length());
 }
