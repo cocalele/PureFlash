@@ -49,4 +49,4 @@ assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_telemetry.so.
 assert cp -f $PUREFLASH_HOME/thirdParty/spdk/dpdk/build/lib/librte_pci.so.23 .
 
 
-docker build -f Dockerfile -t pureflash/pureflash:1.9.0 .
+docker build -f Dockerfile -t pureflash/pureflash:1.9.1 .

@@ -28,46 +28,55 @@ sleep 2
 set -v
 
 
-export JAVA_HOME=/usr/lib/jvm/jdk-15 
-export PATH=$JAVA_HOME/bin/:$PATH
+#export JAVA_HOME=/usr/lib/jvm/jdk-15 
+#export PATH=$JAVA_HOME/bin/:$PATH
 
 info "build jconductor"
-git clone https://gitee.com/cocalele/jconductor.git
+assert git clone https://gitee.com/cocalele/jconductor.git
 cd jconductor/
-git submodule update --init
-ant -f jconductor.xml 
+assert git submodule update --init
+assert ant -f jconductor.xml 
 
 info "build PureFlash"
 cd $DIR
-git clone https://gitee.com/cocalele/PureFlash.git
+assert git clone https://gitee.com/cocalele/PureFlash.git
 cd PureFlash/
-git submodule update --init
+assert git submodule update --init
 mkdir build
 cd build
-cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
-ninja
+assert cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
+assert ninja
 
 info "build fio with pfbd"
 cd $DIR
-git clone https://gitee.com/cocalele/fio.git
+assert git clone https://gitee.com/cocalele/fio.git
 cd fio
 #./configure --pfbd-include=$DIR/PureFlash/common/include --pfbd-lib=$DIR/PureFlash/build/bin
-./configure --pfbd-include=$DIR/PureFlash/common/include --pfbd-lib=$DIR/PureFlash/build/bin/ --spdk-lib=$DIR/PureFlash/thirdParty/spdk/build/lib --dpdk-lib=$DIR/PureFlash/thirdParty/spdk/dpdk/build/lib
-make
+assert ./configure --pfbd-include=$DIR/PureFlash/common/include --pfbd-lib=$DIR/PureFlash/build/bin/ --spdk-lib=$DIR/PureFlash/thirdParty/spdk/build/lib --dpdk-lib=$DIR/PureFlash/thirdParty/spdk/dpdk/build/lib
+assert make
 
 cd $DIR
 info "build qemu with pfbd"
+apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
+# apt install -y  libfdt-dev  #need on ARM
 git clone https://gitee.com/cocalele/qemu.git
 cd qemu
+git checkout v8.1.2-pfbd
 PUREFLASH_HOME=$DIR/PureFlash
 OSNAME=`$DIR/PureFlash/scripts/osname.sh`
 mkdir /usr/include/pfbd
 cp -f ${PUREFLASH_HOME}/common/include/pf_client_api.h /usr/include/pfbd/pf_client_api.h
 cp -f ${PUREFLASH_HOME}/build/bin/libs5common.a /usr/lib/libs5common.a
-cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libzookeeper_mt.a /usr/lib/libzookeeper.a
+cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libzookeeper_mt.a /usr/lib/libzookeeper_mt.a
 cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libhashtable.a /usr/lib/libhashtable.a
-mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
+( cd ${PUREFLASH_HOME}/build/bin; cp -rp libspdk* /usr/lib/)
+( cd ${PUREFLASH_HOME}/build/bin; cp -rp librte* /usr/lib/)
+( cd ${PUREFLASH_HOME}/build/bin; cp -rp dpdk /usr/lib/)
+mkdir build
+cd build
+assert ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring
+assert  ninja
 
-info "Begin build docker"
-cd $DIR/PureFlash/docker
-./build-docker.sh $DIR/jconductor $DIR/PureFlash/build $DIR/qemu/build $DIR/fio
+#info "Begin build docker"
+#cd $DIR/PureFlash/docker
+#assert ./build-docker.sh $DIR/jconductor $DIR/PureFlash/build $DIR/qemu/build $DIR/fio
