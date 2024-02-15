@@ -190,14 +190,15 @@ int main(int argc, char *argv[])
 		S5LOG_FATAL("meta_size in config file is not aligned on 1GiB");
 	}
 
-	const char *srb = conf_get(fp, "select_replicator_by", "name", NULL, false);
+	app_context.shard_to_replicator = false;
+	const char *srb = conf_get(fp, "select_replicator_policy", "name", "by_shard", false);
 	if (!srb) {
-		S5LOG_INFO("Failed to find key(select_replicator_by:name) in conf(%s).", s5daemon_conf);
-	}
-	if (strcmp(srb, "volume_shard") == 0)
+		S5LOG_INFO("Failed to find key(select_replicator_policy:name) in conf(%s).", s5daemon_conf);
+	} else if (strcmp(srb, "by_shard") == 0) {
 		app_context.shard_to_replicator = true;
-	
-	const char *engine = conf_get(fp, "engine", "name", NULL, false);
+	}
+
+	const char *engine = conf_get(fp, "engine", "name", "aio", false);
 	if (!engine) {
 		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
@@ -209,6 +210,7 @@ int main(int argc, char *argv[])
 		app_context.engine = SPDK;
 	else
 		app_context.engine = AIO;
+	S5LOG_INFO("Use io engine:%d", app_context.engine);
 
 	if (app_context.engine == SPDK) {
 		spdk_engine_set(true);
