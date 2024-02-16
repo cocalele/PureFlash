@@ -41,7 +41,7 @@ info "build PureFlash"
 cd $DIR
 assert git clone https://gitee.com/cocalele/PureFlash.git
 cd PureFlash/
-assert git submodule update --init
+assert git submodule update --init --recursive
 mkdir build
 cd build
 assert cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
@@ -57,9 +57,9 @@ assert make
 
 cd $DIR
 info "build qemu with pfbd"
-apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
+assert apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
 # apt install -y  libfdt-dev  #need on ARM
-git clone https://gitee.com/cocalele/qemu.git
+assert git clone https://gitee.com/cocalele/qemu.git
 cd qemu
 git checkout v8.1.2-pfbd
 PUREFLASH_HOME=$DIR/PureFlash
