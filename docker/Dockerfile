@@ -1,14 +1,28 @@
-ARG PFS_BUILD=/PureFlash/build
-ARG QEMU_BUILD=/qemu/build
-ARG FIO_BUILD=/fio
 FROM docker.io/pureflash/pureflash-dev:1.9.1-x64 AS builder
 
 WORKDIR /
 RUN wget https://gitee.com/cocalele/PureFlash/raw/master/docker/build-all.sh
 RUN bash ./build-all.sh
 
-FROM pureflash/pureflash-base:22.04
+FROM ubuntu:22.04
 LABEL version="1.9.1"
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/ShangHai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+#COPY apt-ali-sources-2204-arm.list /etc/apt/sources.list 
+COPY apt-ali-sources-2204.list /etc/apt/sources.list 
+RUN apt update
+
+RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool libuuid1 tar unzip  util-linux vim wget  net-tools 
+
+#To install mariadb-server
+RUN apt install -y mariadb-server
+
+#To install java for zk and jconductor
+RUN  apt install -y default-jre
+
+
 
 RUN mkdir /etc/pureflash
 COPY --from=builder /PureFlash/docker/conf/pfc.conf /etc/pureflash/pfc.conf
@@ -25,7 +39,7 @@ RUN mkdir -p /opt/pureflash/jconductor
 RUN mkdir -p /opt/pureflash/mariadb
 
 COPY --from=builder /jconductor/pfconductor.jar /opt/pureflash/jconductor/
-COPY --from=builder /jconductor/lib /opt/pureflash/jconductor/
+COPY --from=builder /jconductor/lib /opt/pureflash/jconductor/lib/
 
 
 COPY --from=builder /jconductor/res/apache-zookeeper-3.5.9-bin.tar.gz  /opt/pureflash/
@@ -36,13 +50,13 @@ COPY --from=builder  /jconductor/res/init_s5metadb.sql  /opt/pureflash/mariadb/
 COPY --from=builder  /jconductor/pfcli  /opt/pureflash
 
 
-COPY --from=builder  ${PFS_BUILD}/bin/* /opt/pureflash/
-#COPY --from=builder  ${PFS_BUILD}/bin/pfdd /opt/pureflash/
-COPY --from=builder  ${QEMU_BUILD}/qemu-img /opt/pureflash/
-COPY --from=builder  ${FIO_BUILD}/fio /opt/pureflash/
-COPY --from=builder /PureFlash/docker/run-all.sh /opt/pureflash/run-all.sh
-COPY --from=builder /PureFlash/docker/restart-pfc.sh /opt/pureflash/restart-pfc.sh
-COPY --from=builder /PureFlash/docker/restart-pfs.sh /opt/pureflash/restart-pfs.sh
+COPY --from=builder  /PureFlash/build/bin/* /opt/pureflash/
+#COPY --from=builder  /PureFlash/build/bin/pfdd /opt/pureflash/
+COPY --from=builder  /qemu/build/qemu-img /opt/pureflash/
+COPY --from=builder  /fio/fio /opt/pureflash/
+COPY --from=builder  /PureFlash/docker/run-all.sh /opt/pureflash/run-all.sh
+COPY --from=builder  /PureFlash/docker/restart-pfc.sh /opt/pureflash/restart-pfc.sh
+COPY --from=builder  /PureFlash/docker/restart-pfs.sh /opt/pureflash/restart-pfs.sh
 
 COPY --from=builder /PureFlash/docker/mariadb/mariadb.cnf /etc/mysql/mariadb.cnf
 COPY --from=builder /PureFlash/docker/mariadb/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
