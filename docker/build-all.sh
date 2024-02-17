@@ -58,7 +58,7 @@ assert make
 cd $DIR
 info "build qemu with pfbd"
 assert apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
-pip3 install -U pip
+assert pip3 install -U pip
 # apt install -y  libfdt-dev  #need on ARM
 assert git clone https://gitee.com/cocalele/qemu.git
 cd qemu
