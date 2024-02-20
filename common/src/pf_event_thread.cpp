@@ -7,9 +7,12 @@
 void* thread_proc_spdkr(void* arg);
 void* thread_proc_eventq(void* arg);
 
+static __thread PfEventThread *cur_thread = NULL;
+
 PfEventThread::PfEventThread() {
 	inited = false;
 }
+
 int PfEventThread::init(const char* name, int qd)
 {
 	int rc;
@@ -101,7 +104,7 @@ void PfEventThread::stop()
 	if(rc) {
 		S5LOG_ERROR("Failed call pthread_join on thread:%s, rc:%d", name, rc);
 	}
-	tid=0;
+	tid = 0;
 
 }
 
@@ -140,6 +143,23 @@ void* thread_proc_eventq(void* arg)
 	return NULL;
 }
 
+int get_thread_stats(pf_thread_stats *stats) {
+	if (cur_thread == NULL) {
+		S5LOG_ERROR("thread is not exist");
+		return -1;
+	}
+	*stats = cur_thread->stats;
+	return 0;
+}
+
+PfEventThread * get_current_thread() {
+	if (cur_thread == NULL) {
+		S5LOG_ERROR("thread is not exist");
+		assert(0);
+	}
+	return cur_thread;
+}
+
 static void thread_update_stats(PfEventThread *thread, uint64_t end,
 			uint64_t start, int rc)
 {
@@ -175,6 +195,12 @@ static int event_queue_run_batch(PfEventThread *thread) {
 					thread->exiting = true;
 					break;
 				}
+				case EVT_GET_STAT:
+				{
+					auto ctx = (get_stats_ctx*)event->event.arg_p;
+					ctx->fn(ctx);
+					break;
+				}
 				default:
 				{	
 					thread->process_event(event->event.type, event->event.arg_i, event->event.arg_p, event->event.arg_q);
@@ -196,10 +222,10 @@ static int func_run(PfEventThread *thread) {
 }
 
 static int thread_poll(PfEventThread *thread) {
-	int rc = 0;
-	rc = event_queue_run_batch(thread);
-	rc = func_run(thread);
-	return rc;
+	if (event_queue_run_batch(thread) || func_run(thread)) {
+		return PF_POLLER_BUSY;
+	}
+	return PF_POLLER_IDLE;
 }
 
 void* thread_proc_spdkr(void* arg)
@@ -209,6 +235,7 @@ void* thread_proc_spdkr(void* arg)
 	pThis->tsc_last = spdk_get_ticks();
 	PfSpdkQueue *eq = (PfSpdkQueue *)pThis->event_queue;
 	eq->set_thread_queue();
+	cur_thread = pThis;
 	while(!pThis->exiting) {
 		int rc = 0;
 		rc = thread_poll(pThis);

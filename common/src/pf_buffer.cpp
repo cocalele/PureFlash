@@ -18,24 +18,23 @@ int BufferPool::init(size_t buffer_size, int count)
 	if(rc != 0)
 		throw std::runtime_error(format_string("init memory pool failed, rc:%d", rc));
 	clean.push_back([this](){free_bds.destroy(); });
-	if (dma_buffer_used == 0) {
+	if (dma_buffer_used) {
+		data_buf = spdk_dma_zmalloc(buffer_size*count, 4096, NULL);
+		if(data_buf == NULL)
+			throw std::runtime_error(format_string("Failed to alloc memory of:%d bytes", buffer_size*count));
+		clean.push_back([this](){ ::spdk_dma_free(data_buf); });		
+	} else {
 		data_buf = memalign(4096, buffer_size*count);
 		if(data_buf == NULL)
 			throw std::runtime_error(format_string("Failed to alloc memory of:%d bytes", buffer_size*count));
 		clean.push_back([this](){ ::free(data_buf); });
-	}
-	else {
-		data_buf = spdk_dma_zmalloc(buffer_size*count, 4096, NULL);
-		if(data_buf == NULL)
-			throw std::runtime_error(format_string("Failed to alloc memory of:%d bytes", buffer_size*count));
-		clean.push_back([this](){ ::spdk_dma_free(data_buf); });
 	}
 
 	data_bds = (BufferDescriptor*)calloc(count, sizeof(BufferDescriptor));
 	if(data_bds == NULL)
 		throw std::runtime_error(format_string("Failed to alloc memory of:%d bytes", count * sizeof(BufferDescriptor)));
 	clean.push_back([this](){ ::free(data_bds); });
-	for(int i=0;i<count;i++)
+	for(int i = 0; i < count; i++)
 	{
 		data_bds[i].buf = (char*)data_buf + buffer_size * i;
 		data_bds[i].buf_capacity = (int)buffer_size;
@@ -50,10 +49,11 @@ int BufferPool::init(size_t buffer_size, int count)
 void BufferPool::destroy()
 {
 	::free(data_bds);
-	if (dma_buffer_used == 0)
-		::free(data_buf);
-	else
+	if (dma_buffer_used) {
 		spdk_dma_free(data_buf);
+	} else {
+		::free(data_buf);
+	}
 
 	free_bds.destroy();
 }

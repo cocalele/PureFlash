@@ -16,6 +16,7 @@
 #include "pf_replica.h"
 #include "pf_scrub.h"
 #include "pf_stat.h"
+#include "pf_event_queue.h"
 #include "pf_server.h"
 
 using nlohmann::json;
@@ -68,6 +69,24 @@ void from_json(const json& j, DeleteVolumeArg& p) {
 	j.at("op").get_to(p.op);
 	j.at("volume_name").get_to(p.volume_name);
 	j.at("volume_id").get_to(p.volume_id);
+}
+
+void from_json(const json& j, GetThreadStatsArg& p) {
+	j.at("op").get_to(p.op);
+}
+
+void from_json(const nlohmann::json& j, GetThreadStatsReply& p) {
+	from_json(j, *((RestfulReply*)&p));
+	for (int i = 0; i < p.thread_stats.size(); i++) {
+		j.at("name").get_to(p.thread_stats[i].name);
+		j.at("tid").get_to(p.thread_stats[i].tid);
+		j.at("busy").get_to(p.thread_stats[i].stats.busy_tsc);
+		j.at("idle").get_to(p.thread_stats[i].stats.idle_tsc);
+	}
+}
+
+void to_json(json& j, thread_stat& r) {
+	j = json{{ "name", r.name },{ "tid", r.tid },{ "busy", r.stats.busy_tsc }, {"idle", r.stats.idle_tsc}};
 }
 
 void from_json(const json& j, GetSnapListReply& p) {
@@ -168,7 +187,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		{
 			if (app_context.shard_to_replicator) {
 				// case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
-				// case2£ºprimary shard is not asigned to this store but slave shard is asigned to this store, 
+				// case2: primary shard is not asigned to this store but slave shard is asigned to this store, 
 				// 		  only alloc PfLocalReplica
 				// case3: no shard is asigned to this store, do noting
 				if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id && 
@@ -334,6 +353,84 @@ void handle_delete_volume(struct mg_connection *nc, struct http_message * hm)
 
 	RestfulReply r(arg.op + "_reply");
 	send_reply_to_client(r, nc);
+}
+
+static void _thread_get_stats(void *arg)
+{
+	struct restful_get_stats_ctx *ctx = (struct restful_get_stats_ctx*)arg;
+	struct PfEventThread *thread = get_current_thread();
+	struct pf_thread_stats stats;
+
+	if (0 == get_thread_stats(&stats)) {
+		ctx->ctx.thread_stats.push_back( {thread->name, thread->tid, stats} );
+	} else {
+		sem_post(&ctx->sem);
+		return;		
+	}
+	ctx->ctx.next_thread_id++;
+
+	// collect done
+	if (ctx->ctx.next_thread_id == ctx->ctx.num_threads) {
+		for (int i = 0; i < ctx->ctx.thread_stats.size(); i++) {
+			S5LOG_INFO("thread stats: name: %s, tid: %llu, busy: %llu, idle: %llu",
+				ctx->ctx.thread_stats[i].name.c_str(), ctx->ctx.thread_stats[i].tid,
+				ctx->ctx.thread_stats[i].stats.busy_tsc,
+				ctx->ctx.thread_stats[i].stats.idle_tsc);
+		}
+		sem_post(&ctx->sem);
+	} else {
+		// continue to get next thread stat
+		((PfSpdkQueue *)ctx->ctx.threads[ctx->ctx.next_thread_id])->post_event_locked(EVT_GET_STAT, 0, ctx);
+	}
+}
+
+void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm)
+{
+	S5LOG_INFO("Receive get thread stats req===========\n%.*s\n============", (int)hm->body.len, hm->body.p);
+	auto j = json::parse(hm->body.p, hm->body.p + hm->body.len);
+	GetThreadStatsReply reply;
+	GetThreadStatsArg arg = j.get<GetThreadStatsArg>();
+	auto ctx = new restful_get_stats_ctx();
+	ctx->ctx.next_thread_id = 0;
+	ctx->ctx.fn = _thread_get_stats;
+	ctx->nc = nc;
+	sem_init(&ctx->sem, 0, 0);
+	for (int i = 0; i < app_context.disps.size(); i++) {
+		ctx->ctx.threads.push_back(app_context.disps[i]->event_queue);
+		ctx->ctx.num_threads++;
+	}
+
+	for (int i = 0; i < app_context.replicators.size(); i++) {
+		ctx->ctx.threads.push_back(app_context.replicators[i]->event_queue);
+		ctx->ctx.num_threads++;
+	}
+
+	for (int i = 0; i < app_context.trays.size(); i++) {
+		ctx->ctx.threads.push_back(app_context.trays[i]->event_queue);
+		ctx->ctx.num_threads++;
+	}
+
+	if (ctx->ctx.num_threads > 0) {
+		((PfSpdkQueue *)ctx->ctx.threads[ctx->ctx.next_thread_id])->post_event_locked(EVT_GET_STAT, 0, ctx);
+	}
+	sem_wait(&ctx->sem);
+	sem_destroy(&ctx->sem);
+	reply.thread_stats = ctx->ctx.thread_stats;
+	S5LOG_INFO("Succeeded get thread stats");
+	reply.op = "get_thread_stats_reply";
+	reply.ret_code = 0;
+	//send_reply_to_client(reply, nc);
+	auto jarray = nlohmann::json::array();
+	for (int i = 0; i < reply.thread_stats.size(); i++) {
+		nlohmann::json j;
+		to_json(j, reply.thread_stats[i])
+		jarray.emplace_back(j);
+	}
+	string jstr = jarray.dump();
+	const char* cstr = jstr.c_str();
+	mg_send_head(nc, reply.ret_code == 0 ? 200 : 400, strlen(cstr), "Content-Type: text/plain");
+	mg_printf(nc, "%s", cstr);
+	free(ctx);
 }
 
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm) {

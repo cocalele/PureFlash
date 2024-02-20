@@ -67,14 +67,15 @@ public:
 			if (s->replicas[i] == NULL) {
 				continue;
 			}
-			if(s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
-				subtasks[i]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;
+			if (s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
+				subtasks[i]->complete_status = PfMessageStatus::MSG_STATUS_SUCCESS;
 				subtasks[i]->opcode = opcode;  //subtask opcode will be OP_WRITE or OP_REPLICATE_WRITE
 				task_mask |= subtasks[i]->task_mask;
 				add_ref();
 			}
 		}
 	}
+	
 	void inline setup_one_subtask(PfShard* s, int rep_index, PfOpCode opcode)
 	{
 		subtasks[rep_index]->complete_status=PfMessageStatus::MSG_STATUS_SUCCESS;

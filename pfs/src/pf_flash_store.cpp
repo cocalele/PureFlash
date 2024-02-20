@@ -504,8 +504,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 
-	if (unlikely(block_pos == obj_lmt.end()))
-	{
+	if (unlikely(block_pos == obj_lmt.end())) {
 		//S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
 		if (free_obj_queue.is_empty())	{
 			S5LOG_ERROR("Disk:%s is full!", tray_name);
@@ -522,16 +521,13 @@ int PfFlashStore::do_write(IoSubTask* io)
 		};
 		obj_lmt[key] = entry;
 		int rc = redolog->log_allocation(&key, entry, free_obj_queue.head);
-		if (rc)
-		{
+		if (rc) {
 			app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
 			S5LOG_ERROR("log_allocation error, rc:%d", rc);
 			return 0;
 		}
 
-	}
-	else
-	{
+	} else {
 		//static int dirty_bit=0;
 		entry = block_pos->second;
 		if(unlikely(entry->status == EntryStatus::RECOVERYING)) {
@@ -553,6 +549,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
 			return 0;
 		}
+
 		if(likely(cmd->snap_seq == entry->snap_seq)) {
 			if (unlikely(entry->status != EntryStatus::NORMAL))
 			{
@@ -571,9 +568,8 @@ int PfFlashStore::do_write(IoSubTask* io)
 				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
 			io->ops->complete(io, MSG_STATUS_READONLY);
 			return 0;
-		} else if(unlikely(cmd->snap_seq > entry->snap_seq)) {
-			if (free_obj_queue.is_empty())
-			{
+		} else if (unlikely(cmd->snap_seq > entry->snap_seq)) {
+			if (free_obj_queue.is_empty()) {
 				app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
 				return -ENOSPC;
 			}
@@ -587,8 +583,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			};
 			obj_lmt[key] = cow_entry;
 			int rc = redolog->log_allocation(&key, cow_entry, free_obj_queue.head);
-			if (rc)
-			{
+			if (rc) {
 				app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
 				S5LOG_ERROR("log_allocation error, rc:%d", rc);
 				return -EIO;
@@ -1279,7 +1274,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/owner_store", uuid_str);
 	switch (event_type) {
 	case EVT_WAIT_OWNER_LOCK: //this will be the first event received for shared disk
-		do{
+		do {
 			rc = app_context.zk_client.wait_lock(zk_node_name, store_id_str); //we will not process any event before get lock
 			pthread_testcancel();
 			if(rc){
@@ -1294,7 +1289,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 				}
 			}
 
-		}while(rc);
+		} while(rc);
 
 		break;
 	case EVT_IO_REQ:
