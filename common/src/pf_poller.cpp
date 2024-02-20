@@ -7,6 +7,8 @@
 
 #include "pf_poller.h"
 #include "pf_log.h"
+#include "pf_app_ctx.h"
+
 PfPoller::PfPoller() :epfd(0),tid(0),max_fd(0)
 {
 
@@ -186,10 +188,17 @@ void PfPoller::run()
 	memset(&sp, 0, sizeof(sp));
 	sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
 	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+	auto used_spdk_engine = spdk_engine_used();
 	while (1)
 	{
 
-		int nfds = epoll_wait(epfd, rev, max_fd, -1);
+		int nfds;
+		if (!used_spdk_engine) {
+			nfds = epoll_wait(epfd, rev, max_fd, -1);
+		} else {
+			// to avoid thread context switch
+			nfds = epoll_wait(epfd, rev, max_fd, 0);
+		}
 		if (nfds == -1)
 		{
 			//interrupted, no message in
