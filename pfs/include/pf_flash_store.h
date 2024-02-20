@@ -114,10 +114,10 @@ public:
 	 * @return 0 on success, negative for error
 	 * @retval -ENOENT  device not exist or failed to open
 	 */
-	int init(const char* dev_name);
-	int shared_disk_init(const char* tray_name);
+	int init(const char* dev_name, uint16_t* p_id);
+	int shared_disk_init(const char* tray_name, uint16_t* p_id);
 	int owner_init();
-	int spdk_nvme_init(const char* trid_str);
+	int spdk_nvme_init(const char* trid_str, uint16_t* p_id);
 	int register_controller(const char *trid_str);
 
 	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);

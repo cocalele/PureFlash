@@ -101,7 +101,7 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
         pthread_spin_unlock(&lock);
         msg->lock_cache_msg = true;
     }
-
+    msg->start_time = spdk_get_ticks();
     msg->event.type = type;
     msg->event.arg_i = arg_i;
     msg->event.arg_p = arg_p;
@@ -124,7 +124,7 @@ int PfSpdkQueue::post_event_locked(int type, int arg_i, void* arg_p)
     msg = SLIST_FIRST(&msg_cache_locked);
     SLIST_REMOVE_HEAD(&msg_cache_locked, link);
     pthread_spin_unlock(&lock);
-
+    msg->start_time = spdk_get_ticks();
     msg->event.type = type;
     msg->event.arg_i = arg_i;
     msg->event.arg_p = arg_p;

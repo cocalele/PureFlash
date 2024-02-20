@@ -49,6 +49,9 @@
 #include "pf_spdk.h"
 #include "pf_spdk_engine.h"
 #include "pf_atslock.h"
+#include "pf_trace_defs.h"
+#include "spdk/trace.h"
+#include "spdk/env.h"
 
 using namespace std;
 using nlohmann::json;
@@ -125,11 +128,11 @@ int  PfFlashStore::format_disk()
 	return 0;
 }
 
-int PfFlashStore::shared_disk_init(const char* tray_name)
+int PfFlashStore::shared_disk_init(const char* tray_name, uint16_t* p_id)
 {
 	int ret = 0;
 	this->is_shared_disk = true;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2, *p_id);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading shared disk %s ...", tray_name);
 	Cleaner err_clean;
@@ -404,11 +407,11 @@ int PfFlashStore::start_metadata_service(bool init)
  * @retval -ENOENT  tray not exist or failed to open
  */
 
-int PfFlashStore::init(const char* tray_name)
+int PfFlashStore::init(const char* tray_name, uint16_t *p_id)
 {
 	int ret = 0;
 	this->is_shared_disk = false;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2, *p_id);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading disk %s ...", tray_name);
 	Cleaner err_clean;
@@ -526,7 +529,6 @@ int PfFlashStore::do_write(IoSubTask* io)
 			S5LOG_ERROR("log_allocation error, rc:%d", rc);
 			return 0;
 		}
-
 	} else {
 		//static int dirty_bit=0;
 		entry = block_pos->second;
@@ -600,9 +602,8 @@ int PfFlashStore::do_write(IoSubTask* io)
 
 
 	}
-
+	io->submit_time = spdk_get_ticks();
 	ioengine->submit_io(io, entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask), cmd->length);
-
 	return 0;
 }
 
@@ -1277,7 +1278,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 		do {
 			rc = app_context.zk_client.wait_lock(zk_node_name, store_id_str); //we will not process any event before get lock
 			pthread_testcancel();
-			if(rc){
+			if (rc) {
 				if(exiting)
 					return rc;
 				S5LOG_ERROR("Unexcepted rc on contention owner, rc:%d", rc);
@@ -2650,7 +2651,7 @@ int PfFlashStore::register_controller(const char *trid_str)
 }
 
 int disk_cnt = 0;
-int PfFlashStore::spdk_nvme_init(const char *trid_str)
+int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 {
 	int rc;
 	int ret;
@@ -2672,7 +2673,7 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 
 	safe_strcpy(this->tray_name, trid_str, sizeof(this->tray_name));
 
-	PfEventThread::init(name_pool, MAX_AIO_DEPTH*2);
+	PfEventThread::init(name_pool, MAX_AIO_DEPTH*2, *p_id);
 
 	S5LOG_INFO("Spdk Loading tray %s ...", trid_str);
 
@@ -2692,4 +2693,23 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
 	
 	return ret;
+}
+
+SPDK_TRACE_REGISTER_FN(spdk_engine_trace, "spdk", TRACE_GROUP_SPDK)
+{
+	struct spdk_trace_tpoint_opts opts[] = {
+        {
+			"DISK_IO_STAT", TRACE_DISK_IO_STAT,
+			OWNER_PFS_SPDK_IO, OBJECT_SPDK_IO, 1,
+			{
+				{ "lcost", SPDK_TRACE_ARG_TYPE_INT, 8},
+				{ "icost", SPDK_TRACE_ARG_TYPE_INT, 8}
+			}
+		},
+	};
+
+
+	spdk_trace_register_owner(OWNER_PFS_SPDK_IO, 's');
+	spdk_trace_register_object(OBJECT_SPDK_IO, 's');
+	spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
 }

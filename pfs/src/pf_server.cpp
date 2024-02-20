@@ -32,6 +32,7 @@
 #include "pf_flash_store.h"
 #include "pf_volume.h"
 #include "pf_dispatcher.h"
+#include "spdk/env.h"
 
 static void *afs_listen_thread(void *param);
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
@@ -242,6 +243,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
+					iocb->received_time_hz = spdk_get_ticks();
 					if (spdk_engine_used())
 						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
 					else
@@ -251,6 +253,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
+				iocb->received_time_hz = spdk_get_ticks();
 				if (spdk_engine_used())
 					((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
 				else

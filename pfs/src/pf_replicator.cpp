@@ -348,7 +348,7 @@ static int replicator_on_tcp_network_done(BufferDescriptor* bd, WcStatus complet
 		 *    so, in `replicator_on_conn_close` , it will retry IO
 		 */
 		S5LOG_ERROR("replicating connection closed, %s", bd->conn->connection_info.c_str());
-		if(bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
+		if (bd->data_len == sizeof(PfMessageReply)) { //error during receive reply
 			S5LOG_WARN("Connection:%p error during receive reply, will resend IO", conn);
 			conn->replicator->mem_pool.reply_pool.free(bd);
 		} else if(bd->data_len == sizeof(PfMessageHead)) { //error during send head
@@ -499,14 +499,14 @@ int PfReplicator::handle_conn_close(PfConnection *c)
 	return 0;
 }
 
-int PfReplicator::init(int index)
+int PfReplicator::init(int index, uint16_t* p_id)
 {
 	int rc;
 	rep_index = index;
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
 	int rep_iodepth = 256; //io depth in single connection
 	int rep_iocb_depth = 8192; //total IO's in processing
-	PfEventThread::init(name, rep_iocb_depth);
+	PfEventThread::init(name, rep_iocb_depth, *p_id++);
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
@@ -575,7 +575,7 @@ int PfReplicator::init(int index)
 	}
 #ifdef USE_DELAY_THREAD
 	delay_thread.replicator = this;
-	delay_thread.init("delay", rep_iocb_depth);
+	delay_thread.init("delay", rep_iocb_depth, *p_id);
 	delay_thread.start();
 #endif
 	clean.cancel_all();

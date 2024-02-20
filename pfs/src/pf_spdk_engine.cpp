@@ -8,6 +8,9 @@
 #include "pf_spdk.h"
 
 #include "pf_spdk_engine.h"
+#include "pf_trace_defs.h"
+#include "spdk/trace.h"
+#include "spdk/env.h"
 
 int PfspdkEngine::init()
 {
@@ -153,8 +156,12 @@ void PfspdkEngine::spdk_io_complete(void* ctx, const struct spdk_nvme_cpl* cpl)
 	// todo: io error handle
 	struct IoSubTask* io = (struct IoSubTask*)ctx;
 
-	io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
+	uint64_t complete_tsc = spdk_get_ticks();
+	spdk_poller_trace_record(TRACE_DISK_IO_STAT, get_current_thread()->poller_id, 0, io->parent_iocb->cmd_bd->cmd_bd->offset,
+								get_us_from_tsc(complete_tsc - ((PfServerIocb *)io->parent_iocb)->received_time_hz, get_current_thread()->tsc_rate),
+								get_us_from_tsc(complete_tsc - io->submit_time, get_current_thread()->tsc_rate));
 
+	io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
 }
 
 int PfspdkEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len)

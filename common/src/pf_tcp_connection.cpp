@@ -294,7 +294,7 @@ int PfTcpConnection::do_receive()
 	int rc = 0;
 
 	do {
-		if (recv_bd == NULL){
+		if (recv_bd == NULL) {
 			if (recv_q.is_empty()) {
 				return 0;
 			}

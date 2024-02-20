@@ -509,7 +509,8 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 		return -ENOMEM;
 	}
 	clean.push_back([this] {delete this->vol_proc;  });
-	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4);
+	int poller_id = 0;
+	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4, &poller_id);
 	if (rc != 0) {
 		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
 		return rc;
