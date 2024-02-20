@@ -131,7 +131,8 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 		if (conn->state == CONN_CLOSING) {
 			S5LOG_WARN("Handshake sent but connection in state:%d is to be closed, conn:%s", conn->state, conn->connection_info.c_str());
 			conn->state = CONN_OK;//to make close works correctly
-			conn->close();
+			//conn->close();  // will be closed in PfTcpConnection::do_send
+			rc = -EINVAL;
 			goto release0;
 		}
 		S5LOG_INFO("Handshake sent OK, conn:%s, io_depth:%d", conn->connection_info.c_str(), conn->io_depth);
@@ -179,7 +180,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
 	{
 		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, PF_MAX_IO_DEPTH);
-		hs_msg->hsqsize=PF_MAX_IO_DEPTH;
+		hs_msg->hsqsize = PF_MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
