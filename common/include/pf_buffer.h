@@ -63,7 +63,7 @@ struct BufferDescriptor
 class BufferPool
 {
 public:
-	BufferPool() dma_buffer_used(false) {}
+	BufferPool():dma_buffer_used(false){};
 	size_t buf_size;
 	int buf_count;
 	bool dma_buffer_used;
