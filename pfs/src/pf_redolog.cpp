@@ -8,12 +8,14 @@
 #include <string.h>
 
 #include "pf_redolog.h"
+#include "pf_app_ctx.h"
+#include "pf_main.h"
+#include "pf_spdk_engine.h"
 
 #define STORE_META_AUTO_SAVE_INTERVAL (120)
 
 int PfRedoLog::init(struct PfFlashStore* s)
 {
-	int rc = 0;
 	this->store = s;
 	this->disk_fd = s->fd;
 	this->size = s->head.redolog_size;
@@ -30,6 +32,8 @@ int PfRedoLog::set_log_phase(int64_t _phase, uint64_t offset)
 	phase = _phase;
 	start_offset = offset;
 	current_offset = start_offset;
+
+	return 0;
 }
 
 int PfRedoLog::start()
@@ -41,6 +45,8 @@ int PfRedoLog::start()
 		char name[256] = {0};
 		sprintf(name, "md_%s", store->tray_name);
 		prctl(PR_SET_NAME, name);
+		if (app_context.engine == SPDK)
+			((PfspdkEngine*)store->ioengine)->pf_spdk_io_channel_open(1);
 		while (1)
 		{
 			if (0 != gettimeofday(&now, NULL)) {
@@ -96,7 +102,8 @@ int PfRedoLog::start()
 			}
 			pthread_mutex_unlock(&store->md_lock);
 		}
-
+		if (app_context.engine == SPDK)
+			((PfspdkEngine *)store->ioengine)->pf_spdk_io_channel_close(NULL);
 	});
 	return 0;
 }

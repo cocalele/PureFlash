@@ -30,7 +30,8 @@
 #include "pf_message.h"
 #include "pf_spdk.h"
 #include "pf_main.h"
-
+#include "pf_spdk_engine.h"
+#include "pf_redolog.h"
 using namespace std;
 int init_restful_server();
 void unexpected_exit_handler();
@@ -257,13 +258,22 @@ int main(int argc, char *argv[])
 		} else {
 			app_context.trays.push_back(s);
 		}
+		s->start();
+		if (app_context.engine == SPDK) {
+			rc = s->sync_invoke([s]()->int {
+				return ((PfspdkEngine*)s->ioengine)->pf_spdk_io_channel_open(2);
+			});
+			if (rc) {
+				S5LOG_ERROR("Failed open io channel for tray:%s, rc:%d", devname, rc);
+				continue;
+			}
+		}
 		if(shared) {
 			register_shared_disk(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 			s->event_queue->post_event(EVT_WAIT_OWNER_LOCK, 0, 0, 0);
 		} else {
 			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		}
-		s->start();
 	}
 
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
@@ -463,10 +473,16 @@ void stop_app()
 		PfFlashStore *tray = app_context.trays[i];
 		tray->sync_invoke([tray]()->int {
 			tray->meta_data_compaction_trigger(COMPACT_STOP, true);
-			return tray->save_meta_data(tray->oppsite_md_zone());
-
+			tray->save_meta_data(tray->oppsite_md_zone());
+			return 0;
 		});
 		app_context.trays[i]->stop();
+		/*stop trim proc*/
+		pthread_cancel(app_context.trays[i]->trimming_thread.native_handle());
+		app_context.trays[i]->trimming_thread.join();
+		/*stop compact thread*/
+		app_context.trays[i]->redolog->stop();
+		/*close all channel*/
 	}
 	for (int i = 0; i < app_context.disps.size(); i++) {
 		app_context.disps[i]->destroy();
