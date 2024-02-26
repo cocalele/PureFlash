@@ -423,7 +423,7 @@ void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm)
 	auto jarray = nlohmann::json::array();
 	for (int i = 0; i < reply.thread_stats.size(); i++) {
 		nlohmann::json j;
-		to_json(j, reply.thread_stats[i])
+		to_json(j, reply.thread_stats[i]);
 		jarray.emplace_back(j);
 	}
 	string jstr = jarray.dump();

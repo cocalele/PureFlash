@@ -23,6 +23,14 @@ struct ns_entry {
 	bool scc;
 };
 
+
+struct pf_io_channel {
+	int num_qpairs;
+	struct spdk_nvme_qpair** qpair;
+	struct spdk_nvme_poll_group* group;
+};
+
+
 /*
  *  first qpair is for sync IO
  *
@@ -32,9 +40,6 @@ struct ns_entry {
 class PfspdkEngine : public PfIoEngine
 {
 	struct ns_entry* ns;
-	int num_qpairs;
-	struct spdk_nvme_qpair** qpair;
-	struct spdk_nvme_poll_group* group;
 public:
 	PfspdkEngine(PfFlashStore* disk, struct ns_entry* _ns) :PfIoEngine(disk->tray_name), ns(_ns) {};
 	int init();
@@ -53,8 +58,8 @@ public:
 	void spdk_nvme_disconnected_qpair_cb(struct spdk_nvme_qpair* qpair, void* poll_group_ctx);
 	uint64_t spdk_nvme_bytes_to_blocks(uint64_t offset_bytes, uint64_t* offset_blocks,
 		uint64_t num_bytes, uint64_t* num_blocks);
-
+	int pf_spdk_io_channel_open(int num_qpairs);
+	int pf_spdk_io_channel_close(struct pf_io_channel *pic);
 };
-
 
 #endif // pf_spdk_engine_h__
