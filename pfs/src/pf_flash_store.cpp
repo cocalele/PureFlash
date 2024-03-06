@@ -2682,6 +2682,14 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 
 	S5LOG_INFO("Spdk Loading tray %s ...", trid_str);
 
+	/* 
+	 Add md_lock，md_cond and compact variable initialization to the spdk_nvme_init function to solve the problem of the compact variable may have random values and md_lock getting stuck.
+	*/
+	pthread_mutex_init(&md_lock, NULL);
+	pthread_cond_init(&md_cond, NULL);
+	to_run_compact.store(COMPACT_IDLE);
+	compact_lmt_exist = 0;
+
 	if ((ret = read_store_head()) == 0)
 	{
 		ret = start_metadata_service(false);
