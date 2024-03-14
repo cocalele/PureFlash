@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.19)
 if(COMMAND cmake_policy)
   cmake_policy(SET CMP0015 NEW)
 endif()
@@ -60,34 +60,45 @@ endmacro(use_cxx11)
 macro(USE_ISA_L)
 	message("Begin to compile isa-l_crypto")
 	execute_process(COMMAND ./autogen.sh
-                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND ./configure
-                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND make -j 4
-                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND make install
-                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto)
+                    WORKING_DIRECTORY ${THIRDPARTY}/isa-l_crypto
+                    COMMAND_ERROR_IS_FATAL ANY)
 endmacro(USE_ISA_L)
 macro(USE_SG3_UTILS)
 	message("Begin to compile sg3_utils")
 	execute_process(COMMAND ./autogen.sh
-                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND ./configure
-                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND make -j 4
-                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND make install
-                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils)
+                    WORKING_DIRECTORY ${THIRDPARTY}/sg3_utils
+                    COMMAND_ERROR_IS_FATAL ANY)
 endmacro(USE_SG3_UTILS)
 
 macro(USE_SPDK)
 	message("Begin to compile SPDK")
 	execute_process(COMMAND git submodule update --init --recursive
-                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND ./configure --disable-unit-tests --disable-tests --disable-examples --disable-apps --with-shared
-                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk
+                    COMMAND_ERROR_IS_FATAL ANY)
 	execute_process(COMMAND make -j 4
-                    WORKING_DIRECTORY ${THIRDPARTY}/spdk)
+                    WORKING_DIRECTORY ${THIRDPARTY}/spdk
+                    COMMAND_ERROR_IS_FATAL ANY)
 endmacro(USE_SPDK)
 USE_SPDK()
 

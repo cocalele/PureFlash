@@ -289,7 +289,8 @@ int PfFlashStore::oppsite_md_zone()
 
 int PfFlashStore::oppsite_redolog_zone()
 {
-	return (head.current_redolog == FIRST_REDOLOG_ZONE) ? SECOND_REDOLOG_ZONE : FIRST_REDOLOG_ZONE;
+	return (head.current_redolog == FIRST_REDOLOG_ZONE) ? 
+		SECOND_REDOLOG_ZONE : FIRST_REDOLOG_ZONE;
 }
 
 int PfFlashStore::start_metadata_service(bool init)
@@ -2420,6 +2421,8 @@ void PfFlashStore::trim_proc()
 	char tname[32];
 	snprintf(tname, sizeof(tname), "trim_%s", tray_name);
 	prctl(PR_SET_NAME, tname);
+	if (app_context.engine == SPDK)
+		((PfspdkEngine *)ioengine)->pf_spdk_io_channel_open(1);
 
 	while(1) {
 		int total_cnt = 0;
@@ -2441,6 +2444,8 @@ void PfFlashStore::trim_proc()
 		}
 		sleep(1);
 	}
+	if (app_context.engine == SPDK)
+		((PfspdkEngine *)ioengine)->pf_spdk_io_channel_close(NULL);
 }
 
 void PfFlashStore::post_load_fix()
@@ -2667,6 +2672,7 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 
 	ioengine = new PfspdkEngine(this, ns);
 	ioengine->init();
+	((PfspdkEngine *)ioengine)->pf_spdk_io_channel_open(1);
 
 	this->func_priv = ((PfspdkEngine *)ioengine)->poll_io;
 	arg_v = (void *)((PfspdkEngine *)ioengine);
@@ -2676,6 +2682,14 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 	PfEventThread::init(name_pool, MAX_AIO_DEPTH*2, *p_id);
 
 	S5LOG_INFO("Spdk Loading tray %s ...", trid_str);
+
+	/* 
+	 Add md_lock，md_cond and compact variable initialization to the spdk_nvme_init function to solve the problem of the compact variable may have random values and md_lock getting stuck.
+	*/
+	pthread_mutex_init(&md_lock, NULL);
+	pthread_cond_init(&md_cond, NULL);
+	to_run_compact.store(COMPACT_IDLE);
+	compact_lmt_exist = 0;
 
 	if ((ret = read_store_head()) == 0)
 	{
@@ -2691,6 +2705,8 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 	in_obj_offset_mask = head.objsize - 1;
 
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
+
+	((PfspdkEngine *)ioengine)->pf_spdk_io_channel_close(NULL);
 	
 	return ret;
 }

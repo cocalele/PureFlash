@@ -26,7 +26,6 @@ uint64_t fd_get_cap(int fd);
 class PfIoEngine
 {
 public:
-
 	std::string disk_name;
 	PfIoEngine(const char* name):disk_name(name){};
 	virtual int init()=0;

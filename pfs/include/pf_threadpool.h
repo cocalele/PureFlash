@@ -41,7 +41,7 @@ class ThreadPool
 	std::atomic<int>  idlThrNum;
 
 public:
-	ThreadPool(unsigned short size = 4) : idlThrNum(size), stoped{false}
+	ThreadPool(int size = 4) : stoped(false),idlThrNum(size)
 	{
 		for (size = 0; size < idlThrNum; ++size)
 		{   //初始化线程数量
