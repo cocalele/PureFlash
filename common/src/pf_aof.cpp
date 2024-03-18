@@ -91,6 +91,12 @@ PfAof::~PfAof()
 	localfd=0;
 #endif
 }
+
+const char* PfAof::path()
+{
+	return volume->volume_name.c_str();
+}
+
 struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver, bool is_aof); //defined in pf_client_api
 
