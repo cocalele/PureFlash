@@ -182,16 +182,19 @@ static int event_queue_run_batch(PfEventThread *thread) {
 	void *events[BATH_PROCESS];
 	PfSpdkQueue *eq = (PfSpdkQueue *)thread->event_queue;
 	if ((rc = eq->get_events(BATH_PROCESS, events)) > 0) {
+	#ifdef WITH_SPDK_TRACE
 		uint64_t sched_start_time = spdk_get_ticks();
+	#endif
 		for (int i = 0; i < rc; i++) {
 			struct pf_spdk_msg *event = (struct pf_spdk_msg *)events[i];
-
+		#ifdef WITH_SPDK_TRACE
 			uint64_t event_start_tsc = spdk_get_ticks();
 			uint64_t oi = ((uint64_t)thread->poller_id << 32) | thread->proceessed_events;
 			// to record thread sched cost time
 			event->sched_time = get_us_from_tsc(sched_start_time - thread->tsc_last, thread->tsc_rate);
 			// to record event in queue cost time
 			event->inq_time = get_us_from_tsc(event_start_tsc - event->start_time, thread->tsc_rate);
+		#endif
 			switch (event->event.type)
 			{
 				case EVT_SYNC_INVOKE:
@@ -219,11 +222,12 @@ static int event_queue_run_batch(PfEventThread *thread) {
 					break;
 				}
 			}
+		#ifdef WITH_SPDK_TRACE
 			uint64_t event_end_tsc = spdk_get_ticks();
 			spdk_poller_trace_record(TRACE_IO_EVENT_STAT, thread->poller_id, 0, oi, 
 				event->sched_time, event->inq_time, 
 				get_us_from_tsc(event_end_tsc - event_start_tsc, thread->tsc_rate), event->event.type);
-
+		#endif
 			eq->put_event(events[i]);
 			thread->proceessed_events++;
 		}

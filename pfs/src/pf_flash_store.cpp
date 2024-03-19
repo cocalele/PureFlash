@@ -603,7 +603,9 @@ int PfFlashStore::do_write(IoSubTask* io)
 
 
 	}
+#ifdef WITH_SPDK_TRACE
 	io->submit_time = spdk_get_ticks();
+#endif
 	ioengine->submit_io(io, entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask), cmd->length);
 	return 0;
 }

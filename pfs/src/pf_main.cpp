@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
 			S5LOG_FATAL("Failed to setup spdk");
 	}
 	spdk_unaffinitize_thread();
-	
+#ifdef WITH_SPDK_TRACE
 	const char *trace = conf_get(fp, "trace", "name", NULL, false);
 	if (!trace) {
 		S5LOG_FATAL("Failed to find key(trace:name) in conf(%s).", s5daemon_conf);
@@ -251,6 +251,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 	}
+#endif
 
 	int poller_id = 0;
 	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
@@ -307,7 +308,6 @@ int main(int argc, char *argv[])
 		} else {
 			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		}
-		s->start();
 		poller_id++;
 	}
 

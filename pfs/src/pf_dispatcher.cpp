@@ -240,12 +240,13 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 		return 1;
 	}
 	iocb->setup_subtask(s, cmd->opcode);
-
+#ifdef WITH_SPDK_TRACE
 	iocb->submit_rep_time = spdk_get_ticks();
 	iocb->primary_rep_index = s->primary_replica_index;
 	iocb->local_cost_time = 0;
 	iocb->remote_rep1_cost_time = 0;
 	iocb->remote_rep2_cost_time = 0;
+#endif
 	for (int i = 0; i < vol->rep_count; i++) {
 		if (s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
 			int rc = 0;
@@ -293,12 +294,13 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 
 	iocb->task_mask = 0;
 	int i = s->duty_rep_index;
-
+#ifdef WITH_SPDK_TRACE
 	iocb->submit_rep_time = spdk_get_ticks();
 	iocb->primary_rep_index = s->primary_replica_index;
 	iocb->local_cost_time = 0;
 	iocb->remote_rep1_cost_time = 0;
 	iocb->remote_rep2_cost_time = 0;
+#endif
 	if (likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
 		iocb->setup_one_subtask(s, i, PfOpCode::S5_OP_REPLICATE_WRITE);
 		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
@@ -335,7 +337,7 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 	PfServerIocb* iocb = (PfServerIocb * )sub_task->parent_iocb;
 //	S5LOG_DEBUG("complete subtask:%p, status:%d, task_mask:0x%x, parent_io mask:0x%x, io_cid:%d", sub_task, sub_task->complete_status,
 //			sub_task->task_mask, iocb->task_mask, iocb->cmd_bd->cmd_bd->command_id);
-	
+#ifdef WITH_SPDK_TRACE
 	uint64_t rep_io_complete_tsc = spdk_get_ticks();
 	uint64_t cost = get_us_from_tsc(rep_io_complete_tsc - iocb->submit_rep_time, get_current_thread()->tsc_rate);
 
@@ -350,16 +352,18 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 			iocb->remote_rep2_cost_time = cost;
 		}
 	}
-
+#endif
 	iocb->task_mask &= (~sub_task->task_mask);
 	iocb->complete_status = (iocb->complete_status == PfMessageStatus::MSG_STATUS_SUCCESS ? sub_task->complete_status : iocb->complete_status);
 
 	if(iocb->task_mask == 0) {
 		// all rep io finish
+	#ifdef WITH_SPDK_TRACE
 		spdk_poller_trace_record(TRACE_DISP_IO_STAT, get_current_thread()->poller_id, 0,
                               iocb->cmd_bd->cmd_bd->offset, iocb->local_cost_time, 
 							  iocb->remote_rep1_cost_time, iocb->remote_rep2_cost_time,
 							  get_us_from_tsc(rep_io_complete_tsc - iocb->received_time_hz, get_current_thread()->tsc_rate));
+	#endif
 		reply_io_to_client(iocb);
 	}
 	iocb->dec_ref(); //added in setup_subtask. In most case, should never dec to 0
