@@ -10,9 +10,11 @@
 #include <vector>
 #include <list>
 #include <stdint.h>
+#include <semaphore.h> //for sem_t
 #include <nlohmann/json.hpp>
 #include <pf_message.h>
 #include "pf_volume_type.h"
+#include "pf_event_thread.h"
 
 class ReplicaArg
 {
@@ -40,6 +42,12 @@ public:
 	std::string op;
 	std::string volume_name;
 	uint64_t volume_id;
+};
+
+class GetThreadStatsArg
+{
+public:
+	std::string op;
 };
 
 class PrepareVolumeArg
@@ -78,6 +86,13 @@ public:
 };
 void from_json(const nlohmann::json& j, RestfulReply& p);
 
+class GetThreadStatsReply : public RestfulReply {
+public:
+	std::vector<thread_stat> thread_stats;
+};
+
+void from_json(const nlohmann::json& j, GetThreadStatsReply& p);
+
 class GetSnapListReply : public RestfulReply {
 public:
 	std::vector<int> snap_list;
@@ -92,11 +107,13 @@ public:
 
 	BackgroudTaskReply():task_id(0), progress(0){ }
 };
+
 class ErrorReportReply : public RestfulReply {
 public:
 	PfMessageStatus action_code;
 	uint16_t meta_ver;
 };
+
 class CalcMd5Reply : public RestfulReply {
 public:
 	CalcMd5Reply() : RestfulReply("calculate_replica_md5_reply"){
@@ -122,6 +139,13 @@ public:
 	uint64_t offset_in_vol=0;
 	std::list< SnapshotMd5> snap_md5;
 };
+
+struct restful_get_stats_ctx {
+	struct get_stats_ctx ctx;
+	struct mg_connection *nc;
+	sem_t sem;
+};
+
 class PerfReply : public RestfulReply {
 public:
 	PerfReply() : RestfulReply("perf_reply") {
@@ -134,7 +158,9 @@ void from_json(const nlohmann::json& j, ReplicaArg& p);
 void from_json(const nlohmann::json& j, ShardArg& p);
 void from_json(const nlohmann::json& j, PrepareVolumeArg& p);
 void from_json(const nlohmann::json& j, DeleteVolumeArg& p);
-void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
+void from_json(const nlohmann::json& j, GetThreadStatsArg& p);
+void from_json(const nlohmann::json& j, GetSnapListReply& p);
+void from_json(const nlohmann::json& j, GetThreadStatsReply& p);
 void to_json(nlohmann::json& j, const RestfulReply& r);
 void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
 void from_json(const nlohmann::json& j, ErrorReportReply& p);
@@ -150,6 +176,7 @@ int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *n
 
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_volume(struct mg_connection *nc, struct http_message * hm);
+void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm);
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm);
 void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm);

@@ -186,7 +186,11 @@ int PfZkClient::wait_lock(const std::string& lock_path, const char* myid)
 
 int PfZkClient::delete_node(const std::string& node_path)
 {
-	return zoo_delete(zkhandle, node_path.c_str(), -1);
+	// 传入的路径参数不是以/开头，需要加上/pureflash等前缀
+	std::string full_path=node_path;
+	if(node_path[0] != '/')
+		full_path="/pureflash/"+cluster_name+"/"+node_path;
+	return zoo_delete(zkhandle, full_path.c_str(), -1);
 }
 
 std::string PfZkClient::get_data_port(int store_id,  int port_idx)

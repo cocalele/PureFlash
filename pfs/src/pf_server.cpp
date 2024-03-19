@@ -32,6 +32,7 @@
 #include "pf_flash_store.h"
 #include "pf_volume.h"
 #include "pf_dispatcher.h"
+#include "spdk/env.h"
 
 static void *afs_listen_thread(void *param);
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
@@ -131,7 +132,8 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 		if (conn->state == CONN_CLOSING) {
 			S5LOG_WARN("Handshake sent but connection in state:%d is to be closed, conn:%s", conn->state, conn->connection_info.c_str());
 			conn->state = CONN_OK;//to make close works correctly
-			conn->close();
+			//conn->close();  // will be closed in PfTcpConnection::do_send
+			rc = -EINVAL;
 			goto release0;
 		}
 		S5LOG_INFO("Handshake sent OK, conn:%s, io_depth:%d", conn->connection_info.c_str(), conn->io_depth);
@@ -179,7 +181,7 @@ int on_tcp_handshake_recved(BufferDescriptor* bd, WcStatus status, PfConnection*
 	if(hs_msg->vol_id != 0 && (hs_msg->hsqsize > PF_MAX_IO_DEPTH || hs_msg->hsqsize <= 0))
 	{
 		S5LOG_ERROR("Request io_depth:%d invalid, max allowed:%d", hs_msg->hsqsize, PF_MAX_IO_DEPTH);
-		hs_msg->hsqsize=PF_MAX_IO_DEPTH;
+		hs_msg->hsqsize = PF_MAX_IO_DEPTH;
 		hs_msg->hs_result = EINVAL;
 		conn->state = CONN_CLOSING;
 		rc = -EINVAL;
@@ -241,6 +243,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
+					iocb->received_time_hz = spdk_get_ticks();
 					if (spdk_engine_used())
 						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
 					else
@@ -250,6 +253,7 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				//data received, this is the continue of above start_recv [href:data_recv]
 				PfServerIocb *iocb = bd->server_iocb;
 				iocb->received_time = now_time_usec();
+				iocb->received_time_hz = spdk_get_ticks();
 				if (spdk_engine_used())
 					((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
 				else

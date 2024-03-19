@@ -7,6 +7,7 @@
 
 #include "pf_poller.h"
 #include "pf_log.h"
+
 PfPoller::PfPoller() :epfd(0),tid(0),max_fd(0)
 {
 
@@ -188,7 +189,6 @@ void PfPoller::run()
 	pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
 	while (1)
 	{
-
 		int nfds = epoll_wait(epfd, rev, max_fd, -1);
 		if (nfds == -1)
 		{

@@ -3,17 +3,24 @@
 #include "spdk/env.h"
 #include "pf_event_thread.h"
 #include "pf_app_ctx.h"
+#include "pf_trace_defs.h"
+#include "spdk/trace.h"
+#include "spdk/env.h"
 
 void* thread_proc_spdkr(void* arg);
 void* thread_proc_eventq(void* arg);
 
+static __thread PfEventThread *cur_thread = NULL;
+
 PfEventThread::PfEventThread() {
 	inited = false;
 }
-int PfEventThread::init(const char* name, int qd)
+
+int PfEventThread::init(const char* name, int qd, uint16_t p_id)
 {
 	int rc;
 	strncpy(this->name, name, sizeof(this->name));
+	poller_id = p_id;
 
 	if (spdk_engine_used()) {
 		event_queue = new PfSpdkQueue();
@@ -101,7 +108,7 @@ void PfEventThread::stop()
 	if(rc) {
 		S5LOG_ERROR("Failed call pthread_join on thread:%s, rc:%d", name, rc);
 	}
-	tid=0;
+	tid = 0;
 
 }
 
@@ -140,6 +147,23 @@ void* thread_proc_eventq(void* arg)
 	return NULL;
 }
 
+int get_thread_stats(pf_thread_stats *stats) {
+	if (cur_thread == NULL) {
+		S5LOG_ERROR("thread is not exist");
+		return -1;
+	}
+	*stats = cur_thread->stats;
+	return 0;
+}
+
+PfEventThread * get_current_thread() {
+	if (cur_thread == NULL) {
+		S5LOG_ERROR("thread is not exist");
+		assert(0);
+	}
+	return cur_thread;
+}
+
 static void thread_update_stats(PfEventThread *thread, uint64_t end,
 			uint64_t start, int rc)
 {
@@ -157,9 +181,20 @@ static int event_queue_run_batch(PfEventThread *thread) {
 	int rc = 0;
 	void *events[BATH_PROCESS];
 	PfSpdkQueue *eq = (PfSpdkQueue *)thread->event_queue;
-	if ((rc = eq->get_events(BATH_PROCESS, events)) >= 0) {
+	if ((rc = eq->get_events(BATH_PROCESS, events)) > 0) {
+	#ifdef WITH_SPDK_TRACE
+		uint64_t sched_start_time = spdk_get_ticks();
+	#endif
 		for (int i = 0; i < rc; i++) {
 			struct pf_spdk_msg *event = (struct pf_spdk_msg *)events[i];
+		#ifdef WITH_SPDK_TRACE
+			uint64_t event_start_tsc = spdk_get_ticks();
+			uint64_t oi = ((uint64_t)thread->poller_id << 32) | thread->proceessed_events;
+			// to record thread sched cost time
+			event->sched_time = get_us_from_tsc(sched_start_time - thread->tsc_last, thread->tsc_rate);
+			// to record event in queue cost time
+			event->inq_time = get_us_from_tsc(event_start_tsc - event->start_time, thread->tsc_rate);
+		#endif
 			switch (event->event.type)
 			{
 				case EVT_SYNC_INVOKE:
@@ -175,13 +210,26 @@ static int event_queue_run_batch(PfEventThread *thread) {
 					thread->exiting = true;
 					break;
 				}
+				case EVT_GET_STAT:
+				{
+					auto ctx = (get_stats_ctx*)event->event.arg_p;
+					ctx->fn(ctx);
+					break;
+				}
 				default:
 				{	
 					thread->process_event(event->event.type, event->event.arg_i, event->event.arg_p, event->event.arg_q);
 					break;
 				}
 			}
+		#ifdef WITH_SPDK_TRACE
+			uint64_t event_end_tsc = spdk_get_ticks();
+			spdk_poller_trace_record(TRACE_IO_EVENT_STAT, thread->poller_id, 0, oi, 
+				event->sched_time, event->inq_time, 
+				get_us_from_tsc(event_end_tsc - event_start_tsc, thread->tsc_rate), event->event.type);
+		#endif
 			eq->put_event(events[i]);
+			thread->proceessed_events++;
 		}
 	}
 	return rc > 0 ? PF_POLLER_BUSY : PF_POLLER_IDLE;
@@ -196,10 +244,10 @@ static int func_run(PfEventThread *thread) {
 }
 
 static int thread_poll(PfEventThread *thread) {
-	int rc = 0;
-	rc = event_queue_run_batch(thread);
-	rc = func_run(thread);
-	return rc;
+	if (event_queue_run_batch(thread) || func_run(thread)) {
+		return PF_POLLER_BUSY;
+	}
+	return PF_POLLER_IDLE;
 }
 
 void* thread_proc_spdkr(void* arg)
@@ -207,8 +255,11 @@ void* thread_proc_spdkr(void* arg)
 	PfEventThread* pThis = (PfEventThread*)arg;
 	prctl(PR_SET_NAME, pThis->name);
 	pThis->tsc_last = spdk_get_ticks();
+	pThis->proceessed_events = 0;
+	pThis->tsc_rate = spdk_get_ticks_hz();
 	PfSpdkQueue *eq = (PfSpdkQueue *)pThis->event_queue;
 	eq->set_thread_queue();
+	cur_thread = pThis;
 	while(!pThis->exiting) {
 		int rc = 0;
 		rc = thread_poll(pThis);
@@ -227,3 +278,24 @@ int PfEventThread::sync_invoke(std::function<int(void)> _f)
 	return arg.rc;
 }
 
+SPDK_TRACE_REGISTER_FN(event_trace, "eventthread", TRACE_GROUP_CLIENT)
+{
+        struct spdk_trace_tpoint_opts opts[] =
+        {
+                {
+                        "IO_EVENT_STAT", TRACE_IO_EVENT_STAT,
+                        OWNER_PFS_CIENT_IO, OBJECT_CLIENT_IO, 1,
+                        {
+                                { "st", SPDK_TRACE_ARG_TYPE_INT, 8},
+                                { "it", SPDK_TRACE_ARG_TYPE_INT, 8},
+                                { "cost", SPDK_TRACE_ARG_TYPE_INT, 8},
+                                { "type", SPDK_TRACE_ARG_TYPE_INT, 8}
+                        }
+                },
+        };
+
+
+        spdk_trace_register_owner(OWNER_PFS_CIENT_IO, 'e');
+        spdk_trace_register_object(OBJECT_CLIENT_IO, 'e');
+        spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
+}

@@ -41,7 +41,7 @@ class PfReplicator : public PfEventThread
 	};
 
 public:
-	int init(int index);
+	int init(int index, uint16_t* p_id);
 	int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 	int begin_replicate_io(IoSubTask* t);
 	int begin_recovery_read_io(RecoverySubTask* t);

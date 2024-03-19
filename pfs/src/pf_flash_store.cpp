@@ -49,6 +49,9 @@
 #include "pf_spdk.h"
 #include "pf_spdk_engine.h"
 #include "pf_atslock.h"
+#include "pf_trace_defs.h"
+#include "spdk/trace.h"
+#include "spdk/env.h"
 
 using namespace std;
 using nlohmann::json;
@@ -125,11 +128,11 @@ int  PfFlashStore::format_disk()
 	return 0;
 }
 
-int PfFlashStore::shared_disk_init(const char* tray_name)
+int PfFlashStore::shared_disk_init(const char* tray_name, uint16_t* p_id)
 {
 	int ret = 0;
 	this->is_shared_disk = true;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2, *p_id);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading shared disk %s ...", tray_name);
 	Cleaner err_clean;
@@ -286,7 +289,8 @@ int PfFlashStore::oppsite_md_zone()
 
 int PfFlashStore::oppsite_redolog_zone()
 {
-	return (head.current_redolog == FIRST_REDOLOG_ZONE) ? SECOND_REDOLOG_ZONE : FIRST_REDOLOG_ZONE;
+	return (head.current_redolog == FIRST_REDOLOG_ZONE) ? 
+		SECOND_REDOLOG_ZONE : FIRST_REDOLOG_ZONE;
 }
 
 int PfFlashStore::start_metadata_service(bool init)
@@ -404,11 +408,11 @@ int PfFlashStore::start_metadata_service(bool init)
  * @retval -ENOENT  tray not exist or failed to open
  */
 
-int PfFlashStore::init(const char* tray_name)
+int PfFlashStore::init(const char* tray_name, uint16_t *p_id)
 {
 	int ret = 0;
 	this->is_shared_disk = false;
-	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2);
+	PfEventThread::init(tray_name, MAX_AIO_DEPTH * 2, *p_id);
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading disk %s ...", tray_name);
 	Cleaner err_clean;
@@ -504,8 +508,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 	auto block_pos = obj_lmt.find(key);
 	lmt_entry *entry = NULL;
 
-	if (unlikely(block_pos == obj_lmt.end()))
-	{
+	if (unlikely(block_pos == obj_lmt.end())) {
 		//S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
 		if (free_obj_queue.is_empty())	{
 			S5LOG_ERROR("Disk:%s is full!", tray_name);
@@ -522,16 +525,12 @@ int PfFlashStore::do_write(IoSubTask* io)
 		};
 		obj_lmt[key] = entry;
 		int rc = redolog->log_allocation(&key, entry, free_obj_queue.head);
-		if (rc)
-		{
+		if (rc) {
 			app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
 			S5LOG_ERROR("log_allocation error, rc:%d", rc);
 			return 0;
 		}
-
-	}
-	else
-	{
+	} else {
 		//static int dirty_bit=0;
 		entry = block_pos->second;
 		if(unlikely(entry->status == EntryStatus::RECOVERYING)) {
@@ -553,6 +552,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			io->ops->complete(io, PfMessageStatus::MSG_STATUS_SUCCESS);
 			return 0;
 		}
+
 		if(likely(cmd->snap_seq == entry->snap_seq)) {
 			if (unlikely(entry->status != EntryStatus::NORMAL))
 			{
@@ -571,9 +571,8 @@ int PfFlashStore::do_write(IoSubTask* io)
 				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
 			io->ops->complete(io, MSG_STATUS_READONLY);
 			return 0;
-		} else if(unlikely(cmd->snap_seq > entry->snap_seq)) {
-			if (free_obj_queue.is_empty())
-			{
+		} else if (unlikely(cmd->snap_seq > entry->snap_seq)) {
+			if (free_obj_queue.is_empty()) {
 				app_context.error_handler->submit_error(io, MSG_STATUS_NOSPACE);
 				return -ENOSPC;
 			}
@@ -587,8 +586,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			};
 			obj_lmt[key] = cow_entry;
 			int rc = redolog->log_allocation(&key, cow_entry, free_obj_queue.head);
-			if (rc)
-			{
+			if (rc) {
 				app_context.error_handler->submit_error(io, MSG_STATUS_LOGFAILED);
 				S5LOG_ERROR("log_allocation error, rc:%d", rc);
 				return -EIO;
@@ -605,9 +603,10 @@ int PfFlashStore::do_write(IoSubTask* io)
 
 
 	}
-
+#ifdef WITH_SPDK_TRACE
+	io->submit_time = spdk_get_ticks();
+#endif
 	ioengine->submit_io(io, entry->offset + offset_in_block(cmd->offset, in_obj_offset_mask), cmd->length);
-
 	return 0;
 }
 
@@ -1279,10 +1278,10 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/owner_store", uuid_str);
 	switch (event_type) {
 	case EVT_WAIT_OWNER_LOCK: //this will be the first event received for shared disk
-		do{
+		do {
 			rc = app_context.zk_client.wait_lock(zk_node_name, store_id_str); //we will not process any event before get lock
 			pthread_testcancel();
-			if(rc){
+			if (rc) {
 				if(exiting)
 					return rc;
 				S5LOG_ERROR("Unexcepted rc on contention owner, rc:%d", rc);
@@ -1294,7 +1293,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 				}
 			}
 
-		}while(rc);
+		} while(rc);
 
 		break;
 	case EVT_IO_REQ:
@@ -2424,6 +2423,8 @@ void PfFlashStore::trim_proc()
 	char tname[32];
 	snprintf(tname, sizeof(tname), "trim_%s", tray_name);
 	prctl(PR_SET_NAME, tname);
+	if (app_context.engine == SPDK)
+		((PfspdkEngine *)ioengine)->pf_spdk_io_channel_open(1);
 
 	while(1) {
 		int total_cnt = 0;
@@ -2445,6 +2446,8 @@ void PfFlashStore::trim_proc()
 		}
 		sleep(1);
 	}
+	if (app_context.engine == SPDK)
+		((PfspdkEngine *)ioengine)->pf_spdk_io_channel_close(NULL);
 }
 
 void PfFlashStore::post_load_fix()
@@ -2655,7 +2658,7 @@ int PfFlashStore::register_controller(const char *trid_str)
 }
 
 int disk_cnt = 0;
-int PfFlashStore::spdk_nvme_init(const char *trid_str)
+int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 {
 	int rc;
 	int ret;
@@ -2671,15 +2674,24 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 
 	ioengine = new PfspdkEngine(this, ns);
 	ioengine->init();
+	((PfspdkEngine *)ioengine)->pf_spdk_io_channel_open(1);
 
 	this->func_priv = ((PfspdkEngine *)ioengine)->poll_io;
 	arg_v = (void *)((PfspdkEngine *)ioengine);
 
 	safe_strcpy(this->tray_name, trid_str, sizeof(this->tray_name));
 
-	PfEventThread::init(name_pool, MAX_AIO_DEPTH*2);
+	PfEventThread::init(name_pool, MAX_AIO_DEPTH*2, *p_id);
 
 	S5LOG_INFO("Spdk Loading tray %s ...", trid_str);
+
+	/* 
+	 Add md_lock，md_cond and compact variable initialization to the spdk_nvme_init function to solve the problem of the compact variable may have random values and md_lock getting stuck.
+	*/
+	pthread_mutex_init(&md_lock, NULL);
+	pthread_cond_init(&md_cond, NULL);
+	to_run_compact.store(COMPACT_IDLE);
+	compact_lmt_exist = 0;
 
 	if ((ret = read_store_head()) == 0)
 	{
@@ -2695,6 +2707,27 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str)
 	in_obj_offset_mask = head.objsize - 1;
 
 	trimming_thread = std::thread(&PfFlashStore::trim_proc, this);
+
+	((PfspdkEngine *)ioengine)->pf_spdk_io_channel_close(NULL);
 	
 	return ret;
+}
+
+SPDK_TRACE_REGISTER_FN(spdk_engine_trace, "spdk", TRACE_GROUP_SPDK)
+{
+	struct spdk_trace_tpoint_opts opts[] = {
+        {
+			"DISK_IO_STAT", TRACE_DISK_IO_STAT,
+			OWNER_PFS_SPDK_IO, OBJECT_SPDK_IO, 1,
+			{
+				{ "lcost", SPDK_TRACE_ARG_TYPE_INT, 8},
+				{ "icost", SPDK_TRACE_ARG_TYPE_INT, 8}
+			}
+		},
+	};
+
+
+	spdk_trace_register_owner(OWNER_PFS_SPDK_IO, 's');
+	spdk_trace_register_object(OBJECT_SPDK_IO, 's');
+	spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
 }

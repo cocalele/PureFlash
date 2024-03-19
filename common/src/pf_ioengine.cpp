@@ -85,6 +85,7 @@ int PfAioEngine::init()
 	aio_poller = std::thread(&PfAioEngine::polling_proc, this);
 	return 0;
 }
+
 PfAioEngine::~PfAioEngine()
 {
 	pthread_cancel(aio_poller.native_handle());
@@ -100,12 +101,12 @@ int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t m
 #else
 	BufferDescriptor* data_bd = io->parent_iocb->data_bd;
 	//below is the most possible case
-	if(IS_READ_OP(io->opcode))
+	if (IS_READ_OP(io->opcode))
 		io_prep_pread(&io->aio_cb, fd, data_bd->buf, media_len, media_offset);
 	else
 		io_prep_pwrite(&io->aio_cb, fd, data_bd->buf, media_len, media_offset);
 	batch_iocb[batch_io_cnt++] = &io->aio_cb;
-	if(batch_io_cnt >= (BATCH_IO_CNT>>1)){
+	if (batch_io_cnt >= (BATCH_IO_CNT>>1)) {
 		if (batch_io_cnt >= BATCH_IO_CNT) {
 			S5LOG_FATAL("Too many fails to submit IO on ssd:%s", disk_name.c_str());
 		}
@@ -114,6 +115,7 @@ int PfAioEngine::submit_io(struct IoSubTask* io, int64_t media_offset, int64_t m
 #endif
 	return 0;
 }
+
 int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t media_len)
 {
 	//S5LOG_DEBUG("Begin cow_io %d", io->opcode);
@@ -124,6 +126,7 @@ int PfAioEngine::submit_cow_io(struct CowTask* io, int64_t media_offset, int64_t
 	struct iocb* ios[1] = { &io->aio_cb };
 	return io_submit(aio_ctx, 1, ios);
 }
+
 int PfAioEngine::submit_batch()
 {
 	if(batch_io_cnt == 0)
@@ -137,6 +140,7 @@ int PfAioEngine::submit_batch()
 	batch_io_cnt = 0;
 	return 0;
 }
+
 #if 0
 int PfAioEngine::poll_io(int *completions)
 {
@@ -154,12 +158,9 @@ void PfAioEngine::polling_proc()
 	int rc = 0;
 	while (1) {
 		rc = io_getevents(aio_ctx, 1, MAX_EVT_CNT, evts, NULL);
-		if (rc < 0)
-		{
+		if (rc < 0) {
 			continue;
-		}
-		else
-		{
+		} else {
 			for (int i = 0; i < rc; i++)
 			{
 				struct iocb* aiocb = (struct iocb*)evts[i].obj;
