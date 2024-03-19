@@ -59,6 +59,12 @@ public:
 	int disp_index;
 	BOOL is_timeout;
 	uint64_t received_time;
+	uint64_t received_time_hz;
+	uint64_t submit_rep_time;
+	int primary_rep_index;
+	uint64_t remote_rep1_cost_time;
+	uint64_t remote_rep2_cost_time;
+	uint64_t local_cost_time;
 	IoSubTask io_subtasks[3];
 
 	void inline setup_subtask(PfShard* s, PfOpCode opcode)
@@ -109,7 +115,7 @@ public:
 	int dispatch_complete(SubTask*);
 	virtual int process_event(int event_type, int arg_i, void* arg_p, void* arg_q);
 
-	int init(int disp_idx);
+	int init(int disp_idx, uint16_t* p_id);
 	int init_mempools(int disp_idx);
 
 	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);

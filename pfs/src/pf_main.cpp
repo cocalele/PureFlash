@@ -220,13 +220,46 @@ int main(int argc, char *argv[])
 			S5LOG_FATAL("Failed to setup spdk");
 	}
 	spdk_unaffinitize_thread();
-	
+#ifdef WITH_SPDK_TRACE
+	const char *trace = conf_get(fp, "trace", "name", NULL, false);
+	if (!trace) {
+		S5LOG_FATAL("Failed to find key(trace:name) in conf(%s).", s5daemon_conf);
+		return -S5_CONF_ERR;
+	}
+
+	int trace_num_entries = conf_get_int(fp, "trace", "num_entries", 0, TRUE);
+	if (trace_num_entries == 0) {
+		S5LOG_INFO("tarce entries is 0.");
+	}
+
+	// enable spdk trace
+	string shm_name = "/pfs_trace";
+	if (spdk_poller_trace_init(shm_name.c_str(), trace_num_entries, 64) != 0) {
+		return -1;
+	}
+
+	if (strcmp(trace, "disp") == 0) {
+		if (spdk_trace_enable_tpoint_group("disp") != 0) {
+			return -1;
+		}
+	} else if (strcmp(trace, "spdk") == 0) {
+		if (spdk_trace_enable_tpoint_group("spdk") != 0) {
+			return -1;
+		}
+	} else if (strcmp(trace, "eventthread") == 0) {
+		if (spdk_trace_enable_tpoint_group("eventthread") != 0) {
+			return -1;
+		}
+	}
+#endif
+
+	int poller_id = 0;
 	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
 	app_context.disps.reserve(disp_count);
 	for (int i = 0; i < disp_count; i++)
 	{
 		app_context.disps.push_back(new PfDispatcher());
-		rc = app_context.disps[i]->init(i);
+		rc = app_context.disps[i]->init(i, &poller_id);
 		if (rc) {
 			S5LOG_ERROR("Failed init dispatcher[%d], rc:%d", i, rc);
 			return rc;
@@ -235,6 +268,7 @@ int main(int argc, char *argv[])
 		if (rc != 0) {
 			S5LOG_FATAL("Failed to start dispatcher, index:%d", i);
 		}
+		poller_id++;
 	}
 
 	for(int i=0;i<MAX_TRAY_COUNT;i++)
@@ -247,11 +281,11 @@ int main(int argc, char *argv[])
 		auto s = new PfFlashStore();
 		s->is_shared_disk = shared;
 		if (app_context.engine == SPDK)
-			rc = s->spdk_nvme_init(devname);
+			rc = s->spdk_nvme_init(devname, &poller_id);
 		else if(shared)
-			rc = s->shared_disk_init(devname);
+			rc = s->shared_disk_init(devname, &poller_id);
 		else
-			rc = s->init(devname);
+			rc = s->init(devname, &poller_id);
 		if(rc) {
 			S5LOG_ERROR("Failed init tray:%s, rc:%d", devname, rc);
 			continue;
@@ -274,6 +308,7 @@ int main(int argc, char *argv[])
 		} else {
 			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		}
+		poller_id++;
 	}
 
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
@@ -307,7 +342,7 @@ int main(int argc, char *argv[])
 	app_context.replicators.reserve(rep_count);
 	for(int i=0; i< rep_count; i++) {
 		PfReplicator* rp = new PfReplicator();
-		rc = rp->init(i);
+		rc = rp->init(i, &poller_id);
 		if(rc) {
 			S5LOG_ERROR("Failed init replicator[%d], rc:%d", i, rc);
 			return rc;
@@ -317,6 +352,7 @@ int main(int argc, char *argv[])
 		if(rc != 0) {
 			S5LOG_FATAL("Failed to start replicator, index:%d", i);
 		}
+		poller_id++;
 	}
 
 	app_context.error_handler = new PfErrorHandler();

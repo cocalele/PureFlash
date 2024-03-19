@@ -43,6 +43,7 @@ struct SubTask
 	uint64_t store_id;
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
+	uint64_t submit_time;
 	PfMessageStatus complete_status;
 	TaskCompleteOps *ops = NULL;
 	//virtual PfEventQueue* half_complete(PfMessageStatus comp_status);

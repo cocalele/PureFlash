@@ -23,6 +23,9 @@ public:
 	pfqueue *event_queue;
 	pthread_t tid;
 	char name[32];
+	uint16_t poller_id;
+	uint32_t proceessed_events;
+	uint64_t tsc_rate;
 	uint64_t tsc_last;
 	pf_thread_stats stats;
 
@@ -30,8 +33,8 @@ public:
 	void *arg_v;
 
 	bool inited;
-	bool exiting=false;
-	int init(const char* name, int queue_depth);
+	bool exiting = false;
+	int init(const char* name, int queue_depth, uint16_t p_id);
 	PfEventThread();
 	void destroy();
 	virtual ~PfEventThread();

@@ -93,6 +93,9 @@ struct SyncInvokeArg
 struct pf_spdk_msg {
     struct S5Event event;
 	bool lock_cache_msg;
+	uint64_t start_time;
+	uint64_t inq_time;
+	uint64_t sched_time;
 	SLIST_ENTRY(pf_spdk_msg)	link;
 };
 
