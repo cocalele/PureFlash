@@ -898,3 +898,19 @@ void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm)
 	send_reply_to_client(reply, nc);
 
 }
+void handle_disp_io_stat_reset(struct mg_connection* nc, struct http_message* hm)
+{
+	int len = 0;
+	char buf[512];
+	PerfReply reply;
+	//DispatchStat total_stat={0};
+	for (auto d : app_context.disps)
+	{
+		d->sync_invoke([d]()->int {
+			d->stat.wr_cnt= d->stat.rd_cnt= d->stat.rep_wr_cnt=d->stat.wr_bytes= d->stat.rd_bytes= d->stat.rep_wr_bytes=0;
+			return 0;
+		});
+	}
+	send_reply_to_client(reply, nc);
+
+}
