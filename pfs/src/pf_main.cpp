@@ -253,7 +253,7 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	int poller_id = 0;
+	uint16_t poller_id = 0;
 	int disp_count = conf_get_int(app_context.conf, "dispatch", "count", 4, FALSE);
 	app_context.disps.reserve(disp_count);
 	for (int i = 0; i < disp_count; i++)

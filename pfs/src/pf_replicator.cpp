@@ -506,7 +506,8 @@ int PfReplicator::init(int index, uint16_t* p_id)
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
 	int rep_iodepth = 256; //io depth in single connection
 	int rep_iocb_depth = 8192; //total IO's in processing
-	PfEventThread::init(name, rep_iocb_depth, *p_id++);
+	PfEventThread::init(name, rep_iocb_depth, *p_id);
+	*p_id=(*p_id)+1;
 	Cleaner clean;
 	tcp_poller = new PfPoller();
 	if(tcp_poller == NULL) {
