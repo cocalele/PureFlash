@@ -190,6 +190,17 @@ int PfZkClient::delete_node(const std::string& node_path)
 	std::string full_path=node_path;
 	if(node_path[0] != '/')
 		full_path="/pureflash/"+cluster_name+"/"+node_path;
+	struct String_vector children = { 0 };
+	int rc = zoo_get_children(zkhandle, full_path.c_str(), 0, &children);
+	if (rc != ZOK) {
+		S5LOG_ERROR("Failed to get children on path:%s, rc:%d", full_path.c_str(), rc);
+		return rc;
+	}
+	DeferCall _a([&children]() { deallocate_String_vector(&children); });
+	for (int i=0;i<children.count;i++) {
+		delete_node(full_path+"/"+ children.data[i]);
+
+	}
 	return zoo_delete(zkhandle, full_path.c_str(), -1);
 }
 

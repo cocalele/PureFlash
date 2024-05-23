@@ -278,9 +278,11 @@ PfConnection* PfReplicator::PfRepConnectionPool::get_conn(int store_id)
 	if (addr.conn != NULL && addr.conn->state == CONN_OK)
 		return addr.conn;
 	for (int i = 0; i < addr.ip.size(); i++) {
-		addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx], conn_type);
-		if(addr.conn)
-			return addr.conn;
+		if(addr.ip[addr.curr_ip_idx].size() > 0){ //an empty string may added as placeholder in prepare volume
+			addr.conn = PfConnectionPool::get_conn(addr.ip[addr.curr_ip_idx], conn_type);
+			if(addr.conn)
+				return addr.conn;
+		}
 		addr.curr_ip_idx = (addr.curr_ip_idx+1)%(int)addr.ip.size();
 	}
 	return NULL;
@@ -504,7 +506,7 @@ int PfReplicator::init(int index, uint16_t* p_id)
 	int rc;
 	rep_index = index;
 	snprintf(name, sizeof(name), "%d_replicator", rep_index);
-	int rep_iodepth = 256; //io depth in single connection
+	int rep_iodepth = PF_MAX_IO_DEPTH; //io depth in single connection
 	int rep_iocb_depth = 8192; //total IO's in processing
 	PfEventThread::init(name, rep_iocb_depth, *p_id);
 	*p_id=(*p_id)+1;

@@ -311,6 +311,7 @@ int main(int argc, char *argv[])
 		poller_id++;
 	}
 
+	app_context.zk_client.delete_node(format_string("stores/%d/ports", store_id));
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("port.%d", i);
@@ -324,6 +325,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	app_context.zk_client.delete_node(format_string("stores/%d/rep_ports", store_id));
 	for (int i = 0; i < MAX_PORT_COUNT; i++)
 	{
 		string name = format_string("rep_port.%d", i);

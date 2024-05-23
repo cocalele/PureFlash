@@ -590,7 +590,12 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 		return -errno;
 	}
 	DeferCall _cfg_r([cfg]() { conf_close(cfg); });
-	io_depth = conf_get_int(cfg, "client", "io_depth", 128, FALSE);
+	io_depth = conf_get_int(cfg, "client", "io_depth", 120, FALSE);
+	// server limit io_depth to 255, client must half of that
+	if (io_depth > PF_MAX_IO_DEPTH) {
+		S5LOG_ERROR("io_depth:%d exceed max allowed:%d", io_depth, PF_MAX_IO_DEPTH);
+		return -EINVAL;
+	}
 	int io_timeout = conf_get_int(cfg, "client", "io_timeout", 30, FALSE);
 	const char *conn_type = conf_get(cfg, "client", "conn_type", "rdma", FALSE);
 	if (strcmp(conn_type, "rdma") == 0)
@@ -1496,7 +1501,7 @@ PfClientAppCtx::~PfClientAppCtx()
 	while (iocb_pool.obj_count != vol_proc->sync_invoke([this]() {
 		return iocb_pool.free_obj_queue.count();
 		})) {
-		S5LOG_INFO("Waiting infligh IO to complete...");
+		S5LOG_INFO("Waiting inflight IO to complete...");
 		usleep(10000);
 	}
 	
