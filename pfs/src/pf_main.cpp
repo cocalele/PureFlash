@@ -346,7 +346,7 @@ int main(int argc, char *argv[])
 		PfReplicator* rp = new PfReplicator();
 		rc = rp->init(i, &poller_id);
 		if(rc) {
-			S5LOG_ERROR("Failed init replicator[%d], rc:%d", i, rc);
+			S5LOG_FATAL("Failed init replicator[%d], rc:%d", i, rc);
 			return rc;
 		}
 		app_context.replicators.push_back(rp);
@@ -360,6 +360,16 @@ int main(int argc, char *argv[])
 	app_context.error_handler = new PfErrorHandler();
 	if(app_context.error_handler == NULL) {
 		S5LOG_FATAL("Failed to alloc error_handler");
+	}
+	rc = app_context.error_handler->init("err_handle", 8192, 0);
+	if (rc) {
+		S5LOG_FATAL("Failed init error handler thread, rc:%d", rc);
+		return rc;
+	}
+	rc = app_context.error_handler->start();
+	if (rc != 0) {
+		S5LOG_FATAL("Failed to start error handler thread, rc:%d", rc);
+		return rc;
 	}
 
 	app_context.tcp_server=new PfTcpServer();

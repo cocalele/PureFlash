@@ -233,19 +233,10 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
 	if (unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
-		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
-		            vol->id, vol->name, s->id, s->duty_rep_index);
+		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d cid:%d",
+		            vol->id, vol->name, s->shard_index, s->duty_rep_index, iocb->cmd_bd->cmd_bd->command_id);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN;
-
-		std::ignore = std::async([this, iocb, s]{
-			ErrorReportReply r;
-			app_context.error_handler->report_error_to_conductor(s->replicas[s->duty_rep_index]->id, MSG_STATUS_NOT_PRIMARY, r);
-			iocb->complete_status = r.action_code;
-			iocb->complete_meta_ver = r.meta_ver;
-			this->sync_invoke([iocb]()->int{reply_io_to_client(iocb); return 0;});
-			
-		});
-
+		app_context.error_handler->submit_error(iocb, s->replicas[s->duty_rep_index]->id, MSG_STATUS_NOT_PRIMARY);
 		return 1;
 	}
 	iocb->setup_subtask(s, cmd->opcode);
