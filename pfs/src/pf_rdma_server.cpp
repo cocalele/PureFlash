@@ -105,6 +105,7 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 					return 1;
 				} else {
 					iocb->received_time = now_time_usec();
+                                        iocb->received_time_hz = spdk_get_ticks();				
 					//S5LOG_INFO("get iocmd!!!!command_id:%d seq:%d", bd->cmd_bd->command_id, bd->cmd_bd->command_seq);
 					if (spdk_engine_used())
 						((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
@@ -139,6 +140,7 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 			//conn->dec_ref(); //added at above line, post_read
 			PfServerIocb *iocb = bd->server_iocb;
 			iocb->received_time = now_time_usec();
+                        iocb->received_time_hz = spdk_get_ticks();
 			if (spdk_engine_used())
 				((PfSpdkQueue *)(conn->dispatcher->event_queue))->post_event_locked(EVT_IO_REQ, 0, iocb);
 			else

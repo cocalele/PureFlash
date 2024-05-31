@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <netdb.h>
 //#include "rdma/rdma_cma.h"
@@ -30,9 +31,9 @@ int on_addr_resolved(struct rdma_cm_id* id)
 
 
 #define MAX_WC_CNT 256
-static void *cq_poller_proc(void *arg_)
+static void *cq_event_proc(void *arg_)
 {
-	struct PfRdmaPoller *prp_poller = (struct PfRdmaPoller *)arg_;
+    struct PfRdmaPoller *prp_poller = (struct PfRdmaPoller *)arg_;
     //struct PfRdmaDevContext* dev_ctx = prp_poller->prp_dev_ctx;
     struct ibv_cq *cq;
     struct ibv_wc wc[MAX_WC_CNT];
@@ -66,13 +67,45 @@ static void *cq_poller_proc(void *arg_)
     return NULL;
 }
 
-static void on_rdma_cq_event(int fd, uint32_t events, void *arg)
+static void *cq_polling_proc(void *arg_)
 {
-    cq_poller_proc(arg);
+    struct PfRdmaPoller *poller = (struct PfRdmaPoller *)arg_;
+    prctl(PR_SET_NAME, poller->name);
+    struct ibv_wc wc[MAX_WC_CNT];
+    while (1) {   
+        int ne = ibv_poll_cq(poller->prp_cq, MAX_WC_CNT, wc);
+        if (ne < 0) {
+            S5LOG_ERROR("failed to poll CQ");
+            return NULL;   
+        } else if (ne == 0) {
+            continue;
+        }
+        for (int i = 0; i < ne; i++) {   
+            struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;
+            if (msg == NULL) {
+		S5LOG_WARN("msg is NULL, continue");
+                continue;
+            }
+            struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
+            if (wc[i].status != IBV_WC_SUCCESS) {
+            	S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc",
+					conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status),
+                                        msg->wr_op, wc[i].opcode, i,n);
+            }
+            if (likely(conn->on_work_complete)) {
+                conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
+            }
+        }
+    }
+    return NULL;
 }
 
+static void on_rdma_cq_event(int fd, uint32_t events, void *arg)
+{
+    cq_event_proc(arg);
+}
 
-static int init_rdmd_cq_poller(struct PfRdmaPoller *poller, int idx,
+static int init_rdma_cq_event_poller(struct PfRdmaPoller *poller, int idx,
 	struct PfRdmaDevContext *dev_ctx, struct ibv_context* rdma_ctx)
 {
 	poller->prp_comp_channel = ibv_create_comp_channel(rdma_ctx);
@@ -96,6 +129,25 @@ static int init_rdmd_cq_poller(struct PfRdmaPoller *poller, int idx,
 	return 0;
 }
 
+static int init_rdma_cq_polling_poller(struct PfRdmaPoller *poller, int idx,
+	struct PfRdmaDevContext *dev_ctx, struct ibv_context* rdma_ctx)
+{
+        safe_strcpy(poller->name, "rdma_cq_poller", sizeof(poller->name));
+	poller->prp_cq = ibv_create_cq(rdma_ctx, 512, NULL, NULL, 0);
+	if (!poller->prp_cq) {
+                S5LOG_ERROR("failed ibv_create_cq, errno:%d", errno);
+                return -1;
+	}
+	int r = pthread_create(&poller->tid, NULL, cq_polling_proc, poller);
+	if (r != 0) {
+		poller->tid = 0;
+		S5LOG_ERROR("Failed to start poller thread, rc:%d", r);
+		return -r;
+
+	}
+	return 0;
+}
+
 struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 {
 	struct PfRdmaDevContext* rdma_dev_ctx;
@@ -103,8 +155,7 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 	int rc;
 	pthread_mutex_lock(&global_dev_lock);
 	rc = ibv_query_device(rdma_context, &device_attr);
-	if (rc)
-	{
+	if (rc) {
 		S5LOG_ERROR("ibv_query_device failed, rc:%d", rc);
 		pthread_mutex_unlock(&global_dev_lock);
 		return NULL;
@@ -113,10 +164,8 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 	S5LOG_INFO("RDMA device fw:%s vendor:%d  node_guid:0x%llX, dev:%s", device_attr.fw_ver,
 		device_attr.vendor_id, device_attr.node_guid, rdma_context->device->name);
 
-	for (int i=0; i < MAX_RDMA_DEVICE; i++)
-	{
-		if (g_app_ctx->dev_ctx[i] == NULL)
-		{
+	for (int i = 0; i < MAX_RDMA_DEVICE; i++) {
+		if (g_app_ctx->dev_ctx[i] == NULL) {
 			rdma_dev_ctx = new PfRdmaDevContext;
 			memcpy(&rdma_dev_ctx->dev_attr, &device_attr, sizeof(struct ibv_device_attr));
 			rdma_dev_ctx->ctx = rdma_context;
@@ -130,15 +179,22 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 			rdma_dev_ctx->next_server_cq_poller_idx = rdma_dev_ctx->client_cq_poller_cnt;
 			rdma_dev_ctx->next_client_cq_poller_idx = 0;
 			for (int pindex = 0; pindex < CQ_POLLER_COUNT; pindex++) {
-				init_rdmd_cq_poller(&rdma_dev_ctx->prdc_poller_ctx[pindex], pindex,
-					rdma_dev_ctx, rdma_context);
+                                if (g_app_ctx->cq_proc_model == POLLING) {
+				        init_rdma_cq_polling_poller(&rdma_dev_ctx->prdc_poller_ctx[pindex],
+                                                                        pindex, rdma_dev_ctx, rdma_context);                                       
+                                } else if (g_app_ctx->cq_proc_model == EVENT) {
+				        init_rdma_cq_event_poller(&rdma_dev_ctx->prdc_poller_ctx[pindex],
+                                                                        pindex, rdma_dev_ctx, rdma_context);
+                                } else {
+                                        S5LOG_ERROR("none rdma cq proc model is set");
+                                        return NULL;
+                                }
 			}
 			g_app_ctx->dev_ctx[i] = rdma_dev_ctx;
 			if (!g_app_ctx->rdma_client_only)
 				g_app_ctx->PfRdmaRegisterMr(rdma_dev_ctx);
 		}
-		if (g_app_ctx->dev_ctx[i]->ctx == rdma_context)
-		{
+		if (g_app_ctx->dev_ctx[i]->ctx == rdma_context) {
 			pthread_mutex_unlock(&global_dev_lock);
 			return g_app_ctx->dev_ctx[i];
 		}
@@ -472,7 +528,7 @@ int PfRdmaConnection::do_close()
 	//struct rdma_cm_id* id = this->rdma_id;
 	//struct PfRdmaPoller *rdma_poller = &dev_ctx->prdc_poller_ctx[prc_cq_poller_idx];
 	rc = rdma_disconnect(rdma_id);
-	if(rc){
+	if (rc) {
 		//Returns 0 on success, or -1 on error. If an error occurs, errno will be set to indicate the failure reason.
 		rc = -errno;
 		S5LOG_ERROR("Failed to disconnect rdma connection:%p %s, rc:%d", this, connection_info.c_str(), rc);
