@@ -385,17 +385,17 @@ int PfTcpServer::accept_connection()
 	conn->conn_type = TCP_TYPE;
 	conn->on_close = server_on_conn_close;
 	conn->on_destroy = server_on_conn_destroy;
-	rc = conn->post_recv(bd);
-	if(rc)
-	{
-		S5LOG_ERROR("Failed to post_recv for handshake");
-		goto release5;
-	}
 
 	conn->last_heartbeat_time = now_time_usec();
 	//app_context.ingoing_connections.insert(conn);
 	S5LOG_INFO("add tcp conn ip:%s to heartbeat checker list", client_ip);
 	app_context.add_connection(conn);
+	rc = conn->post_recv(bd);
+	if (rc)
+	{
+		S5LOG_ERROR("Failed to post_recv for handshake");
+		goto release5;
+	}
 	return 0;
 release5:
 	delete (PfHandshakeMessage*)bd->buf;

@@ -90,7 +90,7 @@ static void *cq_polling_proc(void *arg_)
             if (wc[i].status != IBV_WC_SUCCESS) {
             	S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc",
 					conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status),
-                                        msg->wr_op, wc[i].opcode, i,n);
+                                        msg->wr_op, wc[i].opcode, i, ne);
             }
             if (likely(conn->on_work_complete)) {
                 conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);

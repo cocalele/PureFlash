@@ -431,7 +431,7 @@ void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm)
 	const char* cstr = jstr.c_str();
 	mg_send_head(nc, reply.ret_code == 0 ? 200 : 400, strlen(cstr), "Content-Type: text/plain");
 	mg_printf(nc, "%s", cstr);
-	free(ctx);
+	delete ctx;
 }
 
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm) {
@@ -901,8 +901,6 @@ void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm)
 }
 void handle_disp_io_stat_reset(struct mg_connection* nc, struct http_message* hm)
 {
-	int len = 0;
-	char buf[512];
 	PerfReply reply;
 	//DispatchStat total_stat={0};
 	for (auto d : app_context.disps)
