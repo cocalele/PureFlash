@@ -249,6 +249,10 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	iocb->local_cost_time = 0;
 	iocb->remote_rep1_cost_time = 0;
 	iocb->remote_rep2_cost_time = 0;
+	iocb->remote_rep1_submit_cost = 0;
+	iocb->remote_rep2_submit_cost = 0;
+        iocb->remote_rep1_reply_cost = 0;
+        iocb->remote_rep2_reply_cost = 0;
 #endif
 	for (int i = 0; i < vol->rep_count; i++) {
 		if (s->replicas[i]->status == HS_OK || s->replicas[i]->status == HS_RECOVERYING) {
@@ -303,6 +307,10 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 	iocb->local_cost_time = 0;
 	iocb->remote_rep1_cost_time = 0;
 	iocb->remote_rep2_cost_time = 0;
+	iocb->remote_rep1_submit_cost = 0;
+	iocb->remote_rep2_submit_cost = 0;
+        iocb->remote_rep1_reply_cost = 0;
+        iocb->remote_rep2_reply_cost = 0;
 #endif
 	if (likely(s->replicas[i]->status == HS_OK) || s->replicas[i]->status == HS_RECOVERYING) {
 		iocb->setup_one_subtask(s, i, PfOpCode::S5_OP_REPLICATE_WRITE);
@@ -343,7 +351,8 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 #ifdef WITH_SPDK_TRACE
 	uint64_t rep_io_complete_tsc = spdk_get_ticks();
 	uint64_t cost = get_us_from_tsc(rep_io_complete_tsc - iocb->submit_rep_time, get_current_thread()->tsc_rate);
-
+        uint64_t rep_submit_cost = get_us_from_tsc(sub_task->submit_time - iocb->received_time_hz, get_current_thread()->tsc_rate);
+        uint64_t rep_reply_cost = get_us_from_tsc(rep_io_complete_tsc - sub_task->reply_time, get_current_thread()->tsc_rate);
 	// local primary shard io is finished
 	if ((sub_task->task_mask >> iocb->primary_rep_index) == 1) {
 		iocb->local_cost_time = cost;
@@ -354,6 +363,18 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 		} else if (iocb->remote_rep2_cost_time == 0) {
 			iocb->remote_rep2_cost_time = cost;
 		}
+
+                if (iocb->remote_rep1_submit_cost == 0) {
+                        iocb->remote_rep1_submit_cost = rep_submit_cost;
+                } else if (iocb->remote_rep2_submit_cost == 0) {
+                        iocb->remote_rep2_submit_cost = rep_submit_cost;
+                }
+                if (iocb->remote_rep1_reply_cost == 0) {
+                        iocb->remote_rep1_reply_cost = rep_reply_cost;
+                } else if (iocb->remote_rep2_reply_cost == 0) {
+                        iocb->remote_rep2_reply_cost = rep_reply_cost;
+                }                        
+
 	}
 #endif
 	iocb->task_mask &= (~sub_task->task_mask);
@@ -363,9 +384,12 @@ int PfDispatcher::dispatch_complete(SubTask* sub_task)
 		// all rep io finish
 	#ifdef WITH_SPDK_TRACE
 		spdk_poller_trace_record(TRACE_DISP_IO_STAT, get_current_thread()->poller_id, 0,
-                              iocb->cmd_bd->cmd_bd->offset, iocb->local_cost_time, 
-							  iocb->remote_rep1_cost_time, iocb->remote_rep2_cost_time,
-							  get_us_from_tsc(rep_io_complete_tsc - iocb->received_time_hz, get_current_thread()->tsc_rate));
+                                         iocb->cmd_bd->cmd_bd->offset, iocb->local_cost_time, 
+			                 iocb->remote_rep1_cost_time, iocb->remote_rep2_cost_time,
+			                 get_us_from_tsc(rep_io_complete_tsc - iocb->received_time_hz, get_current_thread()->tsc_rate));
+                spdk_poller_trace_record(TRACE_DISP_REP_IO_STAT, get_current_thread()->poller_id, 0,
+                                         iocb->cmd_bd->cmd_bd->offset, iocb->remote_rep1_submit_cost, 
+			                 iocb->remote_rep2_submit_cost, iocb->remote_rep1_reply_cost, iocb->remote_rep2_reply_cost);
 	#endif
 		reply_io_to_client(iocb);
 	}
@@ -517,7 +541,17 @@ SPDK_TRACE_REGISTER_FN(disp_trace, "disp", TRACE_GROUP_DISP)
 				{ "r2cost", SPDK_TRACE_ARG_TYPE_INT, 8},
 				{ "cost", SPDK_TRACE_ARG_TYPE_INT, 8}
 			}
-		},
+	},
+        {
+			"DISP_REP_IO_STAT", TRACE_DISP_REP_IO_STAT,
+			OWNER_PFS_DISP_IO, OBJECT_DISP_IO, 2,
+			{
+				{ "r1sc", SPDK_TRACE_ARG_TYPE_INT, 8},
+				{ "r2sc", SPDK_TRACE_ARG_TYPE_INT, 8},
+				{ "r1rc", SPDK_TRACE_ARG_TYPE_INT, 8},
+                                { "r2rc", SPDK_TRACE_ARG_TYPE_INT, 8}
+			}
+	},
 	};
 
 

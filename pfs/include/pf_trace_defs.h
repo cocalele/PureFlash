@@ -24,7 +24,7 @@
 
 /* disp io tracepoint definitions */
 #define TRACE_DISP_IO_STAT		    SPDK_TPOINT_ID(TRACE_GROUP_DISP, 0x0)
-
+#define TRACE_DISP_REP_IO_STAT              SPDK_TPOINT_ID(TRACE_GROUP_DISP, 0x1)
 static inline uint64_t get_us_from_tsc(uint64_t tsc, uint64_t tsc_rate)
 {
 	return tsc * 1000 * 1000 / tsc_rate;

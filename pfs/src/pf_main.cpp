@@ -198,7 +198,21 @@ int main(int argc, char *argv[])
 	} else if (strcmp(srb, "by_shard") == 0) {
 		app_context.shard_to_replicator = true;
 	}
+#ifdef WITH_RDMA
+	const char *cq_proc_model = conf_get(fp, "rdma_cq_proc_model", "name", "polling", false);
+	if (!cq_proc_model) {
+		S5LOG_FATAL("Failed to find key(rdma_cq_proc_model:name) in conf(%s).", s5daemon_conf);
+		return -S5_CONF_ERR;
+	}
 
+	if (strcmp(cq_proc_model, "polling") == 0)
+		app_context.cq_proc_model = POLLING;
+	else if (strcmp(cq_proc_model, "event") == 0)
+		app_context.cq_proc_model = EVENT;
+	else
+		app_context.cq_proc_model = NONE_MODEL;
+	S5LOG_INFO("Use rdma cq proc model:%d", app_context.cq_proc_model);
+#endif
 	const char *engine = conf_get(fp, "engine", "name", "aio", false);
 	if (!engine) {
 		S5LOG_FATAL("Failed to find key(engine:name) in conf(%s).", s5daemon_conf);

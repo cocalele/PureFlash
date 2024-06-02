@@ -63,7 +63,11 @@ public:
 	uint64_t submit_rep_time;
 	int primary_rep_index;
 	uint64_t remote_rep1_cost_time;
+	uint64_t remote_rep1_submit_cost;
 	uint64_t remote_rep2_cost_time;
+	uint64_t remote_rep2_submit_cost;
+	uint64_t remote_rep1_reply_cost;
+	uint64_t remote_rep2_reply_cost;
 	uint64_t local_cost_time;
 	IoSubTask io_subtasks[3];
 

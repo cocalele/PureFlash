@@ -44,11 +44,13 @@ struct SubTask
 	uint32_t task_mask;
 	uint32_t rep_index; //task_mask = 1 << rep_index;
 	uint64_t submit_time;
+	uint64_t reply_time;
 	PfMessageStatus complete_status;
 	TaskCompleteOps *ops = NULL;
 	//virtual PfEventQueue* half_complete(PfMessageStatus comp_status);
 
-	SubTask() :opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0), complete_status((PfMessageStatus)0) {}
+	SubTask() :opcode(PfOpCode(0)), parent_iocb(NULL), task_mask(0), rep_index(0),
+	                  submit_time(0), reply_time(0), complete_status((PfMessageStatus)0) {}
 };
 
 struct IoSubTask : public SubTask

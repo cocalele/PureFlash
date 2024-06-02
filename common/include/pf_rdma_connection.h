@@ -19,11 +19,21 @@ class BufferDescriptor;
 #define CQ_POLLER_CLIENT_COUNT (8)
 
 struct PfRdmaPoller {
+	pthread_t tid;
+	char name[32];
 	struct PfRdmaDevContext *prp_dev_ctx;
 	int prp_idx;
 	struct ibv_cq* prp_cq;
 	struct ibv_comp_channel* prp_comp_channel;
 	PfPoller poller;
+	PfRdmaPoller():tid(0){}
+	~PfRdmaPoller() {
+		if (tid > 0) {
+			pthread_cancel(tid);
+			pthread_join(tid, NULL);
+			tid = 0;
+		}
+	}
 };
 
 struct PfRdmaDevContext {
