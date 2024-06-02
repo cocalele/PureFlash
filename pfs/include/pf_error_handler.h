@@ -19,7 +19,7 @@ class RestfulReply;
 class PfErrorHandler : public PfEventThread {
 public:
     int submit_error(IoSubTask* t, PfMessageStatus sc);
-	int submit_error(PfServerIocb* io, uint64_t rep_id, PfMessageStatus sc);
+	//int submit_error(PfServerIocb* io, uint64_t rep_id, PfMessageStatus sc);
 	PfErrorHandler();
 	int report_error_to_conductor(uint64_t rep_id, int sc, ErrorReportReply& reply);
 
