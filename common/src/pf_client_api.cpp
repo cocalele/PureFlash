@@ -402,10 +402,25 @@ static void client_on_rdma_close(PfConnection* c)
 
 }
 
-static void client_on_tcp_close(PfConnection* c)
+static void client_on_tcp_close(PfConnection* _c)
 {
 	//c->dec_ref(); //Don't dec_ref here, only dec_ref when connection removed from pool
-
+	PfTcpConnection* c = (PfTcpConnection*)_c;
+	ObjectMemoryPool<PfClientIocb> *iocb_pool = &c->client_ctx->iocb_pool;
+	int cnt = 0;
+	struct PfClientIocb* ios = iocb_pool->data;
+	
+	for (int i = 0; i < iocb_pool->obj_count; i++)
+	{
+		if (ios[i].conn == c && (ios[i].volume->state == VOLUME_OPENED || ios[i].volume->state == VOLUME_WAIT_REOPEN))
+		{
+			ios[i].conn->dec_ref();
+			ios[i].conn = NULL;
+			ios[i].volume->resend_io(&ios[i]);
+			cnt++;
+		}
+	}
+	S5LOG_WARN("%d IO resent for connection:%p closed", cnt, c);
 }
 static inline PfClientAppCtx* get_client_ctx()
 {
