@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
 		app_context.shard_to_replicator = true;
 	}
 #ifdef WITH_RDMA
-	const char *cq_proc_model = conf_get(fp, "rdma_cq_proc_model", "name", "polling", false);
+	const char *cq_proc_model = conf_get(fp, "rdma_cq_proc_model", "name", "event", false);
 	if (!cq_proc_model) {
 		S5LOG_FATAL("Failed to find key(rdma_cq_proc_model:name) in conf(%s).", s5daemon_conf);
 		return -S5_CONF_ERR;
