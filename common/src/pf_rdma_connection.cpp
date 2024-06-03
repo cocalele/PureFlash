@@ -3,6 +3,11 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <errno.h>
+
 //#include "rdma/rdma_cma.h"
 //#include "pf_main.h"
 //#include "pf_server.h"
@@ -16,6 +21,7 @@
 #define MAX_DISPATCHER_COUNT 10
 #define MAX_REPLICATOR_COUNT 10
 #define DEFAULT_MAX_MR		64
+static const uint32_t MAX_ACK_EVENT = 5000;
 pthread_mutex_t global_dev_lock;
 
 int on_addr_resolved(struct rdma_cm_id* id)
@@ -62,7 +68,7 @@ static void *cq_event_proc(void *arg_)
                 conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
             }
         }
-		ibv_ack_cq_events(cq, n);
+        ibv_ack_cq_events(cq, n);
     }
     return NULL;
 }
@@ -72,28 +78,69 @@ static void *cq_polling_proc(void *arg_)
     struct PfRdmaPoller *poller = (struct PfRdmaPoller *)arg_;
     prctl(PR_SET_NAME, poller->name);
     struct ibv_wc wc[MAX_WC_CNT];
-    while (1) {   
+    uint64_t last_inactive = now_time_usec();
+    bool rearmed = false;
+    ibv_cq *cq = NULL;
+    void *ev_ctx;
+    int cq_events_that_need_ack = 0;
+    while (true) {
         int ne = ibv_poll_cq(poller->prp_cq, MAX_WC_CNT, wc);
         if (ne < 0) {
             S5LOG_ERROR("failed to poll CQ");
             return NULL;   
-        } else if (ne == 0) {
-            continue;
-        }
-        for (int i = 0; i < ne; i++) {   
-            struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;
-            if (msg == NULL) {
-		S5LOG_WARN("msg is NULL, continue");
-                continue;
-            }
-            struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
-            if (wc[i].status != IBV_WC_SUCCESS) {
-            	S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc",
-					conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status),
-                                        msg->wr_op, wc[i].opcode, i,n);
-            }
-            if (likely(conn->on_work_complete)) {
-                conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
+        } else if (ne > 0) {
+            for (int i = 0; i < ne; i++) {   
+                struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;
+                if (msg == NULL) {
+	    	    S5LOG_WARN("msg is NULL, continue");
+                    continue;
+                }
+                struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
+                if (wc[i].status != IBV_WC_SUCCESS) {
+                	S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc",
+	    				conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status),
+                                            msg->wr_op, wc[i].opcode, i, ne);
+                }
+                if (likely(conn->on_work_complete)) {
+                    conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
+                }
+            }           
+        } else {
+            // if polling time exceed 300ms, rearm event driver
+            if (now_time_usec() - last_inactive > 300000) {
+                if (!rearmed) {
+                    // clean up cq events after rearm notify ensure no new incoming event
+                    // arrived between polling and rearm
+                    int r = ibv_req_notify_cq(poller->prp_cq, 0);
+                    if (r < 0) {
+                      S5LOG_ERROR("failed to notify cq, err=%d ", r);
+                      return NULL;            
+                    }
+                    rearmed = true;
+                    continue;
+                }
+                struct pollfd channel_poll[1];
+                channel_poll[0].fd = poller->prp_comp_channel->fd;
+                channel_poll[0].events = POLLIN;
+                channel_poll[0].revents = 0;
+                int r = 0;
+                while (r == 0) {
+                    r = poll(channel_poll, 1, 100);                    
+                    if (r == -1) {
+                        S5LOG_ERROR("Poll error");
+                    } else if (r == 0) {
+                    }
+                }
+                if (r > 0) {
+                    ibv_get_cq_event(poller->prp_comp_channel, &cq, &ev_ctx);
+                    if (++cq_events_that_need_ack == MAX_ACK_EVENT) {
+                      S5LOG_INFO(" ack aq events.");
+                      ibv_ack_cq_events(cq, MAX_ACK_EVENT);
+                      cq_events_that_need_ack = 0;
+                    }
+                }
+                last_inactive = now_time_usec();
+                rearmed = false;
             }
         }
     }
@@ -129,16 +176,43 @@ static int init_rdma_cq_event_poller(struct PfRdmaPoller *poller, int idx,
 	return 0;
 }
 
+static int set_nonblock(int fd)
+{
+        int flags;      
+        if ((flags = fcntl(fd, F_GETFL)) < 0) {
+          S5LOG_ERROR("fcntl F_GETFL failed");
+          return -1;
+        }
+        if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+          S5LOG_ERROR("fcntl(F_SETFL,O_NONBLOCK) failed");
+          return -1;
+        }
+        return 0;
+}
+
 static int init_rdma_cq_polling_poller(struct PfRdmaPoller *poller, int idx,
 	struct PfRdmaDevContext *dev_ctx, struct ibv_context* rdma_ctx)
 {
+        poller->prp_comp_channel = ibv_create_comp_channel(rdma_ctx);
+        if (!poller->prp_comp_channel) {
+        	S5LOG_ERROR("failed to create comp channel");
+                return -1;
+        }
+        // set channel fd to noblock
+        int r = set_nonblock(poller->prp_comp_channel->fd);
+        if (r < 0) {
+              S5LOG_ERROR("failed set_nonblock, errno:%d", r);
+              return r;
+        }
         safe_strcpy(poller->name, "rdma_cq_poller", sizeof(poller->name));
-	poller->prp_cq = ibv_create_cq(rdma_ctx, 512, NULL, NULL, 0);
+	poller->prp_cq = ibv_create_cq(rdma_ctx, 512, NULL, poller->prp_comp_channel, 0);
 	if (!poller->prp_cq) {
                 S5LOG_ERROR("failed ibv_create_cq, errno:%d", errno);
                 return -1;
 	}
-	int r = pthread_create(&poller->tid, NULL, cq_polling_proc, poller);
+        ibv_req_notify_cq(poller->prp_cq, 0);
+        poller->prp_dev_ctx = dev_ctx;
+	r = pthread_create(&poller->tid, NULL, cq_polling_proc, poller);
 	if (r != 0) {
 		poller->tid = 0;
 		S5LOG_ERROR("Failed to start poller thread, rc:%d", r);
