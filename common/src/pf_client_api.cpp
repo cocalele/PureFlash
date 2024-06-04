@@ -402,10 +402,25 @@ static void client_on_rdma_close(PfConnection* c)
 
 }
 
-static void client_on_tcp_close(PfConnection* c)
+static void client_on_tcp_close(PfConnection* _c)
 {
 	//c->dec_ref(); //Don't dec_ref here, only dec_ref when connection removed from pool
-
+	PfTcpConnection* c = (PfTcpConnection*)_c;
+	ObjectMemoryPool<PfClientIocb> *iocb_pool = &c->client_ctx->iocb_pool;
+	int cnt = 0;
+	struct PfClientIocb* ios = iocb_pool->data;
+	
+	for (int i = 0; i < iocb_pool->obj_count; i++)
+	{
+		if (ios[i].conn == c && (ios[i].volume->state == VOLUME_OPENED || ios[i].volume->state == VOLUME_WAIT_REOPEN))
+		{
+			ios[i].conn->dec_ref();
+			ios[i].conn = NULL;
+			ios[i].volume->resend_io(&ios[i]);
+			cnt++;
+		}
+	}
+	S5LOG_WARN("%d IO resent for connection:%p closed", cnt, c);
 }
 static inline PfClientAppCtx* get_client_ctx()
 {
@@ -510,7 +525,7 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 	}
 	clean.push_back([this] {delete this->vol_proc;  });
 	int poller_id = 0;
-	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4, &poller_id);
+	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4, poller_id);
 	if (rc != 0) {
 		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
 		return rc;
@@ -590,7 +605,12 @@ int PfClientVolume::do_open(bool reopen, bool is_aof)
 		return -errno;
 	}
 	DeferCall _cfg_r([cfg]() { conf_close(cfg); });
-	io_depth = conf_get_int(cfg, "client", "io_depth", 128, FALSE);
+	io_depth = conf_get_int(cfg, "client", "io_depth", 120, FALSE);
+	// server limit io_depth to 255, client must half of that
+	if (io_depth > PF_MAX_IO_DEPTH) {
+		S5LOG_ERROR("io_depth:%d exceed max allowed:%d", io_depth, PF_MAX_IO_DEPTH);
+		return -EINVAL;
+	}
 	int io_timeout = conf_get_int(cfg, "client", "io_timeout", 30, FALSE);
 	const char *conn_type = conf_get(cfg, "client", "conn_type", "rdma", FALSE);
 	if (strcmp(conn_type, "rdma") == 0)
@@ -845,7 +865,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			{
 				S5LOG_WARN( "Get reopen from store, conn:%s status code:0x%x, req meta_ver:%d store meta_ver:%d",
 					conn->connection_info.c_str(), s, io->cmd_bd->cmd_bd->meta_ver, reply->meta_ver);
-				if (meta_ver < reply->meta_ver)
+				//if (meta_ver < reply->meta_ver)
 				{
 					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", meta_ver, reply->meta_ver);
 					event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()), io->volume);
@@ -1496,7 +1516,7 @@ PfClientAppCtx::~PfClientAppCtx()
 	while (iocb_pool.obj_count != vol_proc->sync_invoke([this]() {
 		return iocb_pool.free_obj_queue.count();
 		})) {
-		S5LOG_INFO("Waiting infligh IO to complete...");
+		S5LOG_INFO("Waiting inflight IO to complete...");
 		usleep(10000);
 	}
 	

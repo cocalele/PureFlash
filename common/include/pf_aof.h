@@ -35,6 +35,7 @@ public:
 	ssize_t read(void* buf, ssize_t len, off_t offset) const;
 	void sync();
 	inline ssize_t file_length() { return file_len; }
+	const char* path(); //return file full path include name
 	int reader_cnt = 0;
 	int writer_cnt = 0;
 	int ref_count = 1;

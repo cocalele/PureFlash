@@ -576,7 +576,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 		{
 			if (poll_fd.revents & POLLOUT)
 			{
-				S5LOG_INFO("TCP connect success:%s", ip.c_str());
+				//S5LOG_INFO("TCP connect success:%s", ip.c_str()); //may still fail on later state check
 			}
 			else
 			{
@@ -600,7 +600,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	if (error != 0)	{
 		throw runtime_error(format_string("socket in error state:%d", error));
 	}
-
+	S5LOG_INFO("TCP connect success:%s, begin shake hands...", ip.c_str());
 	fcntl(socket_fd, F_SETFL, fdopt);
 
 

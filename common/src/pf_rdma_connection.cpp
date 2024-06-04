@@ -87,7 +87,7 @@ static void *cq_polling_proc(void *arg_)
         int ne = ibv_poll_cq(poller->prp_cq, MAX_WC_CNT, wc);
         if (ne < 0) {
             S5LOG_ERROR("failed to poll CQ");
-            return NULL;   
+            return NULL;
         } else if (ne > 0) {
             for (int i = 0; i < ne; i++) {   
                 struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;

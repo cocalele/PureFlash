@@ -95,6 +95,8 @@ static void handle_debug(struct mg_connection *nc, int ev, void *p) {
 			handle_perf_stat(nc, hm);
 		else if (strcmp(opcode, "disp_io") == 0)
 			handle_disp_io_stat(nc, hm);
+		else if (strcmp(opcode, "disp_io_reset") == 0)
+			handle_disp_io_stat_reset(nc, hm);
 		else if (strcmp(opcode, "save_md") == 0) {
 			handle_save_md_disk(nc, hm);
 		}

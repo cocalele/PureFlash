@@ -6,8 +6,9 @@
 ```
  # git clone https://github.com/cocalele/PureFlash.git
  # cd PureFlash/docker/
- # podman build -f Dockerfile -t pureflash/pureflash:selfbuild
+ # podman build --no-cache -f Dockerfile -t pureflash/pureflash:selfbuild
 ```
+Then you can follow `Try PureFlash` in README
 
 
 ## Build step by step:

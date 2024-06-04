@@ -235,11 +235,12 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 				std::vector<std::string> ips = split_string(rarg.rep_ports, ',');
 				while(ips.size() < 2)
 					ips.push_back("");
-				rp->sync_invoke([rp, &rarg, &ips](){
+				rp->sync_invoke([rp, r, &rarg, &ips](){
 					auto pos = rp->conn_pool->peers.find(rarg.store_id);
 					if(pos == rp->conn_pool->peers.end() || pos->second.conn == NULL) {
 						rp->conn_pool->add_peer(rarg.store_id, ips[0], ips[1]);
-						rp->conn_pool->connect_peer(rarg.store_id);
+						if(r->status == HS_OK || r->status == HS_RECOVERYING)
+							rp->conn_pool->connect_peer(rarg.store_id);
 					}
 					return 0;
 				});
@@ -430,7 +431,7 @@ void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm)
 	const char* cstr = jstr.c_str();
 	mg_send_head(nc, reply.ret_code == 0 ? 200 : 400, strlen(cstr), "Content-Type: text/plain");
 	mg_printf(nc, "%s", cstr);
-	free(ctx);
+	delete ctx;
 }
 
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm) {
@@ -895,6 +896,20 @@ void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm)
 			d->stat.wr_bytes, d->stat.rd_bytes, d->stat.rep_wr_bytes);
 	}
 	reply.line = std::move(std::string(buf, len));
+	send_reply_to_client(reply, nc);
+
+}
+void handle_disp_io_stat_reset(struct mg_connection* nc, struct http_message* hm)
+{
+	PerfReply reply;
+	//DispatchStat total_stat={0};
+	for (auto d : app_context.disps)
+	{
+		d->sync_invoke([d]()->int {
+			d->stat.wr_cnt= d->stat.rd_cnt= d->stat.rep_wr_cnt=d->stat.wr_bytes= d->stat.rd_bytes= d->stat.rep_wr_bytes=0;
+			return 0;
+		});
+	}
 	send_reply_to_client(reply, nc);
 
 }
