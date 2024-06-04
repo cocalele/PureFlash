@@ -219,6 +219,10 @@ static int init_rdma_cq_polling_poller(struct PfRdmaPoller *poller, int idx,
 		return -r;
 
 	}
+	struct sched_param sp;
+	memset(&sp, 0, sizeof(sp));
+	sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
+	pthread_setschedparam(poller->tid, SCHED_FIFO, &sp);
 	return 0;
 }
 
