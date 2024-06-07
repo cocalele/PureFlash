@@ -584,7 +584,7 @@ int PfReplicator::init(int index, uint16_t* p_id)
 #ifdef USE_DELAY_THREAD
 	delay_thread.replicator = this;
 	char delay_name[32];
-    snprintf(delay_name, sizeof(delay_name), "%d_delay", rep_index);
+        snprintf(delay_name, sizeof(delay_name), "%d_delay", rep_index);
 	delay_thread.init(delay_name, rep_iocb_depth, *p_id);
 	delay_thread.start();
 #endif
