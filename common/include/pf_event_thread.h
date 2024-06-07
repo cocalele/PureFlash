@@ -29,7 +29,7 @@ public:
 	uint64_t tsc_last;
 	pf_thread_stats stats;
 
-	int (*func_priv)(int *, void *);
+	int (*func_priv)(int *, void *) = NULL;
 	void *arg_v;
 
 	bool inited;
