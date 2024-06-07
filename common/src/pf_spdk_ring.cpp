@@ -55,6 +55,18 @@ int PfSpdkQueue::init(const char* name, int size, enum spdk_ring_type mode)
     msg_mempool = spdk_mempool_create(mempool_name, MEMPOOL_CACHE_SIZE * 2, sizeof(pf_spdk_msg), SPDK_MEMPOOL_DEFAULT_CACHE_SIZE, SPDK_ENV_SOCKET_ID_ANY);
     if (!msg_mempool) {
         S5LOG_ERROR("Failed create spdk mempool for:%s", mempool_name);
+        int err = errno;
+        switch (err) {
+            case ENOMEM:
+                S5LOG_ERROR("Unable to create mempool: Not enough memory");
+                break;
+            case EINVAL:
+                S5LOG_ERROR("Unable to create mempool: Invalid argument");
+                break;
+            default:
+                S5LOG_ERROR("Unable to create mempool: Unknown error");
+                break;
+        }
         return -1;
     }
 
