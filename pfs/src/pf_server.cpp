@@ -216,12 +216,11 @@ void server_on_conn_close(PfConnection* conn)
 	S5LOG_INFO("conn:%p, %s closed!", conn, conn->connection_info.c_str());
 	conn->dec_ref();
 	S5LOG_ERROR("TODO: remove conn:%p from heartbeat checker list", conn);
-	//app_context.ingoing_connections.remove(conn);
-
 }
-void server_on_conn_destroy(PfConnection* conn)
+void server_on_tcp_conn_destroy(PfConnection* conn)
 {
 	S5LOG_INFO("conn:%p, %s destroyed!", conn, conn->connection_info.c_str());
+	app_context.remove_connection(conn);
 }
 
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* _conn, void* cbk_data)
@@ -384,7 +383,7 @@ int PfTcpServer::accept_connection()
 	conn->add_ref(); //decreased in `server_on_conn_close`
 	conn->conn_type = TCP_TYPE;
 	conn->on_close = server_on_conn_close;
-	conn->on_destroy = server_on_conn_destroy;
+	conn->on_destroy = server_on_tcp_conn_destroy;
 
 	conn->last_heartbeat_time = now_time_usec();
 	//app_context.ingoing_connections.insert(conn);

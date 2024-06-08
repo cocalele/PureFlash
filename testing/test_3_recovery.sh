@@ -7,9 +7,10 @@ VOL_SIZE=$((5<<30)) #5G on my testing platform
 COND_IP=$(pfcli get_pfc)
 read DB_IP DB_NAME DB_USER DB_PASS <<< $(assert pfcli get_conn_str)
 export DB_IP DB_NAME DB_USER DB_PASS
+REP_CNT=$(get_rep_count)
 
 pfcli delete_volume  -v $VOL_NAME
-assert pfcli create_volume  -v $VOL_NAME -s $VOL_SIZE -r 3
+assert pfcli create_volume  -v $VOL_NAME -s $VOL_SIZE -r $REP_CNT
 assert "fio --enghelp | grep pfbd "
 fio -name=test -ioengine=pfbd -volume=$VOL_NAME -iodepth=1  -rw=randwrite -size=$VOL_SIZE -bs=4k -direct=1 &
 FIO_PID=$!

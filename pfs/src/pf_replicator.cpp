@@ -40,8 +40,18 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 {
 	int rc;
 	PfConnection* c = (PfConnection*)conn_pool->get_conn((int)t->store_id);
-	if (c == NULL) {
+	if (unlikely(c == NULL)) {
 		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
+		PfMessageHead* cmd = t->parent_iocb->cmd_bd->cmd_bd;
+		PfVolume* vol = app_context.get_opened_volume(cmd->vol_id);
+		uint32_t shard_index = (uint32_t)OFFSET_TO_SHARD_INDEX(cmd->offset);
+		PfShard* s = vol->shards[shard_index];
+		PfReplica * r = s->replicas[t->rep_index];
+		if( r->status == HS_RECOVERYING){
+			r->status = HS_ERROR;
+			S5LOG_ERROR("Stop recovery on replica:0x%lx rep_index:%d for connection error", r->id, t->rep_index);//we may have dup replica id, but always unique index
+			//TODO: stop ongoing recovery job on this replica
+		}
 		app_context.error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		return PfMessageStatus::MSG_STATUS_CONN_LOST;
 	}

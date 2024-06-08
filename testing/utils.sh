@@ -113,13 +113,32 @@ async_curl() {
 	done
 	return -1
 }
+if [ ! -v SSH_PORT ]; then
+    export SSH_PORT=22
+fi
+
+SSH_CMD="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $SSH_PORT"
 
 function stop_pfs(){
+    assert $SSH_CMD root@$1 pkill pfs
 	#ssh root@$STORE_IP supervisorctl stop pfs
-	assert ssh root@$1  podman exec pfs-run pkill pfs
+	#assert ssh root@$1  podman exec pfs-run pkill pfs
 }
 
 function start_pfs(){
+    assert $SSH_CMD root@$1 /opt/pureflash/restart-pfs.sh
 	#ssh root@$STORE_IP supervisorctl start pfs
-	assert ssh root@$1 podman exec pfs-run /opt/pureflash/restart-pfs.sh
+	#assert ssh root@$1 podman exec pfs-run /opt/pureflash/restart-pfs.sh
+}
+
+function get_rep_count(){
+    NODE_CNT=$(pfcli list_store |grep OK |wc -l)
+    if ((NODE_CNT < 2 )) ;  then 
+        fatal "At least 2 nodes are required"
+    fi
+    if  ((NODE_CNT < 3 )) ;  then
+        echo "2"
+    else
+        echo 3
+    fi
 }

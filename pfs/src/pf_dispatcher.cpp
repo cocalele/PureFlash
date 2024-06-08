@@ -429,8 +429,9 @@ int PfDispatcher::init_mempools(int disp_index)
 		cb->reply_bd = mem_pool.reply_pool.alloc();
 		cb->reply_bd->data_len =  sizeof(PfMessageReply);
 		cb->reply_bd->server_iocb = cb;
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < PF_MAX_SUBTASK_CNT; i++) {
 			cb->subtasks[i] = &cb->io_subtasks[i];
+			cb->subtasks[i]->rep_id = -1ULL;//re-set before dispatch
 			cb->subtasks[i]->rep_index = i;
 			cb->subtasks[i]->task_mask = 1 << i;
 			cb->subtasks[i]->parent_iocb = cb;

@@ -309,13 +309,13 @@ static int client_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 	{
 		S5LOG_INFO("Op complete unsuccessful opcode:%d, status:%s", bd->wr_op, WcStatusToStr(WcStatus(complete_status)));
 		if(bd->wr_op == TCP_WR_SEND){
-			//for send request, we do nothing, just wait IO timeout and resend
+			//IO is resend in function `client_on_tcp_close`
 			return 0;
 		} else if(bd->wr_op == TCP_WR_RECV){
 			PfConnection* conn = bd->conn;
 			conn->client_ctx->reply_pool.free(bd);
 			//conn->close(); //connection should has been closed during do_send/do_recv
-			//IO not completed, it will be resend by timeout
+			//IO not completed, resend in function `client_on_tcp_close`
 			return 0;
 
 		}
