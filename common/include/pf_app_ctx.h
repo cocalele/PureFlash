@@ -34,7 +34,6 @@ class PfAppCtx
 {
 public:
 	int io_desc_count;
-	//ObjectMemoryPool<PfIoDesc> iod_pool;
 	BigMemPool cow_buf_pool;
 
 	//BufferPool cmd_pool;

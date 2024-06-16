@@ -187,7 +187,9 @@ public:
 
 	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
+#ifdef WITH_PFS2
 	PfClientStore* get_local_store(int shard_index);
+#endif
 };
 
 class ListVolumeReply

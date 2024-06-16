@@ -420,7 +420,9 @@ static void client_on_tcp_close(PfConnection* _c)
 			cnt++;
 		}
 	}
-	S5LOG_WARN("%d IO resent for connection:%p closed", cnt, c);
+	if(cnt > 0){
+		S5LOG_WARN("%d IO resent for connection:%p closed", cnt, c);
+	}
 }
 static inline PfClientAppCtx* get_client_ctx()
 {
@@ -1013,6 +1015,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		PfMessageHead *io_cmd = io->cmd_bd->cmd_bd;
 
 		int shard_index = (int)(io_cmd->offset >> SHARD_SIZE_ORDER);
+#ifdef WITH_PFS2
 		if(shards[shard_index].is_local){
 			PfClientStore* local_store = get_local_store(shard_index);
 			if(local_store == NULL){
@@ -1027,7 +1030,9 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				S5LOG_FATAL("Invalid op :%d", io_cmd->opcode);
 			}
 			local_store->ioengine->submit_batch();
-		} else {
+		} else 
+#endif
+		{
 			BufferDescriptor* cmd_bd = io->cmd_bd;
 			struct PfConnection* conn = get_shard_conn(shard_index);
 
@@ -1751,6 +1756,7 @@ int PfClientAppCtx::rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32
 	return rc;
 }
 
+#ifdef WITH_PFS2
 static std::unordered_map<std::string, PfClientStore*> local_stores;
 PfClientStore* PfClientVolume::get_local_store(int shard_index)
 {
@@ -1774,7 +1780,7 @@ PfClientStore* PfClientVolume::get_local_store(int shard_index)
 	}
 	return shard->local_store;
 }
-
+#endif
 static void __attribute__((constructor)) spdk_engine_init(void)
 {
 	spdk_engine_set(false);

@@ -38,8 +38,8 @@ The whole system include 5 modules (View graph with tabstop=4 and monospaced fon
                         |             |                     +------^--------+
 +-------------------+   |             |                            |
 |                   +---+    +--------v---------+                  |
-| pfbd  tcmu        |        |                  |                  |
-| (User and         +------->+ pfs              +------------------+
+| pfbd/pfkd/tcmu    |        |                  |                  |
+| (User and kernel  +------->+ pfs              +------------------+
 | space client)     |        | (Max 1024 nodes) |
 +-------------------+        +------------------+
 
@@ -70,7 +70,7 @@ A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide se
   There are two types of client interfaces: user mode and kernel mode. User mode is accessed by applications in the form of APIs, which are located in libpfbd.
 
 ### 3.5.1 pfdd 
-  pfdd is a dd-like tool, but has access to the PureFlash volume， https://github.com/cocalele/qemu/tree/pfbd
+  pfdd is a dd-like tool, but has access to the PureFlash volume，https://github.com/cocalele/PureFlash/blob/master/common/src/pf_pfdd.cpp
 
 ### 3.5.2 fio
   A FIO branch that supports PFBD. Can be used to test PureFlash with direct access to PureFlash volume。repository URL：https://github.com/cocalele/fio.git 

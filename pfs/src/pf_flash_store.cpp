@@ -127,7 +127,7 @@ int  PfFlashStore::format_disk()
 	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%lld.", tray_name, uuid_str, obj_count, head.objsize);
 	return 0;
 }
-
+#ifdef WITH_PFS2
 int PfFlashStore::shared_disk_init(const char* tray_name, uint16_t* p_id)
 {
 	int ret = 0;
@@ -221,7 +221,7 @@ int PfFlashStore::owner_init()
 	err_clean.cancel_all();
 	return ret;
 }
-
+#endif //WITH_PFS2
 
 char const_zero_page[4096] = { 0 };
 
@@ -1277,6 +1277,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	snprintf(store_id_str, sizeof(store_id_str), "%d", app_context.store_id);
 	snprintf(zk_node_name, sizeof(zk_node_name), "shared_disks/%s/owner_store", uuid_str);
 	switch (event_type) {
+#ifdef WITH_PFS2
 	case EVT_WAIT_OWNER_LOCK: //this will be the first event received for shared disk
 		do {
 			rc = app_context.zk_client.wait_lock(zk_node_name, store_id_str); //we will not process any event before get lock
@@ -1296,6 +1297,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 		} while(rc);
 
 		break;
+#endif
 	case EVT_IO_REQ:
 	{
 	    PfOpCode op = ((IoSubTask*)arg_p)->parent_iocb->cmd_bd->cmd_bd->opcode;

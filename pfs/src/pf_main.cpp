@@ -296,8 +296,10 @@ int main(int argc, char *argv[])
 		s->is_shared_disk = shared;
 		if (app_context.engine == SPDK)
 			rc = s->spdk_nvme_init(devname, &poller_id);
+#ifdef WITH_PFS2
 		else if(shared)
 			rc = s->shared_disk_init(devname, &poller_id);
+#endif
 		else
 			rc = s->init(devname, &poller_id);
 		if(rc) {
@@ -316,10 +318,14 @@ int main(int argc, char *argv[])
 				continue;
 			}
 		}
+#ifdef WITH_PFS2
 		if(shared) {
 			register_shared_disk(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 			s->event_queue->post_event(EVT_WAIT_OWNER_LOCK, 0, 0, 0);
-		} else {
+		} else
+#endif
+		{
+
 			register_tray(store_id, s->head.uuid, s->tray_name, s->head.tray_capacity, s->head.objsize);
 		}
 		poller_id++;

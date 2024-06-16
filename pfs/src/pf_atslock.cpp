@@ -1,5 +1,4 @@
 
-
 #ifndef __sun
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
@@ -17,6 +16,9 @@
 #include <inttypes.h>
 #include <getopt.h>
 
+#include "pf_log.h"
+
+#ifdef WITH_PFS2
 
 #include "scsi/sg_lib.h"
 #include "scsi/sg_cmds_basic.h"
@@ -24,7 +26,6 @@
 #include "scsi/sg_unaligned.h"
 #include "scsi/sg_pr2serr.h"
 
-#include "pf_log.h"
 
 
 #define DEF_BLOCK_SIZE 512
@@ -270,3 +271,18 @@ int pf_ats_unlock(int devfd, int64_t lock_location)
 {
 	return _ats_lock_unlock_(devfd, lock_location, false);
 }
+#else //WITH_PFS2
+//no pfs2 support
+int pf_ats_lock(int devfd, int64_t lock_location)
+{
+    S5LOG_FATAL("pfs2 not enabled, please run cmake with -DWITH_PFS2=1");
+	return -ENOTSUP;
+}
+
+int pf_ats_unlock(int devfd, int64_t lock_location)
+{
+	S5LOG_FATAL("pfs2 not enabled, please run cmake with -DWITH_PFS2=1");
+	return -ENOTSUP;
+}
+
+#endif
