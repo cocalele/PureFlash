@@ -171,6 +171,7 @@ if compiling with s5common support SPDK engine, you shoule specify spdk/dpdk lib
    # ( cd ${PUREFLASH_HOME}/build_deb/bin; cp -rp dpdk /usr/lib/)
    
    # mkdir build; cd build; ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring && ninja
+   __remove the `--enable-debug` option for product release__
    
    for arm:
    # ../configure --disable-linux-io-uring --enable-kvm  --target-list=aarch64-linux-user,aarch64-softmmu
@@ -181,6 +182,14 @@ if compiling with s5common support SPDK engine, you shoule specify spdk/dpdk lib
 
    # qemu/build/qemu-img dd bs=4k count=1  if=pfbd:test_v1 of=./test.dat 
 ```
+## 3) run qemu vm
+```
+	# qemu/build//qemu-system-x86_64  -enable-kvm -cpu host -smp 1 -drive if=ide,file=./centos8.qcow2,cache=none \
+        -drive if=virtio,file=pfbd:test_v1,cache=none \
+        -m 4G -vnc :12 \
+        -nic user,hostfwd=tcp::5555-:22
+```
+
 
 6. build  tcmu
    tcmu is a LIO module to export pfbd volume via iSCSI. You need this only if you want.
