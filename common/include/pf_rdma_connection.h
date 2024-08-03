@@ -7,8 +7,10 @@
 #include "pf_poller.h"
 #include "pf_utils.h"
 #include <rdma/rdma_cma.h>
+#ifdef WITH_SPDK_BDEV
 #include "spdk/env.h"
 #include "spdk/thread.h"
+#endif
 
 class PfPoller;
 class PfClientVolume;
