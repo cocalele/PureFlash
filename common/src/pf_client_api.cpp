@@ -387,7 +387,11 @@ static int client_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 			PfClientIocb* iocb = conn->client_ctx->pick_iocb(bd->reply_bd->command_id, bd->reply_bd->command_seq);
 			iocb->reply_bd = bd;
 			bd->client_iocb = iocb;
+                #ifdef WITH_SPDK_BDEV
+                        iocb->volume->process_event(EVT_IO_COMPLETE, complete_status, bd);
+                #else
 			iocb->volume->event_queue->post_event(EVT_IO_COMPLETE, complete_status, bd, iocb->volume);
+                #endif
 		}else {
 			//S5LOG_INFO("get opcode:%d", bd->wr_op);
 			//do nothing
@@ -1278,7 +1282,11 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 	cmd->offset = offset;
 	cmd->length = (uint32_t)length;
 	cmd->snap_seq = volume->snap_seq;
-	int rc = volume->event_queue->post_event( EVT_IO_REQ, 0, io, volume);
+#ifdef WITH_SPDK_BDEV
+        int rc = volume->process_event(EVT_IO_REQ, 0, io);
+#else
+	int rc = volume->event_queue->post_event(EVT_IO_REQ, 0, io, volume);
+#endif
 	if (rc)
 		S5LOG_ERROR("Failed to submmit io, rc:%d", rc);
 	return rc;

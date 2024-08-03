@@ -7,6 +7,10 @@
 #include "pf_poller.h"
 #include "pf_utils.h"
 #include <rdma/rdma_cma.h>
+#ifdef WITH_SPDK_BDEV
+#include "spdk/env.h"
+#include "spdk/thread.h"
+#endif
 
 class PfPoller;
 class PfClientVolume;
@@ -40,6 +44,11 @@ struct PfRdmaDevContext {
     struct ibv_context* ctx;
     struct ibv_pd* pd;
     struct ibv_device_attr dev_attr;
+#ifdef WITH_SPDK_BDEV
+    struct ibv_cq* prp_cq;
+    struct ibv_comp_channel* prp_comp_channel;
+    struct spdk_poller *client_completion_poller;
+#endif
     int idx;
 	int cq_poller_cnt;
 	int client_cq_poller_cnt;

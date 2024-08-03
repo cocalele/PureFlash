@@ -7,15 +7,18 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#ifdef WITH_SPDK_BDEV
+#include <thread>
+#endif
 
-//#include "rdma/rdma_cma.h"
-//#include "pf_main.h"
-//#include "pf_server.h"
 #include "pf_rdma_connection.h"
 #include "pf_app_ctx.h"
 
 #define RDMA_RESOLVE_ROUTE_TIMEOUT_MS 100
 
+#ifdef WITH_SPDK_BDEV
+thread_local PfRdmaDevContext* dev_ctx = NULL;
+#endif
 
 //this code is included both server and client side,
 #define MAX_DISPATCHER_COUNT 10
@@ -281,11 +284,88 @@ struct PfRdmaDevContext* build_context(struct ibv_context* rdma_context)
 	return NULL;
 }
 
+#ifdef WITH_SPDK_BDEV
+static int rdma_client_completion_poller(void *arg_)
+{
+    struct PfRdmaDevContext* rdma_dev_ctx = (struct PfRdmaDevContext*)arg_;
+    struct ibv_wc wc[MAX_WC_CNT];
+    int ne = ibv_poll_cq(rdma_dev_ctx->prp_cq, MAX_WC_CNT, wc);
+    if (ne < 0) {
+        return SPDK_POLLER_BUSY;
+    }
+    for (int i = 0; i < ne; i++) {
+        struct BufferDescriptor* msg = (struct BufferDescriptor*)wc[i].wr_id;
+        if (msg == NULL) {        		S5LOG_WARN("msg is NULL, continue");
+            continue;
+        }
+        struct PfRdmaConnection* conn = (struct PfRdmaConnection *)msg->conn;
+        if (wc[i].status != IBV_WC_SUCCESS) {
+            S5LOG_WARN("conn:%p ref_cnt:%d wc[%d].status=%d(%s), bd.op=%d wc.op=%d, %d/%d wc", conn, conn->ref_count, i, wc[i].status, ibv_wc_status_str(wc[i].status),
+                        msg->wr_op, wc[i].opcode, i, ne);
+        }
+        if (likely(conn->on_work_complete)) {
+            conn->on_work_complete(msg, (WcStatus)wc[i].status, conn, NULL);
+        }
+    }
+    return ne > 0 ? SPDK_POLLER_BUSY : SPDK_POLLER_IDLE;;
+}
+
+struct PfRdmaDevContext* build_reactor_poller_context(struct ibv_context* rdma_context)
+{
+	struct PfRdmaDevContext* rdma_dev_ctx;
+	struct ibv_device_attr device_attr;
+	int rc;
+	pthread_mutex_lock(&global_dev_lock);
+	rc = ibv_query_device(rdma_context, &device_attr);
+	if (rc) {
+		S5LOG_ERROR("ibv_query_device failed, rc:%d", rc);
+		pthread_mutex_unlock(&global_dev_lock);
+		return NULL;
+	}
+
+	S5LOG_INFO("RDMA device fw:%s vendor:%d  node_guid:0x%llX, dev:%s", device_attr.fw_ver,
+		device_attr.vendor_id, device_attr.node_guid, rdma_context->device->name);
+        if (dev_ctx != NULL) {
+            pthread_mutex_unlock(&global_dev_lock);
+            return dev_ctx;
+        } else {
+            rdma_dev_ctx = new PfRdmaDevContext;
+            memcpy(&rdma_dev_ctx->dev_attr, &device_attr, sizeof(struct ibv_device_attr));
+            rdma_dev_ctx->ctx = rdma_context;
+            rdma_dev_ctx->pd = ibv_alloc_pd(rdma_context);
+            rdma_dev_ctx->idx = 0;
+            rdma_dev_ctx->prp_comp_channel = ibv_create_comp_channel(rdma_context);
+            if (!rdma_dev_ctx->prp_comp_channel) {
+                S5LOG_ERROR("failed to create comp channel");
+            }
+            rdma_dev_ctx->prp_cq = ibv_create_cq(rdma_context, 512, NULL, rdma_dev_ctx->prp_comp_channel, 0);
+            if (!rdma_dev_ctx->prp_cq) {
+                S5LOG_ERROR("failed ibv_create_cq, errno:%d", errno);
+            }
+            dev_ctx = rdma_dev_ctx;
+        }
+	// todo: busy polling mode
+	ibv_req_notify_cq(rdma_dev_ctx->prp_cq, 0);
+        // register rdma client poller
+        rdma_dev_ctx->client_completion_poller = SPDK_POLLER_REGISTER(rdma_client_completion_poller, rdma_dev_ctx, 0);
+        // TODO SPDK_POLLER_REGISTER
+        if (!g_app_ctx->rdma_client_only)
+            g_app_ctx->PfRdmaRegisterMr(rdma_dev_ctx);
+        pthread_mutex_unlock(&global_dev_lock);
+	return dev_ctx;
+}
+#endif
+
 void PfRdmaConnection::build_qp_attr(struct ibv_qp_init_attr *qp_attr)
 {
     memset(qp_attr, 0, sizeof(*qp_attr));
+#ifdef WITH_SPDK_BDEV
+    qp_attr->send_cq = dev_ctx->prp_cq;
+    qp_attr->recv_cq = dev_ctx->prp_cq;
+#else
     qp_attr->send_cq = dev_ctx->prdc_poller_ctx[prc_cq_poller_idx].prp_cq;
     qp_attr->recv_cq = dev_ctx->prdc_poller_ctx[prc_cq_poller_idx].prp_cq;
+#endif
     qp_attr->qp_type = IBV_QPT_RC;
 	// todo
     qp_attr->cap.max_send_wr = 512;
@@ -300,16 +380,21 @@ int on_route_resolved(struct rdma_cm_id* id)
 	struct rdma_conn_param cm_params;
 	struct ibv_qp_init_attr qp_attr;
 	struct PfRdmaConnection* conn = (struct PfRdmaConnection*)id->context;
-	conn->dev_ctx = build_context(id->verbs);
+#ifdef WITH_SPDK_BDEV
+        conn->dev_ctx = build_reactor_poller_context(id->verbs);
+#else
+        conn->dev_ctx = build_context(id->verbs);
+#endif
 	if(conn->dev_ctx == NULL)
 	{
 		S5LOG_ERROR("build_context");
 		return -1;
 	}
+#ifndef WITH_SPDK_BDEV
 	conn->prc_cq_poller_idx = conn->dev_ctx->next_client_cq_poller_idx;
 	conn->dev_ctx->next_client_cq_poller_idx =
 		(conn->dev_ctx->next_client_cq_poller_idx + 1)%conn->dev_ctx->client_cq_poller_cnt;
-
+#endif
 	conn->build_qp_attr(&qp_attr);
 	rc = rdma_create_qp(id, conn->dev_ctx->pd, &qp_attr);
 	if (rc)
@@ -431,6 +516,56 @@ PfRdmaConnection* PfRdmaConnection::connect_to_server(const std::string ip, int 
 		S5LOG_ERROR("rdma_resolve_addr failed, errno:%d", errno);
 		goto failure_lay1;
 	}
+#ifdef WITH_SPDK_BDEV
+        // 等待地址解析事件
+        struct rdma_cm_event *event;
+        struct rdma_cm_event event_copy;
+        rc = rdma_get_cm_event(conn->ec, &event);
+        if (rc) {
+            S5LOG_ERROR("rdma_get_cm_event for addr resolved");
+            goto failure_lay1;
+        }
+        if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
+            S5LOG_ERROR("Unexpected event: %d\n", event->event);
+            goto failure_lay1;
+        }
+	memcpy(&event_copy, event, sizeof(*event));
+        rdma_ack_cm_event(event);
+        // 解析路由
+        rc = rdma_resolve_route(event_copy.id, RDMA_RESOLVE_ROUTE_TIMEOUT_MS);
+        if (rc) {
+            S5LOG_ERROR("rdma_resolve_route");
+            goto failure_lay1;
+        }
+
+        // 等待路由解析事件
+        rc = rdma_get_cm_event(conn->ec, &event);
+        if (rc) {
+            S5LOG_ERROR("rdma_get_cm_event for route resolved");
+            goto failure_lay1;
+        }
+        if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
+            S5LOG_ERROR("Unexpected event: %d\n", event->event);
+            goto failure_lay1;
+        }
+	memcpy(&event_copy, event, sizeof(*event));
+        rdma_ack_cm_event(event);
+        on_route_resolved(event_copy.id);
+
+        // 等待连接建立事件
+        rc = rdma_get_cm_event(conn->ec, &event);
+        if (rc) {
+            S5LOG_ERROR("rdma_get_cm_event");
+            goto failure_lay1;
+        }
+        if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+            S5LOG_ERROR("Unexpected event: %d\n", event->event);
+            goto failure_lay1;
+        }
+	memcpy(&event_copy, event, sizeof(*event));
+        on_connection(&event_copy);
+        rdma_ack_cm_event(event);
+#endif
 	rc = pthread_create(&conn->tid, NULL, process_event_channel, conn->ec);
 	if(rc)
 	{
