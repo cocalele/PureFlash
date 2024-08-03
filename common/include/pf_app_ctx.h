@@ -55,7 +55,7 @@ public:
 	virtual int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx) = 0 ;
 	virtual void PfRdmaUnRegisterMr() = 0;
 	bool rdma_client_only;
-	PfAppCtx():cow_buf_pool(COW_OBJ_SIZE), engine(AIO), cq_proc_model(NONE_MODEL), shard_to_replicator(false)
+	PfAppCtx():cow_buf_pool(COW_OBJ_SIZE), engine(AIO), cq_proc_model(EVENT), shard_to_replicator(false)
 	{
 		for (int i = 0 ; i < MAX_RDMA_DEVICE; i++)
 			dev_ctx[i] = NULL;
