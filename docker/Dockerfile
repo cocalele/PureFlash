@@ -1,6 +1,8 @@
 FROM docker.io/pureflash/pureflash-dev:1.9.1-x64 AS builder
 
 WORKDIR /
+COPY apt-origin.list /etc/apt/sources.list
+RUN apt update
 RUN wget https://gitee.com/cocalele/PureFlash/raw/master/docker/build-all.sh
 RUN bash ./build-all.sh
 
@@ -11,7 +13,7 @@ ENV TZ=Asia/ShangHai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 #COPY apt-ali-sources-2204-arm.list /etc/apt/sources.list 
-COPY apt-ali-sources-2204.list /etc/apt/sources.list 
+#COPY apt-ali-sources-2204.list /etc/apt/sources.list 
 RUN apt update
 
 RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool libuuid1 tar unzip  util-linux vim wget  net-tools 

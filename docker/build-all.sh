@@ -21,7 +21,7 @@ function assert()
 
 
 info "This build script need run in pureflash develop container."
-info "Start container with command:\n   docker run -ti --rm --network host  docker.io/pureflash/pureflash-dev:1.8 /bin/bash"
+info "Start container with command:\n   docker run -ti --rm --network host  docker.io/pureflash/pureflash-dev:1.9.1-x64 /bin/bash"
 #give time to read above tips
 sleep 2
 
@@ -75,7 +75,8 @@ cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libhashtable.a /usr/lib/libhashtable
 ( cd ${PUREFLASH_HOME}/build/bin; cp -rp dpdk /usr/lib/)
 mkdir build
 cd build
-assert ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring
+#assert ../configure  --enable-debug --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring
+assert ../configure   --enable-kvm  --target-list=x86_64-softmmu  --disable-linux-io-uring
 assert  ninja
 
 #info "Begin build docker"
