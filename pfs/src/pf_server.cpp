@@ -150,7 +150,10 @@ int on_tcp_handshake_sent(BufferDescriptor* bd, WcStatus status, PfConnection* c
 				rc = -ENOMEM;
 				goto release0;
 			}
-			io->add_ref();
+			io->re_init();
+			io->add_ref(); //only dec_ref on connection closed, i.e. FLUSH_ERROR. in other case io is reused after reply send
+						   //changed since EC support, will be dec_ref on reply to client complete
+
 			conn->add_ref();
 			io->conn = conn;
 			rc = conn->post_recv(io->cmd_bd);
@@ -269,9 +272,15 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				conn->start_send(iocb->data_bd);
 				return 1;
 			} else {
-				/* no re-send mechanism is using currently, so iocb->ref_count will be zero here.
+				/* no re-send mechanism is using currently, so iocb->ref_count will be zero here if call dec_ref.
 				 * re-use iocb to avoid frequently free/alloc
 				 */
+				iocb->dec_ref(); //allocated in connection accepted and below line
+				iocb = conn->dispatcher->iocb_pool.alloc(); //get a new iocb, since old may still in use by EC lut updating
+				if (iocb == NULL) {
+					S5LOG_ERROR("Failed to alloc IOCB for conn:%s", conn->connection_info.c_str());
+					return 0;
+				}
 				iocb->re_init();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
 				conn->post_recv(iocb->cmd_bd);

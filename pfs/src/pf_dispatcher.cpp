@@ -7,6 +7,8 @@
 #include "pf_dispatcher.h"
 #include "pf_message.h"
 #include "pf_rdma_connection.h"
+#include "pf_ec_wal.h"
+
 #include "pf_trace_defs.h"
 #include "spdk/trace.h"
 #include "spdk/env.h"
@@ -64,7 +66,7 @@ int PfDispatcher::delete_volume(uint64_t  vol_id)
 	return 0;
 }
 
-int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
+int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void* arg_q)
 {
 	int rc = 0;
 	switch(event_type) {
@@ -73,6 +75,9 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 		break;
 	case EVT_IO_COMPLETE:
 		rc = dispatch_complete((SubTask*)arg_p);
+		break;
+	case EVT_EC_UPDATE_LUT:
+		rc = dispatch_ec_update_lut(iocb, (struct pf_ec_wal_entry*)evt->arg_p, intptr(evt->arg_q) );
 		break;
 	case EVT_FORCE_RELEASE_CONN:
 		{
@@ -94,6 +99,7 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 			c->dec_ref();
 			return 0;
 		}
+
 	default:
 		S5LOG_ERROR("Unknown event:%d", event_type);
 	}
@@ -103,6 +109,10 @@ int PfDispatcher::process_event(int event_type, int arg_i, void* arg_p, void*)
 static inline void reply_io_to_client(PfServerIocb *iocb)
 {
 	int rc = 0;
+	if(iocb->is_ec_page_swap_io){
+		app_context.disps[iocb->disp_index]->dispatch_ec_page_load_complete(iocb);
+		return;
+	}
 	const static int ms1 = 1000;
 	PfConnection* conn = iocb->conn;
 	if(unlikely(iocb->conn == NULL || iocb->conn->state != CONN_OK)) {
@@ -163,7 +173,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 	auto pos = opened_volumes.find(cmd->vol_id);
 
 	if (unlikely(pos == opened_volumes.end())) {
-		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x not opened", PfOpCode2Str(cmd->opcode), cmd->vol_id);
+		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%lx not opened", PfOpCode2Str(cmd->opcode), cmd->vol_id);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_STATE;
 		iocb->complete_meta_ver = -1;
 		reply_io_to_client(iocb);
@@ -207,7 +217,10 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 		case S5_OP_WRITE:
 			stat.wr_cnt++;
 			stat.wr_bytes += cmd->length;
-			return dispatch_write(iocb, vol, s);
+			if (vol->is_ec_vol)
+				return dispatch_ec_write(iocb, vol);
+			else
+				return dispatch_write(iocb, vol, s);
 			break;
 		case S5_OP_READ:
 		case S5_OP_RECOVERY_READ:
@@ -292,6 +305,77 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 		S5LOG_ERROR("replica:0x%x status:%s not readable", s->replicas[i]->id, HealthStatus2Str(s->replicas[i]->status));
 	}
 
+	return 0;
+}
+int PfDispatcher::ec_commit_wal(PfServerIocb* iocb, PfVolume* vol, struct pf_ec_wal_entry* wal)
+{
+	
+	//reply_io_to_client();
+}
+
+int PfDispatcher::dispatch_ec_update_lut(PfServerIocb* iocb,  struct PfEcWalEntry* wal, int64_t aof_offset)
+{
+//iocb still in use by update_lut, event reply is send to client.
+//in server.cpp, iocb will be reused for next IO after reply send.
+
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	auto pos = opened_volumes.find(cmd->vol_id);
+
+	if (unlikely(pos == opened_volumes.end())) {
+		S5LOG_FATAL("ec volume not opened, id:0x%lx", cmd->vol_id);
+		return 0;
+	}
+
+	PfVolume* vol = pos->second;
+
+	wal->aof_off = aof_offset;
+	wal->vol_off = iocb->iocb->cmd_bd->cmd_bd->offset;
+
+	wal->aof_new_section_index = aof_offset / section_size;
+	wal->aof_section_length += cmd->length;
+	wal->aof_old_section_index = old_off / section_size;
+	wal->aof_section_garbage_length += cmd->length;
+
+	// Step2. update index 
+	int64_t old_off = vol->ec_index->get_lba_offset(cmd->offset);
+	iocb->add_ref(); //reserve for wal update
+	iocb->add_ref(); //reserve for forward_lut
+	iocb->add_ref(); //reserve for reverse_lut
+	ec_commit_wal(wal);
+	vol->ec_index->set_forward_lut(iocb->cmd_bd->cmd_bd->offset, aof_offset);
+	vol->ec_index->set_reverse_lut(aof_offset, iocb->cmd_bd->cmd_bd->offset);
+
+
+	//if(iocb->forward_lut_state == Done && )
+
+}
+
+int PfDispatcher::dispatch_ec_write(PfServerIocb* iocb, PfVolume* vol)
+{
+
+	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
+	iocb->task_mask = 0;
+	iocb->setup_one_subtask();
+	//for N+M ec, there will be total (N+M) subtasks to write?
+	// no, still 3 subtasks, since we always write data in 3 replica first, then calculate EC in async mode.
+	// even for writing-in-3-replica , it's internal operation of AOF. For this point, we consider it as only 
+	// one subtask, i.e. 'aof write'
+
+	struct PfEcWalEntry* wal = app_context.ec_redolog->alloc_entry();
+
+
+	// Step1. write data to aof, get an offset
+	int rc = ec_write_data(iocb, vol, wal);
+	if (rc < 0) {
+		S5LOG_ERROR("Failed call ec_write_data, rc:%d", (int)off);
+		return (int)off;
+	}
+
+	//after ec_write_data complete, `dispatch_ec_update_index` will be called 
+	// 
+	
+	
+	
 	return 0;
 }
 
@@ -560,4 +644,65 @@ static void disp_trace()
 	spdk_trace_register_owner(OWNER_PFS_DISP_IO, "d");
 	spdk_trace_register_object(OBJECT_DISP_IO, 'd');
 	spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
+}
+
+int PfDispatcher::dispatch_ec_page_load_complete(PfServerIocb* swap_io)
+{
+	//TODO: set initial page hot score
+	for(PfServerIocb* request_io = swap_io->forward_lut_waiting_list; request_io != NULL; ){
+		PfVolume *vol = app_context.get_opened_volume(request_io->cmd_bd->cmd_bd->vol_id);
+		request_io = request_io->next;
+		int64_t end_off = request_io->cmd_bd.cmd_bd->offset + request_io->cmd_bd.cmd_bd->length;
+		for(;request_io->forward_lut_loop_offset < end_off; request_io->forward_lut_loop_offset+=LBA_LENGTH) {
+			int64_t delta = request_io->forward_lut_loop_offset - request_io->cmd_bd.cmd_bd->offset;
+			RetCode r = vol->ec_index->set_forward_lut(request_io, request_io->cmd_bd.cmd_bd->offset + delta, request_io->new_aof_offset + delta);
+			if (r == Yield) {
+				S5LOG_FATAL("forward lut upate not complete in 1 page as excepted");
+				//break;
+			}
+		}
+		if(request_io->forward_lut_loop_offset >= end_off) {
+			request_io->forward_lut_state = Done;
+		}
+	}
+
+
+	//    request IO from client:       IO1                  IO2
+	//                         +---------+------+   +---------+---------+
+	//                         |                |   |                   |
+	//                         R1               R2  R3                  R4
+	//                         |                |   |                   |
+	//                         |                +-+-+                   |
+	//                         |                  |                     |
+	//                        Page1              Page2                 Page3
+	//                         |                  |                     |
+	//                        swap IO1           swap IO2              swap IO3
+	// 
+	//   1. for above case, 2 request IO from client, each is 8K write. So each IO split into 2 4K IO. i.e. total 4 4K IO
+	//      need to update reverse LUT. R1, R2, R3, R4
+	//   2. R1, R2, R3, R4 located in 3 memory pages: Page1, Page2, Page3. will issue 3 swap IO,
+	//   3. request_io has only one `next` ptr, how to link on two list? IO2 link in SIO2 and SIO3?
+	//      R3, R4 must be executed in serialized mode, to avoid this
+	//old index需要加载多个不同的页才能进行set_reverse_lut操作
+	//old index不可能和new index在同一个page里面
+	for (PfServerIocb* request_io = swap_io->reverse_lut_waiting_list; request_io != NULL; ) {
+		//request_io->reverse_lut_state = PAGE_READY;
+		PfVolume* vol = app_context.get_opened_volume(request_io->cmd_bd->cmd_bd->vol_id);
+
+		request_io = request_io->next;
+		int64_t end_off = request_io->cmd_bd.cmd_bd->offset + request_io->cmd_bd.cmd_bd->length;
+		for (; request_io->reverse_lut_loop_offset < end_off; request_io->reverse_lut_loop_offset += LBA_LENGTH) {
+			int64_t delta = request_io->reverse_lut_loop_offset - request_io->cmd_bd.cmd_bd->offset;
+			RetCode r = vol->ec_index->set_reverse_lut(request_io, request_io->new_aof_offset + delta, request_io->cmd_bd.cmd_bd->offset + delta);
+			if (r == Yield) {
+				//return 0; //continue to process next request IO on waiting
+			}
+		}
+		if (request_io->reverse_lut_loop_offset >= end_off) {
+			request_io->reverse_lut_state = Done;
+		}
+	}
+
+	app_context.disps[swap_io->disp_index]->iocb_pool.free(swap_io); //allocated at PfEcVolumeIndex::load_page
+
 }
