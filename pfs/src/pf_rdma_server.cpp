@@ -120,6 +120,12 @@ static int server_on_rdma_network_done(BufferDescriptor* bd, WcStatus complete_s
 			if (bd->data_len == PF_MSG_REPLY_SIZE) {
 				//IO complete, start next
 				PfServerIocb *iocb = bd->server_iocb;
+				iocb->dec_ref(); //allocated in connection accepted and below line
+				iocb = conn->dispatcher->iocb_pool.alloc(); //get a new iocb, since old may still in use by EC lut updating
+				if(iocb == NULL){
+					S5LOG_ERROR("Failed to alloc IOCB for conn:%s", conn->connection_info.c_str());
+					return 0;
+				}
 				iocb->re_init();
 				rc = conn->post_recv(iocb->cmd_bd);
 				if(unlikely(rc)){
@@ -276,7 +282,8 @@ int PfRdmaServer::on_connect_request(struct rdma_cm_event* evt)
 			rc = -EINVAL;
 			goto release0;
 		}
-		iocb->add_ref();
+		iocb->re_init();
+		iocb->add_ref(); //dec_ref on reply to client complete
 		iocb->conn = conn;
 		conn->add_ref();
 

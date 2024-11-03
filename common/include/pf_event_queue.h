@@ -49,6 +49,7 @@ enum S5EventType : int
 	EVT_GET_STAT,
 	EVT_FORCE_RELEASE_CONN,
 	EVT_ASK_CONDUCTOR,
+	EVT_EC_UPDATE_LUT,
 };
 const char* EventTypeToStr(S5EventType t);
 

@@ -60,10 +60,16 @@ struct PfVolume
 	uint64_t size;
 	int	rep_count;
 	int shard_count;
-	std::vector<PfShard*>	shards;
 	int snap_seq;
 	enum HealthStatus status;
+	std::vector<PfShard*>	shards;
 	uint64_t meta_ver;
+	BOOL is_ec_vol;
+
+	/// begin variable used for ec volume
+	PfEcVolumeIndex* ec_index;
+	volume_id_t ec_meta_volume_id;
+	/// end variable used for ec volume
 
 //	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
 

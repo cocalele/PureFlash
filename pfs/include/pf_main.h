@@ -81,6 +81,8 @@ public:
 	int next_client_disp_id; //to assign shared client connection to dispatcher
 	std::thread cron_thread;
 
+	PfEcWal *ec_redolog;
+
 	PfVolume* get_opened_volume(uint64_t vol_id);
 	int get_ssd_index(std::string ssd_uuid);
 	int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx);
