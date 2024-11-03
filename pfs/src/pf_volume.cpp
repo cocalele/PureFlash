@@ -36,7 +36,6 @@ const char* HealthStatus2Str(HealthStatus code)
 PfVolume& PfVolume::operator=(PfVolume&& vol)
 {
 	this->meta_ver = vol.meta_ver;
-	this->shard_count = vol.shard_count;
 	this->size = vol.size;
 	this->snap_seq = vol.snap_seq;
 	this->status = vol.status;
@@ -60,6 +59,7 @@ PfVolume& PfVolume::operator=(PfVolume&& vol)
 		shards.push_back(vol.shards[i]);
 		vol.shards[i] = NULL;
 	}
+	this->shard_count = vol.shard_count;
 	return *this;
 }
 
