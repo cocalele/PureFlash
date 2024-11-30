@@ -4,7 +4,7 @@ WORKDIR /
 COPY apt-origin.list /etc/apt/sources.list
 RUN apt update
 RUN wget https://gitee.com/cocalele/PureFlash/raw/master/docker/build-all.sh
-ENV PFREPO =$PFREPO
+ENV PFREPO $PFREPO
 RUN bash ./build-all.sh
 
 FROM ubuntu:22.04
