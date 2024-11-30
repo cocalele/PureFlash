@@ -31,15 +31,15 @@ PFREPO=${PFREPO:-gitee}
 #export JAVA_HOME=/usr/lib/jvm/jdk-15 
 #export PATH=$JAVA_HOME/bin/:$PATH
 
-info "build jconductor"
-assert git clone https://gitee.com/cocalele/jconductor.git
+info "build jconductor from repo:${PFREPO}"
+assert git clone https://${PFREPO}.com/cocalele/jconductor.git
 cd jconductor/
 assert git submodule update --init
 assert ant -f jconductor.xml 
 
 info "build PureFlash"
 cd $DIR
-assert git clone https://gitee.com/cocalele/PureFlash.git
+assert git clone https://${PFREPO}.com/cocalele/PureFlash.git
 cd PureFlash/
 assert git submodule update --init --recursive
 mkdir build
@@ -49,7 +49,7 @@ assert ninja
 
 info "build fio with pfbd"
 cd $DIR
-assert git clone https://gitee.com/cocalele/fio.git
+assert git clone https://${PFREPO}.com/cocalele/fio.git
 cd fio
 #./configure --pfbd-include=$DIR/PureFlash/common/include --pfbd-lib=$DIR/PureFlash/build/bin
 assert ./configure --pfbd-include=$DIR/PureFlash/common/include --pfbd-lib=$DIR/PureFlash/build/bin/ --spdk-lib=$DIR/PureFlash/thirdParty/spdk/build/lib --dpdk-lib=$DIR/PureFlash/thirdParty/spdk/dpdk/build/lib
@@ -60,7 +60,7 @@ info "build qemu with pfbd"
 assert apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
 assert pip3 install -U pip
 # apt install -y  libfdt-dev  #need on ARM
-assert git clone https://gitee.com/cocalele/qemu.git
+assert git clone https://${PFREPO}.com/cocalele/qemu.git
 cd qemu
 git checkout v8.1.2-pfbd
 PUREFLASH_HOME=$DIR/PureFlash
