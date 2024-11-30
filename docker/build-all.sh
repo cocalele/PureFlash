@@ -26,7 +26,7 @@ info "Start container with command:\n   docker run -ti --rm --network host  dock
 sleep 2
 
 set -v
-
+PFREPO=${PFREPO:-gitee}
 
 #export JAVA_HOME=/usr/lib/jvm/jdk-15 
 #export PATH=$JAVA_HOME/bin/:$PATH
