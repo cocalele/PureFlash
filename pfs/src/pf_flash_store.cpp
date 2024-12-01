@@ -5,7 +5,7 @@
  */
 /**
  * Copyright (C), 2019.
- * @endcode GBK
+ * @encode GBK
  *
  * flash_store ����һ���洢��Ԫ������һ��SSD����flash����flash_store�����Ĺ��ܰ�����
  *  1. ��ʼ��Store�� ���һ��SSD�Ǹɾ���δ����ʼ���ģ���ô�Ͷ����ʼ���������������������ݣ��ͼ���ǲ���һ��
@@ -469,7 +469,7 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	lmt_entry *entry = NULL;
 	if (block_pos != obj_lmt.end())
 		entry = block_pos->second;
-	while (entry && cmd->snap_seq < entry->snap_seq)
+	while ((entry && cmd->snap_seq < entry->snap_seq) || entry->status == EntryStatus::COPYING)
 		entry = entry->prev_snap;
 	if (entry == NULL)
 	{
