@@ -50,6 +50,7 @@ enum S5EventType : int
 	EVT_FORCE_RELEASE_CONN,
 	EVT_ASK_CONDUCTOR,
 	EVT_EC_UPDATE_LUT,
+	EVT_EC_IO_REQ,
 };
 const char* EventTypeToStr(S5EventType t);
 
@@ -60,6 +61,7 @@ public:
 	int event_fd;
 
 	virtual int post_event(int type, int arg_i, void* arg_p, void* arg_q = NULL) = 0;
+	virtual int post_event_locked(int type, int arg_i, void* arg_p) = 0;
 	virtual void destroy() = 0;
 	virtual int sync_invoke(std::function<int()> f) = 0;
 };
@@ -78,7 +80,8 @@ public:
 
 	int init(const char* name, int size, BOOL semaphore_mode);
 	void destroy();
-	int post_event(int type, int arg_i, void* arg_p, void* arg_q=NULL);
+	int post_event(int type, int arg_i, void* arg_p, void* arg_q=NULL) override;
+	int post_event_locked(int type, int arg_i, void* arg_p) override;
 	int get_events(PfFixedSizeQueue<S5Event>** /*out*/ q);
 	int get_event(S5Event* /*out*/ evt);
 	inline bool is_empty() { return current_queue->is_empty();}
@@ -116,10 +119,10 @@ public:
 
     int init(const char* name, int size, enum spdk_ring_type mode);
     void destroy();
-    int post_event(int type, int arg_i, void* arg_p, void* arg_q);
+    int post_event(int type, int arg_i, void* arg_p, void* arg_q) override;
 	int get_events(int max_events, void **msgs);
 	void put_event(void *msg);
-	int post_event_locked(int type, int arg_i, void* arg_p);
+	int post_event_locked(int type, int arg_i, void* arg_p) override;
 	int sync_invoke(std::function<int()> f);
 	void set_thread_queue();
 };

@@ -72,10 +72,10 @@ retry_read:
 		lock.unlock_shared();
 		if(hit_cnt >= 5) hit_stat[5]++;
 		else hit_stat[hit_cnt]++;
-		if(++read_cnt % 16384 == 0){
-			S5LOG_DEBUG("cache line hit statistics: 0:%d 1:%d 2:%d 3:%d 4:%d >=5:%d", 
-				hit_stat[0], hit_stat[1], hit_stat[2], hit_stat[3], hit_stat[4], hit_stat[5]);
-		}
+		//if(++read_cnt % 16384 == 0){
+		//	S5LOG_DEBUG("cache line hit statistics: 0:%d 1:%d 2:%d 3:%d 4:%d >=5:%d", 
+		//		hit_stat[0], hit_stat[1], hit_stat[2], hit_stat[3], hit_stat[4], hit_stat[5]);
+		//}
 		int rc = fetch_data(ALIGN_ON_SLOT(offset));
 		if(rc != 0){
 			S5LOG_ERROR("Failed to fetch data, rc:%d", rc);

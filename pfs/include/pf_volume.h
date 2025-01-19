@@ -66,11 +66,6 @@ struct PfVolume
 	uint64_t meta_ver;
 	BOOL is_ec_vol;
 
-	/// begin variable used for ec volume
-	PfEcVolumeIndex* ec_index;
-	volume_id_t ec_meta_volume_id;
-	/// end variable used for ec volume
-
 //	PfFixedSizeQueue<BufferDescriptor*> io_buffers;
 
 	PfVolume() : _ref_count(1) {/*other member will inited in convert_argument_to_volume*/}

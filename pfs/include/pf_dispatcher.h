@@ -46,8 +46,6 @@ struct RecoverySubTask : public IoSubTask
 	RecoverySubTask() : recovery_bd(NULL), volume_id(0), offset(0), length(0), snap_seq(0), sem(NULL){ ops = &_recovery_complete_ops;}
 };
 
-enum LutUpdateSate; //state on update EC Lut updating
-class PfLutPte; //
 struct PfServerIocb : public PfIocb
 {
 public:
@@ -72,20 +70,6 @@ public:
 	uint64_t local_cost_time;
 	IoSubTask io_subtasks[3];
 
-
-	///////////member for EC IO
-	//client IO: iocb received from client request
-	//swap IO: the internal IO used to load/flush EC lut memory page
-	LutUpdateSate forward_lut_state; //state on access io_lut, valid for client IO
-	LutUpdateSate reverse_lut_state; //state on access reverse_lut, valid for client IO
-	int wal_state; //state on access wal, valid for client IO
-	int64_t new_aof_offset;
-	int64_t old_aof_offset;//will account to garbage
-
-
-	int is_ec_page_swap_io;//internal IO to load/flush ec index page , valid for swap IO
-	PfLutPte* pte;//pte associate with this IO, valid for swap IO
-	///////////end member for EC IO
 
 	void inline setup_subtask(PfShard* s, PfOpCode opcode)
 	{
@@ -141,11 +125,6 @@ public:
 	int dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
 	int dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s);
-
-	//functions for EC volume
-	int dispatch_ec_write(PfServerIocb* iocb, PfVolume* vol);
-	int dispatch_ec_update_lut(PfServerIocb* iocb, struct PfEcWalEntry* wal, int64_t off);
-	int dispatch_ec_page_load_complete(PfServerIocb* swap_io);
 
 	void set_snap_seq(int64_t volume_id, int snap_seq);
 	int set_meta_ver(int64_t volume_id, int meta_ver);

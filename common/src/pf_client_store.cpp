@@ -11,7 +11,7 @@
  * If multiple volume use same shared disk, more than one PfClientStore instances will be created.
  * multiple PfClientStore implies multiple IoEngines, so each volume have an individual IO channel
  */
-int PfClientStore::init(PfClientVolume* vol, const char* dev_name, const char* dev_uuid)
+int PfClientStore::init(PfReplicatedVolume* vol, const char* dev_name, const char* dev_uuid)
 {
 	int ret = 0;
 	this->volume = vol;

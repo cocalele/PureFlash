@@ -1,17 +1,17 @@
 使用docker快速搭建开发环境
 ============================
 
-1. pull docker image
+1. pull container image
 
 ```
-# docker pull pureflash/pfs-dev:1.6
+# podman pull docker.io/pureflash/pureflash-dev:1.9.1-x64
 ```
 
-如果这个镜像拉取失败，可以从百度网盘下载：https://pan.baidu.com/s/1nGYIpP-WFOUXxv3vfQwPxQ?pwd=4564
+如果这个镜像拉取失败，可以从百度网盘下载： https://pan.baidu.com/s/1dPbaxzfVQgAN9RAf5RYZKg 提取码: ykre
 然后导入：
 ```
-# gunzip pfs-dev.tar.gz
-# docker load < pfs-dev.tar
+# gunzip pfs-dev_1.9.1-x64.tar.gz
+# podman load < pfs-dev_1.9.1-x64.tar
 ```
 
 2. check out code
@@ -26,9 +26,9 @@
   # git https://gitee.com/cocalele/jconductor.git
 ```  
 
-3. run docker
+3. run container
 ```
-  # docker run -ti  --ulimit core=-1 --privileged --hostname pfs-d  --net pfnet --ip 172.1.1.2  --rm -v ~/pf:/root/pf   --name pfs-d  -e TZ=Asia/Shanghai pureflash/pfs-dev:1.6 /bin/bash
+  # podman run -ti  --ulimit core=-1 --privileged --hostname pfs-d  --net pfnet --ip 172.1.1.2  --rm -v ~/pf:/root/pf   --name pfs-d  -e TZ=Asia/Shanghai docker.io/pureflash/pureflash-dev:1.9.1-x64 /bin/bash
 ```
   上面命令里的-v ~/pf:/root/pf  把刚才的源代码目录mount到了容器里面的/root/pf目录上。然后就可以参照build_and_run.txt文档里面的cmake, ant步骤分别编译PureFlash和jconductor
 

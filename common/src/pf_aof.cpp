@@ -29,7 +29,7 @@ extern const char* default_cfg_file; //defined in pf_client_api.cpp
 //down align, the max number less or equal x, and aligned on 4K, e.g. 1 will aligned to 0, 8192 will not change
 #define DOWN_ALIGN_4K(x)  ((x)  & (~4095LL))
 
-static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write);
+static ssize_t sync_io(PfReplicatedVolume* v, void* buf, size_t count, off_t offset, int is_write);
 
 #ifdef _DATA_DBG
 #define LOCAL_DIR "/tmp"
@@ -97,7 +97,7 @@ const char* PfAof::path()
 	return volume->volume_name.c_str();
 }
 
-struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver, bool is_aof); //defined in pf_client_api
 
 int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename, int lib_ver)
@@ -134,7 +134,7 @@ int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename
 		return rc;
 	if (r.ret_code != 0)
 		return r.ret_code;
-	struct PfClientVolume* vol = _pf_open_volume(volume_name, cfg_filename, NULL, lib_ver, true);
+	struct PfReplicatedVolume* vol = _pf_open_volume(volume_name, cfg_filename, NULL, lib_ver, true);
 	if(vol == NULL){
 		S5LOG_ERROR("Failed to open volume:%s", volume_name);
 		return -EIO;
@@ -221,7 +221,7 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 
 
 			
-		aof->volume = new PfClientVolume;
+		aof->volume = new PfReplicatedVolume;
 		if (aof->volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -312,7 +312,7 @@ static void io_cbk(void* cbk_arg, int complete_status)
 	sem_post(&w->sem);
 }
 
-static ssize_t sync_io(PfClientVolume* v, void* buf, size_t count, off_t offset, int is_write)
+static ssize_t sync_io(PfReplicatedVolume* v, void* buf, size_t count, off_t offset, int is_write)
 {
 	int rc = 0;
 	io_waiter w;

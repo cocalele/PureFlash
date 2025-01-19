@@ -11,7 +11,7 @@ const char* ConnState2Str(int conn_state);
 
 
 #define PROTOCOL_VER 1
-class PfClientVolume;
+class PfReplicatedVolume;
 class PfDispatcher;
 class PfVolume;
 class PfReplicator;

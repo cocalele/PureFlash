@@ -275,12 +275,6 @@ static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_st
 				/* no re-send mechanism is using currently, so iocb->ref_count will be zero here if call dec_ref.
 				 * re-use iocb to avoid frequently free/alloc
 				 */
-				iocb->dec_ref(); //allocated in connection accepted and below line
-				iocb = conn->dispatcher->iocb_pool.alloc(); //get a new iocb, since old may still in use by EC lut updating
-				if (iocb == NULL) {
-					S5LOG_ERROR("Failed to alloc IOCB for conn:%s", conn->connection_info.c_str());
-					return 0;
-				}
 				iocb->re_init();
 				//S5LOG_DEBUG("post_rece for a new IO, cmd_bd:%p", iocb->cmd_bd);
 				conn->post_recv(iocb->cmd_bd);

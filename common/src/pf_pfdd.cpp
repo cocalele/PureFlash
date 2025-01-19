@@ -257,7 +257,7 @@ int main(int argc, char* argv[])
 	io_waiter arg;
 	arg.rc = 0;
 	sem_init(&arg.sem, 0, 0);
-	struct PfClientVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), snapshot_name.c_str(), S5_LIB_VER);
+	struct PfReplicatedVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), snapshot_name.c_str(), S5_LIB_VER);
 	if(vol == NULL) {
 		S5LOG_FATAL("Failed open volume:%s", vol_name.c_str());
 	}

@@ -23,7 +23,7 @@ BlockTray::~BlockTray()
 
 int BlockTray::init(const char *name)
 {
-        fd = open(name, O_RDWR|O_DIRECT);
+        fd = open(name, O_RDWR|0);
         return fd;
 }
 

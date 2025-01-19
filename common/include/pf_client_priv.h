@@ -42,7 +42,7 @@ class PfClientStore;
  */
 
 
-class PfClientVolume;
+class PfReplicatedVolume;
 class PfConnectionPool;
 class PfClientAppCtx;
 
@@ -65,7 +65,7 @@ public:
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
 
-	PfClientVolume* volume;
+	PfReplicatedVolume* volume;
 	BOOL is_timeout;
 
 	uint64_t sent_time; //time the io sent to server
@@ -82,6 +82,23 @@ public:
 
 	PfConnection* conn;
 	IoSubTask io_subtasks[1];
+
+///////////member for EC IO
+	//client IO: iocb received from client request
+	//swap IO: the internal IO used to load/flush EC lut memory page
+	//LutUpdateSate forward_lut_state; //state on access io_lut, valid for client IO
+	//LutUpdateSate reverse_lut_state; //state on access reverse_lut, valid for client IO
+	//int wal_state; //state on access wal, valid for client IO
+	enum EcIoState current_state;
+	int64_t current_offset;
+	int64_t new_aof_offset;
+	int64_t old_aof_offset;//will account to garbage
+	PfClientIocb* ec_waiting_list;
+
+	int is_ec_page_swap_io;//internal IO to load/flush ec index page , valid for swap IO
+	PfLutPte* pte;//pte associate with this IO, valid for swap IO
+///////////end member for EC IO
+
 
 	void inline setup_subtask(PfOpCode opcode)
 	{
@@ -151,13 +168,28 @@ enum PfVolumeState
 	VOLUME_DISCONNECTED = 4
 };
 
-class PfClientVolume
+struct PfClientVolume
+{
+public:
+	int io_depth;
+	PfVolumeState state = PfVolumeState::VOLUME_CLOSED;
+	RedundencyMode redundency_mode;
+	std::string volume_name;
+	std::string snap_name;
+	std::string status;
+	std::string cfg_file;
+	virtual int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
+	virtual int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
+protected:
+	virtual int do_open(bool reopen = false, bool is_aof = false)=0;
+	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
+};
+class PfReplicatedVolume : public PfClientVolume
 {
 public:
 	//following data are from server open_volume reply
-	std::string status;
-	std::string volume_name;
-	std::string snap_name;
 	char owner_ip[32];
 
 	uint64_t volume_size;
@@ -169,9 +201,6 @@ public:
 	std::vector<PfClientShardInfo> shards;
 
 	//following are internal data constructed by client
-	std::string cfg_file;
-	int io_depth;
-	PfVolumeState state = PfVolumeState::VOLUME_CLOSED;
 	pfqueue *event_queue = NULL; // brace-or-equal-initializer since C++ 11
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
@@ -180,9 +209,9 @@ public:
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 	PfDoublyList<PfClientIocb> reopen_waiting;
 public:
-	int do_open(bool reopen=false, bool is_aof=false);
+	override int do_open(bool reopen=false, bool is_aof=false);
 	void close();
-	int process_event(int event_type, int arg_i, void* arg_p);
+	int process_event(int event_type, int arg_i, void* arg_p) override;
 	int resend_io(PfClientIocb* io);
 
 	PfConnection* get_shard_conn(int shard_index);
@@ -260,7 +289,7 @@ public:
 	PfVolumeEventProc* vol_proc;
 	std::thread timeout_thread;
 	std::mutex opened_volumes_lock;
-	std::list<PfClientVolume*> opened_volumes;
+	std::list<PfReplicatedVolume*> opened_volumes;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	BufferPool cmd_pool;
 	BufferPool data_pool;
@@ -283,8 +312,8 @@ public:
 		iocb_pool.free(io);
 	}
 
-	void remove_volume(PfClientVolume* vol);
-	void add_volume(PfClientVolume* vol);
+	void remove_volume(PfReplicatedVolume* vol);
+	void add_volume(PfReplicatedVolume* vol);
 
 	int init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
 	void timeout_check_proc();
@@ -304,10 +333,10 @@ public:
 	bool mr_registered;
 	int PfRdmaRegisterMr(struct PfRdmaDevContext *dev_ctx);
 	void PfRdmaUnRegisterMr();
-	int rpc_alloc_block(PfClientVolume* vol, uint64_t offset);
-	int rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq);
+	int rpc_alloc_block(PfReplicatedVolume* vol, uint64_t offset);
+	int rpc_delete_obj(PfReplicatedVolume* volume, uint64_t slba, uint32_t snap_seq);
 private:
-	int rpc_common(PfClientVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler, 
+	int rpc_common(PfReplicatedVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler, 
 				std::function<void(PfMessageReply* reply)> reply_extractor);
 	~PfClientAppCtx();
 

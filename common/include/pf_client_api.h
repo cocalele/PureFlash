@@ -14,20 +14,27 @@ extern "C" {
 #define PF_MAX_IO_SIZE (128<<10) //max IO
 
 #define S5_LIB_VER 0x00010000
+
+enum RedundencyMode  {
+	Unknown = 0;
+	Replication = 1;
+	ErasureCode = 2;
+};
 struct PfClientVolume;
+
 typedef void(*ulp_io_handler)(void *cbk_arg, int complete_status);
 
 struct PfClientVolumeInfo {
 	char status[64];
 	char volume_name[128];
 	char snap_name[128];
-
 	uint64_t volume_size;
 	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
 	int meta_ver;
 	int snap_seq;
+	RedundencyMode redundency_mode;
 };
 
 /**
