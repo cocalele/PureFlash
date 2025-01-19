@@ -71,6 +71,7 @@ struct CowTask : public IoSubTask {
 	int size;
 	sem_t sem;
 };
+
 inline void IoSubTask::complete_read_with_zero() {
 	//    PfMessageHead* cmd = parent_iocb->cmd_bd->cmd_bd;
 	BufferDescriptor* data_bd = parent_iocb->data_bd;

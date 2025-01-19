@@ -9,7 +9,7 @@
 #include "pf_lmt.h"
 #include "pf_ioengine.h"
 
-class PfClientVolume;
+class PfReplicatedVolume;
 /**
  * This class is equivalent to PfFlashStore in server side.
  * This class is used to access disk directly from client (bypass store server)
@@ -58,7 +58,7 @@ public:
 		//struct ns_entry* ns;
 	};
 	uint64_t in_obj_offset_mask; // := obj_size -1,
-	PfClientVolume* volume;
+	PfReplicatedVolume* volume;
 	std::unordered_map<struct lmt_key, struct lmt_entry*, struct lmt_hash> obj_lmt; //act as lmt table in S5
 
 	ObjectMemoryPool<lmt_entry> lmt_entry_pool;
@@ -79,7 +79,7 @@ public:
 	 * @return 0 on success, negative for error
 	 * @retval -ENOENT  device not exist or failed to open
 	 */
-	int init(PfClientVolume* vol, const char* dev_name, const char* dev_uuid);
+	int init(PfReplicatedVolume* vol, const char* dev_name, const char* dev_uuid);
 
 
 	/**

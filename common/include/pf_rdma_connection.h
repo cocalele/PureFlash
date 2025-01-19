@@ -13,7 +13,7 @@
 #endif
 
 class PfPoller;
-class PfClientVolume;
+class PfReplicatedVolume;
 class BufferDescriptor;
 
 #define MAX_RDMA_DEVICE (4)

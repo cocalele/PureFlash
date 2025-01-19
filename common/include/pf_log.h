@@ -9,7 +9,7 @@
 * This file defines s5log's macroes.
 */
 
-void s5log(int level, const char * format, ...);
+void s5log(int level, const char * format, ...) __attribute__((format(printf, 2, 3)));
 
 #define S5LOG_LEVEL_FATAL 0
 #define S5LOG_LEVEL_ERROR 1

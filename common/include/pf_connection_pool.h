@@ -24,7 +24,7 @@ public:
 	int io_depth;
 	PfPoller* poller;
 	union{
-		PfClientVolume* volume; //used in client side
+		PfReplicatedVolume* volume; //used in client side
 		PfReplicator* replicator;
 		void* owner;
 	};

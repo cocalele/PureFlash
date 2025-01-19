@@ -422,9 +422,9 @@ static int replicator_on_rdma_network_done(BufferDescriptor* bd, WcStatus comple
 				conn->replicator->mem_pool.reply_pool.free(bd);
 				return 0;
 			}
-                        // in order to trace reply latency
-                        SubTask *t = (SubTask *) iocb->ulp_arg;
-                        t->reply_time = spdk_get_ticks();
+			// in order to trace reply latency
+            SubTask *t = (SubTask *) iocb->ulp_arg;
+			t->reply_time = spdk_get_ticks();
 			return conn->replicator->event_queue->post_event(EVT_IO_COMPLETE, 0, iocb);
 		}
 		return 0;

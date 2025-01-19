@@ -136,7 +136,7 @@ int PfFlashStore::shared_disk_init(const char* tray_name, uint16_t* p_id)
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading shared disk %s ...", tray_name);
 	Cleaner err_clean;
-	fd = open(tray_name, O_RDWR | O_DIRECT);
+	fd = open(tray_name, O_RDWR | 0);
 	if (fd == -1) {
 		return -errno;
 	}
@@ -194,7 +194,7 @@ int PfFlashStore::owner_init()
 	int ret = 0;
 	S5LOG_INFO("Become owner of disk %s ...", tray_name);
 	Cleaner err_clean;
-	fd = open(tray_name, O_RDWR | O_DIRECT);
+	fd = open(tray_name, O_RDWR | 0);
 	if (fd == -1) {
 		return -errno;
 	}
@@ -416,7 +416,7 @@ int PfFlashStore::init(const char* tray_name, uint16_t *p_id)
 	safe_strcpy(this->tray_name, tray_name, sizeof(this->tray_name));
 	S5LOG_INFO("Loading disk %s ...", tray_name);
 	Cleaner err_clean;
-	fd = open(tray_name, O_RDWR | O_DIRECT);
+	fd = open(tray_name, O_RDWR | 0);
 	if (fd == -1) {
 		return -errno;
 	}
@@ -831,6 +831,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 	return 0;
 }
 /*
+  ## Note: bellow layout has been obsoleted, see constants defined in pf_volume_type.h for latest layout
   SSD head layout in LBA(4096 byte):
   0: length 1 LBA, head page
   LBA 1: length 1 LBA, free obj queue meta

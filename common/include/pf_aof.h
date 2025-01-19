@@ -18,7 +18,7 @@ class SimpleCache;
 class  PfAof
 {
 public:
-	PfClientVolume* volume;
+	PfReplicatedVolume* volume;
 private:
 	void* append_buf;
 	off_t append_tail;//append tail in buffer

@@ -81,7 +81,7 @@ void from_json(const json& j, PfClientShardInfo& p) {
 	j.at("status").get_to(p.status);
 
 }
-void from_json(const json& j, PfClientVolume& p) {
+void from_json(const json& j, PfReplicatedVolume& p) {
 	j.at("status").get_to(p.status);
 	j.at("volume_name").get_to(p.volume_name);
 	j.at("volume_size").get_to(p.volume_size);
@@ -134,7 +134,7 @@ typedef struct curl_memory {
 }curl_memory_t;
 
 
-struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
                                       int lib_ver, bool is_aof)
 {
 	int rc = 0;
@@ -145,10 +145,23 @@ struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_
 	}
 	S5LOG_INFO("Opening volume %s@%s", volume_name,
 		(snap_name == NULL || strlen(snap_name) == 0) ? "HEAD" : snap_name);
+	
+
 	try
 	{
+		RedundencyMode redundency;
+		if(!is_aof) {
+			PfClientVolumeInfo vol_info;
+			rc = pf_query_volume_info(volume_name, cfg_filename, snap_name, lib_ver, &vol_info);
+			if(rc != 0){
+				S5LOG_ERROR("Failed query volume info, rc:%d", rc);
+				return NULL;
+			}
+			redundency = vol_info.redundency_mode;
+			
+		}
 		Cleaner _clean;
-		PfClientVolume* volume = new PfClientVolume;
+		PfReplicatedVolume* volume = new PfReplicatedVolume;
 		if (volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -162,7 +175,7 @@ struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_
 		volume->cfg_file = cfg_filename;
 		if(snap_name)
 			volume->snap_name = snap_name;
-
+		volume->redundency_mode = redundency;
 		rc = volume->do_open(false, is_aof);
 		if (rc)	{
 			return NULL;
@@ -182,13 +195,13 @@ struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_
 	return NULL;
 }
 
-struct PfClientVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfReplicatedVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver)
 {
 	S5LOG_INFO("Half open volume:%s", volume_name);
 	try	{
 		Cleaner _clean;
-		PfClientVolume* volume = new PfClientVolume;
+		PfReplicatedVolume* volume = new PfReplicatedVolume;
 		if (volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -247,7 +260,7 @@ struct PfClientVolume* pf_half_open_volume(const char* volume_name, const char* 
 	}
 	return NULL;
 }
-struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
+struct PfReplicatedVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
 {
 	return _pf_open_volume(volume_name, cfg_filename, snap_name, lib_ver, false);
 }
@@ -622,7 +635,9 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 	clean.cancel_all();
 	return 0;
 }
-int PfClientVolume::do_open(bool reopen, bool is_aof)
+
+
+int PfReplicatedVolume::do_open(bool reopen, bool is_aof)
 {
 	int rc = 0;
 	conf_file_t cfg = conf_open(cfg_file.c_str());
@@ -869,7 +884,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 
 
 
-void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
+void PfReplicatedVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 {
 	const static int ms1 = 1000;
 	if (unlikely(wc_status != WC_SUCCESS))
@@ -963,13 +978,13 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 }
 
 
-void pf_close_volume(PfClientVolume* volume)
+void pf_close_volume(PfReplicatedVolume* volume)
 {
 	volume->close();
 	delete volume;
 }
 
-static int reopen_volume(PfClientVolume* volume)
+static int reopen_volume(PfReplicatedVolume* volume)
 {
 	int rc = 0;
 	S5LOG_INFO( "Reopening volume %s@%s, meta_ver:%d", volume->volume_name.c_str(),
@@ -996,7 +1011,7 @@ static int reopen_volume(PfClientVolume* volume)
 	return rc;
 }
 
-int PfClientVolume::resend_io(PfClientIocb* io)
+int PfReplicatedVolume::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	io->cmd_bd->cmd_bd->command_seq ++;
@@ -1029,7 +1044,7 @@ int PfVolumeEventProc::process_event(int event_type, int arg_i, void* arg_p, voi
 	return 0;
 }
 
-int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
+int PfReplicatedVolume::process_event(int event_type, int arg_i, void* arg_p)
 {
 	//S5LOG_INFO("get event:%d", event_type);
 	switch (event_type)
@@ -1185,7 +1200,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 /**
 * get a shard connection from pool. connection is shared by shards on same node.
 */
-PfConnection* PfClientVolume::get_shard_conn(int shard_index)
+PfConnection* PfReplicatedVolume::get_shard_conn(int shard_index)
 {
 	PfConnection* conn = NULL;
 	if (state != VOLUME_OPENED)
@@ -1209,7 +1224,7 @@ PfConnection* PfClientVolume::get_shard_conn(int shard_index)
 	return NULL;
 }
 
-void PfClientVolume::close() {
+void PfReplicatedVolume::close() {
 	S5LOG_INFO("close volume:%s", volume_name.c_str());
 	state = VOLUME_CLOSED;
 
@@ -1259,7 +1274,7 @@ size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *b
 	return done;
 }
 static int unalign_io_print_cnt = 0;
-int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
+int pf_iov_submit(struct PfReplicatedVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
@@ -1313,7 +1328,7 @@ int pf_iov_submit(struct PfClientVolume* volume, const struct iovec *iov, const 
 	return rc;
 }
 
-int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+int pf_io_submit(struct PfReplicatedVolume* volume, void* buf, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
@@ -1357,7 +1372,7 @@ int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t 
 	return rc;
 }
 
-uint64_t pf_get_volume_size(struct PfClientVolume* vol)
+uint64_t pf_get_volume_size(struct PfReplicatedVolume* vol)
 {
 	return vol->volume_size;
 }
@@ -1534,12 +1549,12 @@ int pf_delete_volume(const char* vol_name,  const char* cfg_filename)
 	return -1;
 }
 
-void PfClientAppCtx::remove_volume(PfClientVolume* vol)
+void PfClientAppCtx::remove_volume(PfReplicatedVolume* vol)
 {
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
 	opened_volumes.remove(vol);
 }
-void PfClientAppCtx::add_volume(PfClientVolume* vol)
+void PfClientAppCtx::add_volume(PfReplicatedVolume* vol)
 {
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
 	opened_volumes.push_back(vol);
@@ -1665,7 +1680,7 @@ void rpc_cbk(void* arg, int status)
 	sem_t *sem = (sem_t*)arg;
 	sem_post(sem);
 }
-int PfClientAppCtx::rpc_common(PfClientVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler,
+int PfClientAppCtx::rpc_common(PfReplicatedVolume* vol, std::function<void(PfMessageHead* req_cmd)> head_filler,
 	std::function<void(PfMessageReply* reply)> reply_extractor)
 {
 	int rc;
@@ -1748,7 +1763,7 @@ int PfClientAppCtx::rpc_common(PfClientVolume* vol, std::function<void(PfMessage
 	free_iocb(io);
 	return rc;
 }
-int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
+int PfClientAppCtx::rpc_alloc_block(PfReplicatedVolume* volume, uint64_t offset)
 {
 	int new_block_id = 0;
 	int rc;
@@ -1768,7 +1783,7 @@ int PfClientAppCtx::rpc_alloc_block(PfClientVolume* volume, uint64_t offset)
 	return rc;
 }
 
-int PfClientAppCtx::rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32_t snap_seq)
+int PfClientAppCtx::rpc_delete_obj(PfReplicatedVolume* volume, uint64_t slba, uint32_t snap_seq)
 {
 	int rc;
 	rc = rpc_common(volume, [volume, slba](PfMessageHead* cmd) {
@@ -1787,7 +1802,7 @@ int PfClientAppCtx::rpc_delete_obj(PfClientVolume* volume, uint64_t slba, uint32
 
 #ifdef WITH_PFS2
 static std::unordered_map<std::string, PfClientStore*> local_stores;
-PfClientStore* PfClientVolume::get_local_store(int shard_index)
+PfClientStore* PfReplicatedVolume::get_local_store(int shard_index)
 {
 	
 	PfClientShardInfo* shard = &shards[shard_index];
