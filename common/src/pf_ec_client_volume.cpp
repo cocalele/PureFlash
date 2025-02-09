@@ -84,17 +84,16 @@ int PfEcClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 	{
 	case EVT_EC_IO_REQ:
 	{
-		
-	}
-	case EVT_EC_UPDATE_LUT:
-		rc = dispatch_ec_update_lut(iocb, (struct pf_ec_wal_entry*)evt->arg_p, intptr(evt->arg_q));
-		break;
-
-	case EVT_IO_COMPLETE:
-		if (iocb->is_ec_page_swap_io) {
-			app_context.disps[iocb->disp_index]->dispatch_ec_page_load_complete(iocb);
-			return;
+		PfClientIocb* io = (PfClientIocb*)arg_p;
+		if(io->cmd_bd->cmd_bd->opcode == S5_OP_WRITE){
+			io->current_state = APPENDING_AOF;
+			do_io_write(io, this);
 		}
+		
+
+	}
+	
+		
 
 	}
 }
@@ -103,48 +102,6 @@ int PfEcClientVolume::ec_commit_wal(PfServerIocb* iocb, PfVolume* vol, struct pf
 {
 
 	//reply_io_to_client();
-}
-
-int PfEcClientVolume::update_lut(PfClientIocb* iocb, struct PfEcRedologEntry* wal, int64_t aof_offset)
-{
-	//iocb still in use by update_lut, event reply is send to client.
-	//in server.cpp, iocb will be reused for next IO after reply send.
-
-
-	//int lba_cnt = iocb->data_bd->data_len>>LBA_LENGTH_ORDER;
-	//iocb->add_ref(lba_cnt); //reserve for wal update
-	//iocb->add_ref(lba_cnt); //reserve for forward_lut
-	//iocb->add_ref(lba_cnt); //reserve for reverse_lut
-
-
-	要不要为每个4K记录一个wal? 还是每个大IO只记录一个wal, wal里面记录下长度就行了
-	关键在于每个4K都有自己的old_aof_off, 需要分别记录。 必须在这里记录？ 是否可以在更新Lut的时候更新，而不是在这里记录
-	//all wals belongs to single page
-	for(size_t i=0;i<iocb->data_bd->data_len;i+=LBA_LENGTH){
-		struct PfEcRedologEntry* wal = &wals[i];
-		off_t curr_aof_off = aof_offset + i;
-		off_t curr_vol_off = iocb->cmd_bd->cmd_bd->offset + i;
-
-		int64_t old_aof_off = vol->ec_index->get_lba_offset(curr_vol_off);
-		wal->aof_off = curr_aof_off;
-		wal->vol_off = curr_vol_off;
-
-		wal->aof_new_section_index = aof_offset / section_size;
-		wal->aof_section_length += LBA_LENGTH;
-		wal->aof_old_section_index = old_aof_off / section_size;
-		wal->aof_section_garbage_length += LBA_LENGTH;
-		
-
-		// Step2. update index 
-		ec_commit_wal(wal);
-		ec_index->set_forward_lut(iocb->cmd_bd->cmd_bd->offset, aof_offset);
-		ec_index->set_reverse_lut(aof_offset, iocb->cmd_bd->cmd_bd->offset);
-	}
-	PfEcRedologPage *p = PAGE_OF_WAL(wals);
-	iocb->ec_wal_waiting_list = p->waiting_io;
-	p>waiting_io = iocb;
-	//if(iocb->forward_lut_state == Done && )
-
 }
 
 int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
@@ -163,6 +120,7 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 		}
 		wal->aof_off = curr_pos;
 		wal->vol_off = iocb->cmd_bd->cmd_bd->offset;
+		iocb->wal = wal;
 		iocb->current_state = FILLING_WAL;
 		//fall through to FILLING_WAL
 	case FILLING_WAL:
@@ -171,6 +129,7 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 		iocb->current_offset = iocb->cmd_bd->cmd_bd->offset;
 		//fall through to UPDATING_FWD_LUT
 	case UPDATING_FWD_LUT:
+		struct PfEcRedologEntry* wal = iocb->wal;
 		for(;iocb->current_offset < iocb->cmd_bd->cmd_bd->offset + iocb->cmd_bd->cmd_bd->length; iocb->current_offset += LBA_LENGTH) {
 			PfLutPte* pte = ec_index->get_fwd_pte(PF_OFF2PTE_INDEX(iocb->current_offset));
 			if (pte->status != PAGE_PRESENT) {
@@ -198,78 +157,8 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 
 		}
 		iocb->current_state = COMMITING_WAL;
-
+		
+		PfEcRedologPage* wal_page = PAGE_OF_WAL(iocb->wal);
+		wal_page->waiting_io.push_back(iocb);
 	}
-}
-int PfEcClientVolume::io_write(PfClientIocb* iocb, PfVolume* vol)
-{
-
-
-
-
-
-
-
-	return 0;
-}
-
-int PfEcClientVolume::on_page_load_complete(PfServerIocb* swap_io)
-{
-	//TODO: set initial page hot score
-	for (PfServerIocb* request_io = swap_io->forward_lut_waiting_list; request_io != NULL; ) {
-		PfVolume* vol = app_context.get_opened_volume(request_io->cmd_bd->cmd_bd->vol_id);
-		request_io = request_io->next;
-		int64_t end_off = request_io->cmd_bd.cmd_bd->offset + request_io->cmd_bd.cmd_bd->length;
-		for (; request_io->forward_lut_loop_offset < end_off; request_io->forward_lut_loop_offset += LBA_LENGTH) {
-			int64_t delta = request_io->forward_lut_loop_offset - request_io->cmd_bd.cmd_bd->offset;
-			RetCode r = vol->ec_index->set_forward_lut(request_io, request_io->cmd_bd.cmd_bd->offset + delta, request_io->new_aof_offset + delta);
-			if (r == Yield) {
-				S5LOG_FATAL("forward lut upate not complete in 1 page as excepted");
-				//break;
-			}
-		}
-		if (request_io->forward_lut_loop_offset >= end_off) {
-			request_io->forward_lut_state = Done;
-		}
-	}
-
-
-	//    request IO from client:       IO1                  IO2
-	//                         +---------+------+   +---------+---------+
-	//                         |                |   |                   |
-	//                         R1               R2  R3                  R4
-	//                         |                |   |                   |
-	//                         |                +-+-+                   |
-	//                         |                  |                     |
-	//                        Page1              Page2                 Page3
-	//                         |                  |                     |
-	//                        swap IO1           swap IO2              swap IO3
-	// 
-	//   1. for above case, 2 request IO from client, each is 8K write. So each IO split into 2 4K IO. i.e. total 4 4K IO
-	//      need to update reverse LUT. R1, R2, R3, R4
-	//   2. R1, R2, R3, R4 located in 3 memory pages: Page1, Page2, Page3. will issue 3 swap IO,
-	//   3. request_io has only one `next` ptr, how to link on two list? IO2 link in SIO2 and SIO3?
-	//      R3, R4 must be executed in serialized mode, to avoid this
-	//old index需要加载多个不同的页才能进行set_reverse_lut操作
-	//old index不可能和new index在同一个page里面
-	for (PfServerIocb* request_io = swap_io->reverse_lut_waiting_list; request_io != NULL; ) {
-		//request_io->reverse_lut_state = PAGE_READY;
-		PfVolume* vol = app_context.get_opened_volume(request_io->cmd_bd->cmd_bd->vol_id);
-
-		request_io = request_io->next;
-		int64_t end_off = request_io->cmd_bd.cmd_bd->offset + request_io->cmd_bd.cmd_bd->length;
-		for (; request_io->reverse_lut_loop_offset < end_off; request_io->reverse_lut_loop_offset += LBA_LENGTH) {
-			int64_t delta = request_io->reverse_lut_loop_offset - request_io->cmd_bd.cmd_bd->offset;
-			RetCode r = vol->ec_index->set_reverse_lut(request_io, request_io->new_aof_offset + delta, request_io->cmd_bd.cmd_bd->offset + delta);
-			if (r == Yield) {
-				//return 0; //continue to process next request IO on waiting
-			}
-		}
-		if (request_io->reverse_lut_loop_offset >= end_off) {
-			request_io->reverse_lut_state = Done;
-		}
-	}
-
-	app_context.disps[swap_io->disp_index]->iocb_pool.free(swap_io); //allocated at PfEcVolumeIndex::load_page
-
 }

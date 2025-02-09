@@ -265,18 +265,18 @@ int PfAof::open()
 	int rc = 0;
 	rc = (int)sync_io(this->volume, head_buf, 4096, 0, 0);
 	if (rc <=0 || head->magic != AOF_MAGIC) {
-		S5LOG_ERROR("Aof magic error, not a AoF file. rc:%d volume:%s", rc, volume->volume_name);
+		S5LOG_ERROR("Aof magic error, not a AoF file. rc:%d volume:%s", rc, volume->volume_name.c_str());
 		return -EINVAL;
 	}
 	if (head->version != AOF_VER) {
-		S5LOG_ERROR("Aof version error, not supported ver:0x%x. volume:%s", head->version, volume->volume_name);
+		S5LOG_ERROR("Aof version error, not supported ver:0x%x. volume:%s", head->version, volume->volume_name.c_str());
 		return -EINVAL;
 	}
 	file_len = head->length;
 	if(file_len % 4096){
 		rc = (int)sync_io(volume, append_buf, 4096, (file_len&(~4095LL)) + 4096 /*4096 is head length*/, 0);
 		if(rc<0){
-			S5LOG_ERROR("Failed to read aof:%s", volume->volume_name);
+			S5LOG_ERROR("Failed to read aof:%s", volume->volume_name.c_str());
 			return -EIO;
 		}
 		append_tail = file_len % 4096;

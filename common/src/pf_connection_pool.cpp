@@ -74,7 +74,7 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 
 void PfConnectionPool::close_all()
 {
-	S5LOG_INFO("Close all connection in pool, %d connections to release", ip_id_map.size());
+	S5LOG_INFO("Close all connection in pool, %ld connections to release", ip_id_map.size());
 
 	for(auto it = ip_id_map.begin(); it != ip_id_map.end(); ++it) {
 		auto c = it->second;

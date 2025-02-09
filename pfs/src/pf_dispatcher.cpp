@@ -39,7 +39,7 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	{
 		PfVolume* old_v = pos->second;
 		if(old_v->meta_ver >= vol->meta_ver) {
-			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%ld new meta_ver:%ld",
 			  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
 			return 0;
 		}
@@ -123,7 +123,7 @@ static inline void reply_io_to_client(PfServerIocb *iocb)
 
 	if (io_elapse_time > 2000)
 	{
-		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol_id:0x%lx, since received:%dms",
+		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol_id:0x%lx, since received:%ldms",
 		           iocb->cmd_bd->cmd_bd->offset >> SHARD_SIZE_ORDER,
 		           iocb->cmd_bd->cmd_bd->command_id,
 		           iocb->vol_id,
@@ -174,7 +174,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 
 	PfVolume* vol = pos->second;
 	if (unlikely(cmd->meta_ver != vol->meta_ver)) {
-		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%x meta_ver:%d diff than client:%d",
+		S5LOG_ERROR("Cannot dispatch_io, op:%s(%d), volume:0x%lx meta_ver:%ld diff than client:%d",
 			  PfOpCode2Str(cmd->opcode), cmd->opcode,  cmd->vol_id, vol->meta_ver, cmd->meta_ver);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN ;
 		iocb->complete_meta_ver = (uint16_t)vol->meta_ver;
@@ -188,7 +188,7 @@ int PfDispatcher::dispatch_io(PfServerIocb *iocb)
 
 	uint32_t shard_index = (uint32_t)OFFSET_TO_SHARD_INDEX(cmd->offset);
 	if(unlikely(shard_index > vol->shard_count)) {
-		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%x, offset:%lld exceeds volume size:%lld",
+		S5LOG_ERROR("Cannot dispatch_io, op:%s, volume:0x%lx, offset:%ld exceeds volume size:%ld",
 		            PfOpCode2Str(cmd->opcode), cmd->vol_id, cmd->offset, vol->size);
 		iocb->complete_status = PfMessageStatus::MSG_STATUS_REOPEN | PfMessageStatus::MSG_STATUS_INVALID_FIELD;
 		iocb->complete_meta_ver = (uint16_t)vol->meta_ver;
@@ -235,7 +235,7 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
 	if (unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
-		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d status:%d cid:%d",
+		S5LOG_ERROR("Write on non-primary node, vol:0x%lx, %s, shard_index:%d, current replica_index:%d status:%d cid:%d",
 		            vol->id, vol->name, s->shard_index, s->duty_rep_index, s->replicas[s->duty_rep_index]->status, iocb->cmd_bd->cmd_bd->command_id);
 		int i = s->duty_rep_index;
 		iocb->setup_one_subtask(s, i, cmd->opcode);
@@ -284,14 +284,14 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
 		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 		if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
-			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d status:%d",
+			S5LOG_ERROR("Read on non-primary node, vol:0x%lx, %s, shard_index:%ld, current replica_index:%d status:%d",
 			            vol->id, vol->name, s->id, s->duty_rep_index, s->replicas[s->duty_rep_index]->status);
 			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_NOT_PRIMARY);
 			return 1;
 		}
 		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
 	} else {
-		S5LOG_ERROR("replica:0x%x status:%s not readable", s->replicas[i]->id, HealthStatus2Str(s->replicas[i]->status));
+		S5LOG_ERROR("replica:0x%lx status:%s not readable", s->replicas[i]->id, HealthStatus2Str(s->replicas[i]->status));
 	}
 
 	return 0;
@@ -319,14 +319,14 @@ int PfDispatcher::dispatch_rep_write(PfServerIocb* iocb, PfVolume* vol, PfShard 
 		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
 		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 		if(unlikely(s->is_primary_node)) {
-			S5LOG_ERROR("Repwrite on primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d",
+			S5LOG_ERROR("Repwrite on primary node, vol:0x%lx, %s, shard_index:%ld, current replica_index:%d",
 			            vol->id, vol->name, s->id, s->duty_rep_index);
 			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_REP_TO_PRIMARY);
 			return 1;
 		}
 		s->replicas[i]->submit_io(&iocb->io_subtasks[i]);
 	} else {
-		S5LOG_FATAL("Unexpected replica status:%d on replicating write, rep:0x%llx" , s->replicas[i]->status, s->replicas[i]->id);
+		S5LOG_FATAL("Unexpected replica status:%d on replicating write, rep:0x%lx" , s->replicas[i]->status, s->replicas[i]->id);
 	}
 
 	return 0;
@@ -457,7 +457,7 @@ release1:
 void PfDispatcher::set_snap_seq(int64_t volume_id, int snap_seq) {
 	auto pos = opened_volumes.find(volume_id);
 	if(pos == opened_volumes.end()){
-		S5LOG_ERROR("Volume:0x%llx not found in dispatcher:%s", volume_id, name);
+		S5LOG_ERROR("Volume:0x%lx not found in dispatcher:%s", volume_id, name);
 		return;
 	}
 	pos->second->snap_seq = snap_seq;
@@ -466,11 +466,11 @@ void PfDispatcher::set_snap_seq(int64_t volume_id, int snap_seq) {
 int PfDispatcher::set_meta_ver(int64_t volume_id, int meta_ver) {
 	auto pos = opened_volumes.find(volume_id);
 	if(pos == opened_volumes.end()){
-		S5LOG_ERROR("Volume:0x%llx not found in dispatcher:%s", volume_id, name);
+		S5LOG_ERROR("Volume:0x%lx not found in dispatcher:%s", volume_id, name);
 		return -ENOENT;
 	}
 	if(meta_ver < pos->second->meta_ver){
-		S5LOG_ERROR("Refuse to update voluem:%s meta_ver from:%d to %d", pos->second->name, pos->second->meta_ver, meta_ver);
+		S5LOG_ERROR("Refuse to update volume:%s meta_ver from:%ld to %d", pos->second->name, pos->second->meta_ver, meta_ver);
 		return -EINVAL;
 	}
 	pos->second->meta_ver = meta_ver;

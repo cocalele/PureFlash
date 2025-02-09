@@ -1,5 +1,7 @@
 #include "pf_ec_volume_index.h"
 
+PfLutPte() : waiting_list(&PfClientIocb::ec_next) {}
+
 static void page_load_cbk(void* cbk_arg, int complete_status)
 {
 
@@ -9,9 +11,10 @@ static void page_load_cbk(void* cbk_arg, int complete_status)
 	PfLutPte* pte = (PfLutPte*)ckb_arg;
 	
 	PfEcClientVolume* vol = pte->owner_volume();
-	for(PfClientIocb *io = pte->waiting_list; !io; io=io->ec_waiting_list){
+	for (PfClientIocb* p = pte->waiting_list.head; p != NULL; p = p->ec_next) {
 		do_io_write(io, pte->owner);
 	}
+	pte->waiting_list.clear();
 }
 //1. 实现coroutine
 //2. 像android上实现模态对话框一样，进行内部的事件循环，外部逻辑连续
@@ -21,8 +24,7 @@ int PfEcVolumeIndex::load_page(PfClientIocb* client_io, PfLutPte* pte)
 {
 
 	assert(pte->state != PAGE_PRESENT);
-	client_io->ec_waiting_list = pte->waiting_list;
-	pte->waiting_list = client_io;
+	pte->waiting_list.push_back(client_io);
 	int rc = 0;
 	if (pte->state == PAGE_LOADING )
 	{

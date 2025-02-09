@@ -74,9 +74,9 @@ int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
 	//current_queue->data[current_queue->tail] = S5Event{ type, arg_i, arg_p };
 	//current_queue->tail = (current_queue->tail + 1) % current_queue->queue_depth;
 }
-int PfEventQueue::post_event_locked(int type, int arg_i, void* arg_p, void* arg_q)
+int PfEventQueue::post_event_locked(int type, int arg_i, void* arg_p)
 {
-	post_event(type, arg_i, arg_p);
+	return post_event(type, arg_i, arg_p);
 }
 
 /**

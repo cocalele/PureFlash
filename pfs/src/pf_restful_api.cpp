@@ -182,7 +182,7 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		shard->rep_count = vol->rep_count;
 		shard->snap_seq = vol->snap_seq;
 		shard->status = health_status_from_str(arg.shards[i].status);
-		S5LOG_INFO("Convert to shard:%d with %d replicas", i, arg.shards[i].replicas.size());
+		S5LOG_INFO("Convert to shard:%d with %ld replicas", i, arg.shards[i].replicas.size());
 		for (int j = 0; j < arg.shards[i].replicas.size(); j++)
 		{
 			if (app_context.shard_to_replicator) {
@@ -373,7 +373,7 @@ static void _thread_get_stats(void *arg)
 	// collect done
 	if (ctx->ctx.next_thread_id == ctx->ctx.num_threads) {
 		for (int i = 0; i < ctx->ctx.thread_stats.size(); i++) {
-			S5LOG_INFO("thread stats: name: %s, tid: %llu, busy: %llu, idle: %llu",
+			S5LOG_INFO("thread stats: name: %s, tid: %lu, busy: %lu, idle: %lu",
 				ctx->ctx.thread_stats[i].name.c_str(), ctx->ctx.thread_stats[i].tid,
 				ctx->ctx.thread_stats[i].stats.busy_tsc,
 				ctx->ctx.thread_stats[i].stats.idle_tsc);
@@ -716,7 +716,7 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm) {
 	int rc = disk->sync_invoke([disk, rep_id]()->int{
 		return disk->delete_replica(replica_id_t(rep_id));
 	});
-	S5LOG_INFO("Delete replica 0x:%x from disk:%s, rc:%d", rep_id, disk->tray_name, rc);
+	S5LOG_INFO("Delete replica 0x:%lx from disk:%s, rc:%d", rep_id, disk->tray_name, rc);
 	reply.ret_code = rc;
 	send_reply_to_client(reply, nc);
 }
@@ -728,7 +728,7 @@ void handle_query_task(struct mg_connection *nc, struct http_message * hm) {
 	BackgroudTaskReply r;
 	r.op="query_task_reply";
 	if(t==NULL){
-		S5LOG_ERROR("No task id:%d", task_id);
+		S5LOG_ERROR("No task id:%ld", task_id);
 		r.task_id = 0;
 		r.ret_code = -ENOENT;
 		r.reason = "No such task";
@@ -824,7 +824,7 @@ void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm)
 
 		PfVolume* old_v = pos->second;
 		if(old_v->meta_ver != vol->meta_ver && old_v->meta_ver != vol->meta_ver-1){
-			S5LOG_ERROR("prepare shards failed, old meta_ver:%d new meta_ver:%d", old_v->meta_ver, vol->meta_ver);
+			S5LOG_ERROR("prepare shards failed, old meta_ver:%ld new meta_ver:%ld", old_v->meta_ver, vol->meta_ver);
 			RestfulReply r(arg.op + "_reply", RestfulReply::INVALID_STATE, "meta_ver invalid");
 			send_reply_to_client(r, nc);
 			return;

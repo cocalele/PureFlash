@@ -111,7 +111,7 @@ int PfClientStore::do_write(IoSubTask* io)
 
 	if (unlikely(block_pos == obj_lmt.end()))
 	{
-		S5LOG_DEBUG("Alloc object for rep:0x%llx slba:0x%llx  cmd offset:0x%llx ", io->rep_id, key.slba, cmd->offset);
+		S5LOG_DEBUG("Alloc object for rep:0x%lx slba:0x%lx  cmd offset:0x%lx ", io->rep_id, key.slba, cmd->offset);
 		int obj_id = volume->runtime_ctx->rpc_alloc_block(volume, cmd->offset);
 		if (obj_id < 0) {
 			S5LOG_ERROR("Disk:%s is full!", tray_name);
@@ -149,7 +149,7 @@ int PfClientStore::do_write(IoSubTask* io)
 
 		}
 		else if (unlikely(cmd->snap_seq < entry->snap_seq)) {
-			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%x request snap:%d, target snap:%d",
+			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%lx request snap:%d, target snap:%d",
 				cmd->vol_id, cmd->snap_seq, entry->snap_seq);
 			io->ops->complete(io, MSG_STATUS_READONLY);
 			return 0;

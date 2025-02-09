@@ -50,7 +50,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 	size_t read_size = MD5_BUF_LEN*PARALLEL_NUM;
 	void* read_buf = memalign(LBA_LENGTH, read_size);
 	if(read_buf == NULL) {
-		S5LOG_ERROR("Failed to alloc scrub buf, size:%lld", read_size);
+		S5LOG_ERROR("Failed to alloc scrub buf, size:%ld", read_size);
 		return "";
 	}
 	DeferCall _c([read_buf](){free(read_buf);});
@@ -79,7 +79,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 		if(rc == -ENOENT)
 			continue;
 		else if(rc == -EINVAL){
-			S5LOG_ERROR("Object{vol_id:0x%x, slba:%lld} in status %d and not ready for md5 calculate", key.vol_id, key.slba,
+			S5LOG_ERROR("Object{vol_id:0x%lx, slba:%ld} in status %d and not ready for md5 calculate", key.vol_id, key.slba,
 			            head_status);
 			return std::string();
 		}
@@ -110,7 +110,7 @@ std::string Scrub::cal_replica(PfFlashStore *s, replica_id_t rep_id) {
 		}
 	}
 	rst[sizeof(ctxpool[0].job.result_digest) * PARALLEL_NUM * 2] = 0;
-	S5LOG_INFO("Calculate md5 for replica:0x%llx, %s", rep_id.val(), rst);
+	S5LOG_INFO("Calculate md5 for replica:0x%lx, %s", rep_id.val(), rst);
 	return rst;
 }
 std::string calc_block_md5(int fd, off_t offset, size_t len);
@@ -153,7 +153,7 @@ int Scrub::cal_object(PfFlashStore* s, replica_id_t rep_id, int64_t obj_idx, std
 	if (rc == -ENOENT)
 		return rc;
 	else if (rc == -EINVAL) {
-		S5LOG_ERROR("Object{vol_id:0x%x, slba:%lld} in status %d and not ready for md5 calculate", key.vol_id, key.slba,
+		S5LOG_ERROR("Object{vol_id:0x%lx, slba:%ld} in status %d and not ready for md5 calculate", key.vol_id, key.slba,
 			head_status);
 		return rc;
 	}
@@ -249,7 +249,7 @@ std::string calc_block_md5(int fd, off_t offset, size_t len)
 	//len = 256<<10; //for debug only, there may garbage data in object, since trim not enabled
 	void* read_buf = memalign(LBA_LENGTH, len);
 	if (read_buf == NULL) {
-		S5LOG_ERROR("Failed to alloc scrub buf, size:%lld", len);
+		S5LOG_ERROR("Failed to alloc scrub buf, size:%ld", len);
 		return "";
 	}
 	DeferCall _c([read_buf]() {free(read_buf); });

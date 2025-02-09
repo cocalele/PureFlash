@@ -454,6 +454,78 @@ ppf_dlist_entry_t s5list_next_tail_ulc(ppf_dlist_head_t head, ppf_dlist_entry_t 
 }
 #endif
 
+
+template <typename T>
+class PfList
+{
+public:
+	T* head;
+	T* tail;
+	T* T::* next;
+
+	PfList(T* T::* n) :head(NULL), tail(NULL) {
+		next = n;
+	}
+
+	void clear(){
+		head=tail=NULL;
+	}
+	void inline push_front(T* e) {
+		if (!head) { //an empty list
+			head = e;
+			tail = e;
+			e->*next = NULL;
+		}
+		else {
+			e->*next = head;
+			head = e;
+		}
+	}
+
+	void inline push_back(T* e) {
+		if (!tail) { /*empty*/
+			head = e;
+		}
+		else {
+			tail->*next = e;
+		}
+		tail = e;
+		e->*next = NULL;
+
+	}
+};
+
+
+template<typename T>
+class PfDoublyList {
+public:
+	T head;
+	PfDoublyList() {
+		head.list_next = &head;
+		head.list_prev = &head;
+	}
+	inline __attribute__((always_inline)) void append(T* element) {
+		element->list_next = head.list_next;
+		element->list_prev = &head;
+		head.list_next->list_prev = element;
+		head.list_next = element;
+	}
+
+	inline __attribute__((always_inline)) void remove(T* element) {
+		element->list_next->list_prev = element->list_prev;
+		element->list_prev->list_next = element->list_next;
+	}
+
+	inline __attribute__((always_inline)) T* pop() {
+		T* e = head.list_next;
+		if (e == &head)
+			return NULL;
+		remove(e);
+		return e;
+	}
+};
+
+
 #endif
 
 

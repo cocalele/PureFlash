@@ -16,9 +16,9 @@ extern "C" {
 #define S5_LIB_VER 0x00010000
 
 enum RedundencyMode  {
-	Unknown = 0;
-	Replication = 1;
-	ErasureCode = 2;
+	Unknown = 0,
+	Replication = 1,
+	ErasureCode = 2,
 };
 struct PfClientVolume;
 

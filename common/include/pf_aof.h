@@ -14,6 +14,7 @@ int pf_delete_aof(const char* volume_name, const char* pf_cfg_file);
 
 //#define _DATA_DBG
 class SimpleCache;
+class PfReplicatedVolume;
 
 class  PfAof
 {

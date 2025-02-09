@@ -79,7 +79,7 @@ int  PfFlashStore::format_disk()
 	S5LOG_INFO("Begin to format disk:%s ...", tray_name);
 	size_t dev_cap = ioengine->get_device_cap();
 	if (dev_cap < (10LL << 30)) {
-		S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap >> 30);
+		S5LOG_WARN("Seems you are using a very small device with only %ldGB capacity", dev_cap >> 30);
 	}
 	ret = clean_meta_area(ioengine, app_context.meta_size);
 	if (ret) {
@@ -124,7 +124,7 @@ int  PfFlashStore::format_disk()
 	save_meta_data(head.current_metadata);
 	char uuid_str[64];
 	uuid_unparse(head.uuid, uuid_str);
-	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%lld.", tray_name, uuid_str, obj_count, head.objsize);
+	S5LOG_INFO("format disk:%s complete, uuid:%s obj_count:%d obj_size:%ld.", tray_name, uuid_str, obj_count, head.objsize);
 	return 0;
 }
 #ifdef WITH_PFS2
@@ -314,7 +314,7 @@ int PfFlashStore::start_metadata_service(bool init)
 			S5LOG_ERROR("Failed to replay CURRENT redo log, rc:%d", ret);
 			return ret;
 		}
-		S5LOG_INFO("After first replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("After first replay, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		ret = redolog->replay(++head.redolog_phase, OPPOSITE);
@@ -323,14 +323,14 @@ int PfFlashStore::start_metadata_service(bool init)
 			S5LOG_ERROR("Failed to replay OPPOSITE redo log, rc:%d", ret);
 			return ret;
 		}
-		S5LOG_INFO("After second replay, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("After second replay, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
 		post_load_fix();
 		post_load_check();
 		save_meta_data(oppsite_md_zone());
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-		S5LOG_INFO("after save metadata, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld", obj_lmt.size(),
+		S5LOG_INFO("after save metadata, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld", obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 		S5LOG_INFO("load metadata finished, current metadata zone:%s, redo log will record at %s with phase:%ld",
 		meta_positon_2str(METADATA, head.current_metadata), meta_positon_2str(REDOLOG, head.current_redolog), head.redolog_phase);
@@ -343,7 +343,7 @@ int PfFlashStore::start_metadata_service(bool init)
 		}
 		size_t dev_cap = ioengine->get_device_cap();
 		if (dev_cap < (10LL << 30)) {
-			S5LOG_WARN("Seems you are using a very small device with only %dGB capacity", dev_cap >> 30);
+			S5LOG_WARN("Seems you are using a very small device with only %ldGB capacity", dev_cap >> 30);
 		}
 		ret = clean_meta_area(ioengine, app_context.meta_size);
 		if (ret) {
@@ -389,7 +389,7 @@ int PfFlashStore::start_metadata_service(bool init)
 		}
 		save_meta_data(head.current_metadata);
 		redolog->set_log_phase(head.redolog_phase, get_meta_position(REDOLOG, CURRENT));
-		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%lld.", tray_name, obj_count, head.objsize);
+		S5LOG_INFO("Init new disk (%s) complete, obj_count:%d obj_size:%ld.", tray_name, obj_count, head.objsize);
 		S5LOG_INFO("current metadata zone:%s, redo log will record at %s with phase:%ld",
 			meta_positon_2str(METADATA, head.current_metadata),meta_positon_2str(REDOLOG, head.current_redolog), head.redolog_phase);
 	}
@@ -567,7 +567,7 @@ int PfFlashStore::do_write(IoSubTask* io)
 			}
 
 		} else if (unlikely(cmd->snap_seq < entry->snap_seq)) {
-			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%x request snap:%d, target snap:%d",
+			S5LOG_ERROR("Write on snapshot not allowed! vol_id:0x%lx request snap:%d, target snap:%d",
 				cmd->vol_id, cmd->snap_seq , entry->snap_seq);
 			io->ops->complete(io, MSG_STATUS_READONLY);
 			return 0;
@@ -751,7 +751,7 @@ int LmtEntrySerializer::load_buffer()
 	if (rc == -1)
 	{
 		rc = -errno;
-		S5LOG_ERROR("Failed to read metadata, offset:%ld, rc:%ld", offset, rc);
+		S5LOG_ERROR("Failed to read metadata, offset:%ld, rc:%d", offset, rc);
 		return rc;
 	}
 	offset += buf_size;
@@ -852,7 +852,7 @@ static int load_fixed_queue(PfFixedSizeQueue<T>* q, MD5Stream* stream, off_t off
 */
 int PfFlashStore::save_meta_data(int md_zone)
 {
-	S5LOG_INFO("Begin to save metadata at zone:%s, %d keys in lmt",
+	S5LOG_INFO("Begin to save metadata at zone:%s, %ld keys in lmt",
 		meta_positon_2str(METADATA, md_zone), obj_lmt.size());
 
 	int buf_size = 1 << 20;
@@ -1038,7 +1038,7 @@ int PfFlashStore::load_meta_data(int md_zone, bool compaction)
 				return rc;
 			}
 			tail->prev_snap = b;
-			S5LOG_DEBUG("read entry key:{rep_id:0x%x, slba:%d}, snap:%d phy_off:0x%llx", k.vol_id, k.slba, b->snap_seq, b->offset);
+			S5LOG_DEBUG("read entry key:{rep_id:0x%lx, slba:%ld}, snap:%d phy_off:0x%lx", k.vol_id, k.slba, b->snap_seq, b->offset);
 			tail = tail->prev_snap;
 		}
 
@@ -1117,7 +1117,7 @@ int PfFlashStore::compact_meta_data()
 	int rc;
 
 	S5LOG_INFO("begin to compact metadata for %s", tray_name);
-	S5LOG_DEBUG("before compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+	S5LOG_DEBUG("before compact_meta_data, disk:%s, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld",
 		tray_name, obj_lmt.size(),
 		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
@@ -1149,7 +1149,7 @@ int PfFlashStore::compact_meta_data()
 	compact_lmt_exist = 1;
 
 	S5LOG_INFO("compact metadata for %s done, rc:%d", tray_name, rc);
-	S5LOG_DEBUG("after compact_meta_data, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+	S5LOG_DEBUG("after compact_meta_data, disk:%s, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld",
 		tray_name, obj_lmt.size(),
 		free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 	return 0;
@@ -1212,7 +1212,7 @@ int PfFlashStore::meta_data_compaction_trigger(int state, bool force_wait)
 	if (state == COMPACT_TODO && last_state != COMPACT_ERROR) {
 		/*will persist at metadata compaction thread*/
 		redolog->set_log_phase(head.redolog_phase + 1, get_meta_position(REDOLOG, OPPOSITE));
-		S5LOG_INFO("send signal to save md, new log will record at log zone:%s(%lld), phase:%d",
+		S5LOG_INFO("send signal to save md, new log will record at log zone:%s(%ld), phase:%ld",
 			meta_positon_2str(REDOLOG, oppsite_md_zone()), get_meta_position(REDOLOG, OPPOSITE), redolog->phase);
 		pthread_cond_signal(&md_cond); // compaction must be will
 	}
@@ -1272,7 +1272,9 @@ int PfFlashStore::write_store_head()
 
 int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 {
+#ifdef WITH_PFS2
 	int rc=0;
+#endif
 	char zk_node_name[128];
 	char store_id_str[16];
 	snprintf(store_id_str, sizeof(store_id_str), "%d", app_context.store_id);
@@ -1335,7 +1337,7 @@ int PfFlashStore::process_event(int event_type, int arg_i, void* arg_p, void*)
 	{
 		if (redolog->current_offset == redolog->start_offset)
 			return 0;
-		S5LOG_INFO("get event EVT_SAVEMD, disk:%s, key:%d total obj count:%d free obj count:%d, in triming:%d, obj size:%lld",
+		S5LOG_INFO("get event EVT_SAVEMD, disk:%s, key:%ld total obj count:%d free obj count:%d, in triming:%d, obj size:%ld",
 			tray_name, obj_lmt.size(),
 			free_obj_queue.queue_depth - 1, free_obj_queue.count(), trim_obj_queue.count(), head.objsize);
 
@@ -1375,12 +1377,12 @@ void PfFlashStore::do_cow_entry(lmt_key* key, lmt_entry *srcEntry, lmt_entry *ds
 			void *buf = app_context.cow_buf_pool.alloc(COW_OBJ_SIZE, spdk_engine_used());
 			int64_t rc = ioengine->sync_read(buf, COW_OBJ_SIZE, srcEntry->offset + j * COW_OBJ_SIZE);
 			if(rc != COW_OBJ_SIZE){
-				S5LOG_ERROR("Failed during cow read on dev:%s offset:0x%lx", tray_name, srcEntry->offset + j * COW_OBJ_SIZE);
+				S5LOG_ERROR("Failed during cow read on dev:%s offset:0x%llx", tray_name, srcEntry->offset + j * COW_OBJ_SIZE);
 				failed++;
 			} else {
 				rc = ioengine->sync_write(buf, COW_OBJ_SIZE, dstEntry->offset + j * COW_OBJ_SIZE);
 				if (rc != COW_OBJ_SIZE) {
-					S5LOG_ERROR("Failed during cow write on dev:%s offset:0x%lx", tray_name, dstEntry->offset + j * COW_OBJ_SIZE);
+					S5LOG_ERROR("Failed during cow write on dev:%s offset:0x%llx", tray_name, dstEntry->offset + j * COW_OBJ_SIZE);
 					failed++;
 				}
 			}
@@ -1497,7 +1499,7 @@ void PfFlashStore::delete_snapshot(shard_id_t shard_id, uint32_t snap_seq_to_del
 
 int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t snap_seq, uint32_t prev_snap_seq, uint32_t next_snap_seq)
 {
-	S5LOG_DEBUG("delete obj vol:0x%llx slba:%lld, snap_seq:%d prev_seq:%d next_seq:%d", volume_id, slba, snap_seq, prev_snap_seq, next_snap_seq);
+	S5LOG_DEBUG("delete obj vol:0x%lx slba:%ld, snap_seq:%d prev_seq:%d next_seq:%d", volume_id, slba, snap_seq, prev_snap_seq, next_snap_seq);
 	assert(pthread_self() == this->tid);//we are manipulating lmt table
 	lmt_key key={.vol_id=volume_id, .slba = slba};
 	auto pos = obj_lmt.find(key);
@@ -1532,7 +1534,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		} else if(next_entry != NULL && next_entry->status != EntryStatus::NORMAL){
 			S5LOG_DEBUG("Cond3, next status:%d", next_entry->status);
 		}
-		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%llx slba:%lld)", volume_id, slba);
+		S5LOG_WARN("delete_obj_snapshot aborted, for object(vol_id:0x%lx slba:%ld)", volume_id, slba);
 		return -EAGAIN;
 	}
 
@@ -1754,7 +1756,7 @@ int PfFlashStore::delete_obj_snapshot(uint64_t volume_id, int64_t slba, uint32_t
 		redolog->log_snap_seq_change(&key, target_entry, old_snap);
 	}
 	else {
-		S5LOG_FATAL("del snapshot encounter unexpected state: vol_id:0x%llx slba:%lld Lps:%d Lts:%d Lns:%d Pps:%d Pts:%d Pns:%d",
+		S5LOG_FATAL("del snapshot encounter unexpected state: vol_id:0x%lx slba:%ld Lps:%d Lts:%d Lns:%d Pps:%d Pts:%d Pns:%d",
 			  volume_id, slba, Lps, Lts, Lns, Pps, Pts, Pns);
 	}
 	return 0;
@@ -2042,7 +2044,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 	assert(pthread_self () != this->tid); //this function must run in different thread than this disk's proc thread
 	Cleaner _clean;
 
-	S5LOG_INFO("Begin recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+	S5LOG_INFO("Begin recovery replica:0x%lx, from:%s:%s => %s, at obj_size:%ld", rep_id.val(), from_store_ip.c_str(), from_ssd_uuid.c_str(),
 			this->tray_name, recov_object_size);
 
 	PfVolume* vol = NULL;
@@ -2050,7 +2052,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 		AutoMutexLock _l(&app_context.lock);
 		auto pos = app_context.opened_volumes.find(rep_id.to_volume_id().vol_id);
 		if (pos == app_context.opened_volumes.end()) {
-			S5LOG_ERROR("volume 0x:%llx not opened", rep_id.to_volume_id().vol_id);
+			S5LOG_ERROR("volume 0x:%lx not opened", rep_id.to_volume_id().vol_id);
 			return -EINVAL;
 		}
 		vol = pos->second;
@@ -2087,7 +2089,7 @@ int PfFlashStore::recovery_replica(replica_id_t  rep_id, const std::string &from
 			return rc;
 		}
 	}
-	S5LOG_INFO("Finish recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", rep_id, from_store_ip.c_str(), from_ssd_uuid.c_str(),
+	S5LOG_INFO("Finish recovery replica:0x%lx, from:%s:%s => %s, at obj_size:%ld", rep_id.val(), from_store_ip.c_str(), from_ssd_uuid.c_str(),
 	           this->tray_name, recov_object_size);
 
 	return 0;
@@ -2134,7 +2136,7 @@ int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_
 	rc = query_store<GetSnapListReply>(recov_ctx.from_store_ip.c_str(), primary_snap_list_reply, "op=get_snap_list&volume_id=%lld&offset=%lld&ssd_uuid=%s",
 		recov_ctx.rep_id.to_volume_id().vol_id, offset, recov_ctx.from_ssd_uuid.c_str());
 	if (rc) {
-		S5LOG_ERROR("Failed to query remote snap list from store:%s, rep_id:0x%llx, offset:%lld, reason:%s",
+		S5LOG_ERROR("Failed to query remote snap list from store:%s, rep_id:0x%lx, offset:%ld, reason:%s",
 			recov_ctx.from_store_ip.c_str(), recov_ctx.rep_id.val(), offset, primary_snap_list_reply.reason.c_str());
 		return rc;
 	}
@@ -2144,7 +2146,7 @@ int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_
 		return get_snap_list(recov_ctx.rep_id.to_volume_id().vol_id, offset, local_snap_list);
 		});
 	if (rc) {
-		S5LOG_ERROR("Failed to query local snap list, rep_id:0x%llx, offset:%lld, rc:%d",
+		S5LOG_ERROR("Failed to query local snap list, rep_id:0x%lx, offset:%ld, rc:%d",
 			recov_ctx.rep_id.val(), offset, rc);
 		return rc;
 	}
@@ -2159,7 +2161,7 @@ int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_
 		for (auto primary_it = primary_snap_list.rbegin(); primary_it != primary_snap_list.rend(); prev = *primary_it, ++primary_it) {
 			if (snap > prev && snap < *primary_it) {
 				//this snap not exists on primary
-				S5LOG_INFO("delete object (rep_id:0x%llx offset:%lld snap:%d) because it's not exists on primary", recov_ctx.rep_id.val(), offset, snap);
+				S5LOG_INFO("delete object (rep_id:0x%lx offset:%ld snap:%d) because it's not exists on primary", recov_ctx.rep_id.val(), offset, snap);
 
 				this->event_queue->sync_invoke([this, &key, snap]()->int {
 					return delete_obj_by_snap_seq(&key, snap);
@@ -2190,7 +2192,7 @@ int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_
 	int failed = 0;
 
 	if(snap_to_recovery.size() > 0){
-		S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld) %d objects[%s] to recover ", recov_ctx.rep_id.val(), offset,
+		S5LOG_INFO("recovering object (rep_id:0x%lx offset:%ld) %ld objects[%s] to recover ", recov_ctx.rep_id.val(), offset,
 			snap_to_recovery.size(), join(snap_to_recovery).c_str());
 		//recovery each snapshot of this object
 		for (auto snap_it = snap_to_recovery.rbegin(); snap_it != snap_to_recovery.rend(); ++snap_it) {
@@ -2206,7 +2208,7 @@ int PfFlashStore::recovery_object_series(struct RecoveryContext& recov_ctx, lmt_
 	}
 	int rc2 = finish_recovery_object(&key, recov_ctx.recovery_head_entry, recov_ctx.recov_object_size, offset, failed);
 	if (rc || rc2) {
-		S5LOG_ERROR("Failed recovery replica:0x%x, from:%s:%s => %s, at obj_size:%d", recov_ctx.rep_id, recov_ctx.from_store_ip.c_str(), recov_ctx.from_ssd_uuid.c_str(),
+		S5LOG_ERROR("Failed recovery replica:0x%lx, from:%s:%s => %s, at obj_size:%ld", recov_ctx.rep_id.val(), recov_ctx.from_store_ip.c_str(), recov_ctx.from_ssd_uuid.c_str(),
 			recov_ctx.store->tray_name, recov_ctx.recov_object_size);
 		return rc? : rc2;
 	}
@@ -2218,7 +2220,7 @@ int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx
 {
 	int rc= 0;
 
-	S5LOG_INFO("recovering object (rep_id:0x%llx offset:%lld snap: %d) ", recov_ctx.rep_id.val(), offset, target_snap_seq);
+	S5LOG_INFO("recovering object (rep_id:0x%lx offset:%ld snap: %d) ", recov_ctx.rep_id.val(), offset, target_snap_seq);
 
 	lmt_entry* target_entry = recov_ctx.recovery_head_entry->prev_snap;
 	for (; target_entry != NULL && target_entry->snap_seq != target_snap_seq; target_entry = target_entry->prev_snap);
@@ -2371,7 +2373,7 @@ int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx
 	}
 	sem_destroy(&recov_sem);
 	rc = failed ? -EIO : rc;
-	S5LOG_INFO("recovering object complete (rep_id:0x%llx offset:%lld snap: %d), rc:%d ", recov_ctx.rep_id.val(), offset, target_snap_seq, rc );
+	S5LOG_INFO("recovering object complete (rep_id:0x%lx offset:%ld snap: %d), rc:%d ", recov_ctx.rep_id.val(), offset, target_snap_seq, rc );
 	 
 	return rc;
 }
@@ -2406,7 +2408,7 @@ int PfFlashStore::delete_replica(replica_id_t rep_id)
 
 			if (block_pos->second->status == RECOVERYING) {
 				S5LOG_WARN(
-						"Object(vol_id:0x%llx offset:%lld) is in recovering and not deleted, please run GC later to reclaim it!",
+						"Object(vol_id:0x%lx offset:%ld) is in recovering and not deleted, please run GC later to reclaim it!",
 						key.vol_id, key.slba);
 				continue;
 			}
@@ -2482,7 +2484,7 @@ void PfFlashStore::post_load_check()
 	//snap seq not 0
 	//used obj count + free + trim= total. any object should in one of three state: {used, free, trim}
 
-	S5LOG_INFO("Begin post load check, %d keys in obj_lmt ...", obj_lmt.size());
+	S5LOG_INFO("Begin post load check, %ld keys in obj_lmt ...", obj_lmt.size());
 	int error_cnt =0;
 	S5LOG_INFO("Check for duplicated snap_seq and offset ...");
 	for(auto it : obj_lmt){
@@ -2504,7 +2506,7 @@ void PfFlashStore::post_load_check()
 		}
 	}
 	if(error_cnt){
-		S5LOG_FATAL("%d errors found in metadata, can't continue");
+		S5LOG_FATAL("%d errors found in metadata, can't continue", error_cnt);
 	}
 	S5LOG_INFO("Post check succeed!");
 }
