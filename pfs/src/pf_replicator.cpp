@@ -41,7 +41,7 @@ int PfReplicator::begin_replicate_io(IoSubTask* t)
 	int rc;
 	PfConnection* c = (PfConnection*)conn_pool->get_conn((int)t->store_id);
 	if (unlikely(c == NULL)) {
-		S5LOG_ERROR("Failed get connection to store:%d", t->store_id);
+		S5LOG_ERROR("Failed get connection to store:%ld", t->store_id);
 		PfMessageHead* cmd = t->parent_iocb->cmd_bd->cmd_bd;
 		PfVolume* vol = app_context.get_opened_volume(cmd->vol_id);
 		uint32_t shard_index = (uint32_t)OFFSET_TO_SHARD_INDEX(cmd->offset);
@@ -144,7 +144,7 @@ int PfReplicator::process_io_complete(PfClientIocb* iocb, int _complete_status)
 	uint64_t io_elapse_time = (iocb->reply_time - iocb->submit_time) / ms1;
 	if (unlikely(io_elapse_time > 2000))
 	{
-		S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, op:%s, since submit:%ulms since send:%ulms",
+		S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, op:%s, since submit:%lums since send:%lums",
 				   io_cmd->offset >> SHARD_SIZE_ORDER,
 				   io_cmd->command_id,
 				   PfOpCode2Str(io_cmd->opcode),
@@ -204,7 +204,7 @@ int PfReplicator::begin_recovery_read_io(RecoverySubTask* t)
 
 	PfConnection* c = conn_pool->get_conn((int)t->store_id);
 	if(c == NULL) {
-		S5LOG_ERROR("Failed get connection to store:%d for  recovery read ", t->store_id);
+		S5LOG_ERROR("Failed get connection to store:%ld for  recovery read ", t->store_id);
 		t->ops->complete(t, PfMessageStatus::MSG_STATUS_CONN_LOST);
 		iocb_pool.free(io);
 		return -EINVAL;

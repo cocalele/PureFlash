@@ -866,7 +866,7 @@ void* pf_http_get(std::string& url, int timeout_sec, int retry_times)
 			}
 			else
 			{
-				S5LOG_ERROR("Server returns error, http code:%d, content:%s", http_code, curl_buf.memory);
+				S5LOG_ERROR("Server returns error, http code:%ld, content:%s", http_code, curl_buf.memory);
 				return NULL;
 			}
 
@@ -941,7 +941,7 @@ void PfReplicatedVolume::client_do_complete(int wc_status, BufferDescriptor* wr_
 
 			if (io_elapse_time > 2000)
 			{
-				S5LOG_WARN("SLOW IO, shard id:%d, command_id:%d, vol:%s, since submit:%dms since send:%dms",
+				S5LOG_WARN("SLOW IO, shard id:%ld, command_id:%d, vol:%s, since submit:%ldms since send:%ldms",
 						   io_cmd->offset >> SHARD_SIZE_ORDER,
 						   io_cmd->command_id,
 						   volume_name.c_str(),
@@ -1160,7 +1160,7 @@ int PfReplicatedVolume::process_event(int event_type, int arg_i, void* arg_p)
 				runtime_ctx->iocb_pool.free(io);
 				break;
 			}
-			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
+			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%ld, store:%s will reconnect and resend...",
 				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
 			io->sent_time = 0;
 			io->conn->close();
@@ -1274,8 +1274,9 @@ size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *b
 	return done;
 }
 static int unalign_io_print_cnt = 0;
-int pf_iov_submit(struct PfReplicatedVolume* volume, const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
+int PfReplicatedVolume::pf_iov_submit( const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
+	struct PfReplicatedVolume* volume = this;
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
 		S5LOG_ERROR("Invalid offset:%ld or length:%ld", offset, length);
@@ -1328,8 +1329,9 @@ int pf_iov_submit(struct PfReplicatedVolume* volume, const struct iovec *iov, co
 	return rc;
 }
 
-int pf_io_submit(struct PfReplicatedVolume* volume, void* buf, size_t length, off_t offset,
+int PfReplicatedVolume::pf_io_submit(void* buf, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
+	struct PfReplicatedVolume* volume = this;
 	// Check request params
 	if (unlikely((offset & SECT_SIZE_MASK) != 0 || (length & SECT_SIZE_MASK) != 0 )) {
 		S5LOG_ERROR("Invalid offset:%ld or length:%ld", offset, length);
@@ -1830,3 +1832,15 @@ static void __attribute__((constructor)) spdk_engine_init(void)
 	spdk_engine_set(false);
 }
 
+int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+	ulp_io_handler callback, void* cbk_arg, int is_write)
+{
+	volume->pf_iov_submit(buf, length, offset, callback, cbk_arg, is_write);
+}
+
+
+int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+	ulp_io_handler callback, void* cbk_arg, int is_write)
+{
+	volume->pf_iov_submit(iov, iov_cnt, length, offset, callback, cbk_arg, is_write);
+}

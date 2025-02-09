@@ -153,7 +153,7 @@ int MD5Stream_ISA_L::finalize(char *result, int in_read)
 	int rc = 0;
 
 	if (MD5_RESULT_LEN != sizeof(ctxpool.job.result_digest)) {
-		S5LOG_FATAL("md5 buffer not enough, expect:%d", sizeof(ctxpool.job.result_digest));
+		S5LOG_FATAL("md5 buffer not enough, expect:%ld", sizeof(ctxpool.job.result_digest));
 	}
 
 	md5_ctx_mgr_submit(mgr, &ctxpool, const_zero_page, 4096, HASH_LAST);

@@ -34,7 +34,7 @@ public:
 		if(data == NULL)
 		{
 			rc = -ENOMEM;
-			S5LOG_ERROR("Failed alloc memory pool, rc:%d, count:%d, size:%d", rc, sizeof(U), cap);
+			S5LOG_ERROR("Failed alloc memory pool, rc:%d, count:%ld, size:%d", rc, sizeof(U), cap);
 			goto release2;
 		}
 		for(int i=0;i<cap;i++)

@@ -7,6 +7,7 @@
 #include <list>
 #include <mutex>
 #include <functional>
+#include "pf_list.h"
 #include "pf_message.h"
 #include "pf_mempool.h"
 #include "pf_event_thread.h"
@@ -15,6 +16,7 @@
 #include "pf_app_ctx.h"
 #include "pf_iotask.h"
 #include "pf_zk_client.h"
+#include "pf_ec_volume_index.h"
 
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 #define AOF_IODEPTH 100
@@ -93,10 +95,10 @@ public:
 	int64_t current_offset;
 	int64_t new_aof_offset;
 	int64_t old_aof_offset;//will account to garbage
-	PfClientIocb* ec_waiting_list;
-
-	int is_ec_page_swap_io;//internal IO to load/flush ec index page , valid for swap IO
-	PfLutPte* pte;//pte associate with this IO, valid for swap IO
+	PfClientIocb* ec_next;
+	struct PfEcRedologEntry* wal;
+	//int is_ec_page_swap_io;//internal IO to load/flush ec index page , valid for swap IO
+	//PfLutPte* pte;//pte associate with this IO, valid for swap IO
 ///////////end member for EC IO
 
 
@@ -108,35 +110,6 @@ public:
 	}
 
 };
-template<typename T>
-class PfDoublyList{
-public:
-	T head;
-	PfDoublyList() {
-		head.list_next = &head;
-		head.list_prev = &head;
-	}
-	inline __attribute__((always_inline)) void append(T* element) {
-		element->list_next = head.list_next;
-		element->list_prev = &head;
-		head.list_next->list_prev = element;
-		head.list_next = element;
-	}
-
-	inline __attribute__((always_inline)) void remove(T* element) {
-		element->list_next->list_prev = element->list_prev;
-		element->list_prev->list_next = element->list_next;
-	}
-
-	inline __attribute__((always_inline)) T* pop() {
-		T* e = head.list_next;
-		if(e == &head)
-			return NULL;
-		remove(e);
-		return e;
-	}
-};
-
 class PfClientAppCtx;
 class PfClientShardInfo
 {
@@ -185,6 +158,7 @@ public:
 protected:
 	virtual int do_open(bool reopen = false, bool is_aof = false)=0;
 	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
+	virtual ~PfClientVolume(){}
 };
 class PfReplicatedVolume : public PfClientVolume
 {
@@ -209,7 +183,11 @@ public:
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 	PfDoublyList<PfClientIocb> reopen_waiting;
 public:
-	override int do_open(bool reopen=false, bool is_aof=false);
+	virtual int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
+	virtual int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
+	int do_open(bool reopen=false, bool is_aof=false) override;
 	void close();
 	int process_event(int event_type, int arg_i, void* arg_p) override;
 	int resend_io(PfClientIocb* io);

@@ -257,13 +257,13 @@ int main(int argc, char* argv[])
 	io_waiter arg;
 	arg.rc = 0;
 	sem_init(&arg.sem, 0, 0);
-	struct PfReplicatedVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), snapshot_name.c_str(), S5_LIB_VER);
+	struct PfClientVolume* vol = pf_open_volume(vol_name.c_str(), cfg_file.c_str(), snapshot_name.c_str(), S5_LIB_VER);
 	if(vol == NULL) {
 		S5LOG_FATAL("Failed open volume:%s", vol_name.c_str());
 	}
 
-	S5LOG_INFO("%s with block size:%d", is_write ? "Write":"Read", bs);
-	int64_t offset_in_file = 0;
+	S5LOG_INFO("%s with block size:%ld", is_write ? "Write":"Read", bs);
+	//int64_t offset_in_file = 0;
 	for(int i=0;i<count;i++) {
 		if(is_write == 0) {
 			pf_io_submit(vol, buf, bs, offset + i * bs, io_cbk, &arg, is_write);

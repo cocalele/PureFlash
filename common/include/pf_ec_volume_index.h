@@ -1,3 +1,9 @@
+#ifndef pf_ec_volume_index_h__
+#define pf_ec_volume_index_h__
+
+#include "pf_list.h"
+#include "pf_client_priv.h"
+
 #define PF_EC_INDEX_PAGE_SIZE (64<<10)
 #define PF_OFF2PTE_INDEX(x) ((x)>>16) //i.e. x/64K
 class PfLutPage {
@@ -10,41 +16,44 @@ public:
 	PfLutPage* get_page();
 };
 enum PteState {
-	PAGE_UNPRESENT = 0;
-	PAGE_PRESENT = 1;
-	PAGE_LOADING = 2;
+	PAGE_UNPRESENT = 0,
+	PAGE_PRESENT = 1,
+	PAGE_LOADING = 2,
 };
+
+class PfEcClientVolume;
 class PfLutPte{
 public:
 	PteState state;
 	PfLutPage* page;
 	PfEcClientVolume* owner;
 	//int64_t offset;
-	PfClientIocb* waiting_list;
+	PfList<PfClientIocb> waiting_list;
 	//PfServerIocb* forward_lut_waiting_list; //all client IO waiting on this swap_io, valid for swap IO
 	//PfServerIocb* reverse_lut_waiting_list; //all client IO waiting on this swap_io, valid for swap IO
 	int64_t forward_lut_loop_offset; //offset used in for loop, in set reverse lut value, valid for  client io
 	int64_t reverse_lut_loop_offset; //offset used in for loop, in set reverse lut value, valid for  client io
 
 	int64_t offset();
+	PfLutPte();
 };
 enum RetCode {
-	Ok = 0;
-	Yield = 1;
+	Ok = 0,
+	Yield = 1,
 	//number  <0 means posix errno
 };
 enum LutUpdateState{
-	Done = 1;
+	Done = 1,
 	 
 };
 
 ////IO processing state, IO is processed in asynchronous mode,
 enum EcIoState
 {
-	APPENDING_AOF = 0;//appending data to aof
-	FILLING_WAL = 1;
-	UPDATING_FWD_LUT = 2; //updating forward lut table
-	UPDATING_RVS_LUT = 3; //updating reverse lut table
+	APPENDING_AOF = 0,//appending data to aof
+	FILLING_WAL = 1,
+	UPDATING_FWD_LUT = 2, //updating forward lut table
+	UPDATING_RVS_LUT = 3, //updating reverse lut table
 };
 class PfEcVolumeIndex
 {
@@ -57,7 +66,7 @@ public:
 private:
 	int disp_index;
 	int64_t vol_id;
-	void load_page(PfServerIocb* iocb, int64_t offset, int length, PfIndexPage* page);
+	int load_page(PfClientIocb* client_io, PfLutPte* pte);
 	PfReplicatedVolume* meta_volume;
 };
 
@@ -65,3 +74,4 @@ class PfEcRedoLog
 {
 
 };
+#endif // pf_ec_volume_index_h__

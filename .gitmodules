@@ -16,4 +16,4 @@
 	url = https://gitee.com/cocalele/spdk.git
 [submodule "thirdParty/sg3_utils"]
 	path = thirdParty/sg3_utils
-	url = https://gitee.com/mirrors/sg3_utils
+	url = https://gitee.com/cocalele/sg3_utils

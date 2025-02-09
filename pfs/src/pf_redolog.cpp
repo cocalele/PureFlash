@@ -112,7 +112,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 	int cnt = 0;
 	int rc = 0;
 	int64_t offset = store->get_meta_position(REDOLOG, which);
-	S5LOG_INFO("Start replay redo log at %s log zone, start_phase:%d, offset:0x%lx",
+	S5LOG_INFO("Start replay redo log at %s log zone, start_phase:%ld, offset:0x%lx",
 		store->meta_positon_2str(REDOLOG, which == CURRENT ? store->head.current_redolog : store->oppsite_redolog_zone()), 
 		start_phase, offset);
 	while(1)
@@ -124,7 +124,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 		PfRedoLog::Item* item = (PfRedoLog::Item*)entry_buff;
 		if (item->phase != start_phase)
 			break;
-		S5LOG_DEBUG("replay redo log item type:%d", item->type);
+		S5LOG_DEBUG("replay redo log item type:%d", (int)item->type);
 
 		switch (item->type)
 		{
@@ -144,7 +144,7 @@ int PfRedoLog::replay(int64_t start_phase, int which)
 				rc = redo_state_change(item);
 				break;
 			default:
-				S5LOG_FATAL("Unknown redo log type:%d", item->type);
+				S5LOG_FATAL("Unknown redo log type:%d", (int)item->type);
 				rc = -1;
 		}
 		if (rc)
