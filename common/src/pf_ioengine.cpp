@@ -172,7 +172,7 @@ void PfAioEngine::polling_proc()
 				case S5_OP_WRITE:
 				case S5_OP_REPLICATE_WRITE:
 					if (unlikely(len != t->parent_iocb->cmd_bd->cmd_bd->length || res < 0)) {
-						S5LOG_ERROR("aio error, len:%ld rc:%d, op:%d off:0x%llx len:%d, logic offset:0x%lx, buf:%p", (int)len, (int)res,
+						S5LOG_ERROR("aio error, len:%ld rc:%d, op:%d off:0x%llx len:%ld, logic offset:0x%lx, buf:%p", len, (int)res,
 							aiocb->aio_lio_opcode, aiocb->u.c.offset, aiocb->u.c.nbytes, t->parent_iocb->cmd_bd->cmd_bd->offset,
 							aiocb->u.c.buf);
 						//res = (res == 0 ? len : res);

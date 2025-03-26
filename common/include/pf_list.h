@@ -455,29 +455,40 @@ ppf_dlist_entry_t s5list_next_tail_ulc(ppf_dlist_head_t head, ppf_dlist_entry_t 
 #endif
 
 
-template <typename T>
+template <typename T, T* T::*NextPtr>
 class PfList
 {
 public:
 	T* head;
 	T* tail;
-	T* T::* next;
+	//T* T::* next;
 
-	PfList(T* T::* n) :head(NULL), tail(NULL) {
-		next = n;
+	typedef T* T::*Next;
+
+	PfList(/*T* T::* n*/) :head(NULL), tail(NULL) {
+		//next = n;
 	}
 
 	void clear(){
 		head=tail=NULL;
 	}
+	inline T* pop_front(){
+		T* e = head;
+		if(head == tail){
+			head=tail=NULL;
+		} else {
+			head = head->*NextPtr;
+		}
+		return e;
+	}
 	void inline push_front(T* e) {
 		if (!head) { //an empty list
 			head = e;
 			tail = e;
-			e->*next = NULL;
+			e->*NextPtr = NULL;
 		}
 		else {
-			e->*next = head;
+			e->*NextPtr = head;
 			head = e;
 		}
 	}
@@ -487,10 +498,10 @@ public:
 			head = e;
 		}
 		else {
-			tail->*next = e;
+			tail->*NextPtr = e;
 		}
 		tail = e;
-		e->*next = NULL;
+		e->*NextPtr = NULL;
 
 	}
 };

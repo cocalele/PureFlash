@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 #define PF_MAX_IO_DEPTH 255 //max 255, other wise may overflow on setting RDMA responder_resources, which is uint8
-#define PF_MAX_IO_SIZE (128<<10) //max IO
+#define PF_MAX_IO_SIZE (128L<<10) //max IO
 
 #define S5_LIB_VER 0x00010000
 

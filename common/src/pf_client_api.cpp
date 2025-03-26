@@ -29,8 +29,10 @@
 #include "pf_poller.h"
 #include "pf_buffer.h"
 #include "pf_client_api.h"
+#include "pf_ec_client_volume.h"
 #include "pf_app_ctx.h"
 #include "pf_client_store.h"
+#include "pf_coroutine.h"
 #define FIX_ISAL_LINK_PROBLEM 1
 #ifdef FIX_ISAL_LINK_PROBLEM
 #include "raid.h"
@@ -134,7 +136,7 @@ typedef struct curl_memory {
 }curl_memory_t;
 
 
-struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
                                       int lib_ver, bool is_aof)
 {
 	int rc = 0;
@@ -150,8 +152,9 @@ struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* 
 	try
 	{
 		RedundencyMode redundency;
+		PfClientVolumeInfo vol_info;
 		if(!is_aof) {
-			PfClientVolumeInfo vol_info;
+			
 			rc = pf_query_volume_info(volume_name, cfg_filename, snap_name, lib_ver, &vol_info);
 			if(rc != 0){
 				S5LOG_ERROR("Failed query volume info, rc:%d", rc);
@@ -161,7 +164,16 @@ struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* 
 			
 		}
 		Cleaner _clean;
-		PfReplicatedVolume* volume = new PfReplicatedVolume;
+		PfClientVolume *volume;
+		if(redundency == RedundencyMode::Replication){
+			volume = new PfReplicatedVolume;
+		} else if (redundency == RedundencyMode::Replication) {
+			volume = new PfEcClientVolume;
+		} else {
+			S5LOG_ERROR("Unknown volume redundancy mode:%d", redundency);
+			return NULL;
+		}
+
 		if (volume == NULL)
 		{
 			S5LOG_ERROR("alloca memory for volume failed!");
@@ -176,6 +188,7 @@ struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* 
 		if(snap_name)
 			volume->snap_name = snap_name;
 		volume->redundency_mode = redundency;
+		volume->volume_size = vol_info.volume_size;
 		rc = volume->do_open(false, is_aof);
 		if (rc)	{
 			return NULL;
@@ -183,7 +196,9 @@ struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* 
 		volume->runtime_ctx->add_volume(volume);
 
 		S5LOG_INFO("Succeeded open volume %s@%s(0x%lx), meta_ver=%d, io_depth=%d", volume->volume_name.c_str(),
-			volume->snap_seq == -1 ? "HEAD" : volume->snap_name.c_str(), volume->volume_id, volume->meta_ver, volume->io_depth);
+			volume->snap_name.size() == 0 ? "HEAD" : volume->snap_name.c_str(), vol_info.volume_id,
+			redundency == RedundencyMode::Replication ? ((PfReplicatedVolume*)volume)->meta_ver : ((PfEcClientVolume*)volume)->meta_volume->meta_ver,
+			volume->io_depth);
 
 		_clean.cancel_all();
 		return volume;
@@ -195,7 +210,7 @@ struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* 
 	return NULL;
 }
 
-struct PfReplicatedVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfClientVolume* pf_half_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver)
 {
 	S5LOG_INFO("Half open volume:%s", volume_name);
@@ -260,7 +275,7 @@ struct PfReplicatedVolume* pf_half_open_volume(const char* volume_name, const ch
 	}
 	return NULL;
 }
-struct PfReplicatedVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
+struct PfClientVolume* pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,	int lib_ver)
 {
 	return _pf_open_volume(volume_name, cfg_filename, snap_name, lib_ver, false);
 }
@@ -565,7 +580,7 @@ int PfClientAppCtx::init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_
 	}
 	clean.push_back([this] {delete this->vol_proc;  });
 	int poller_id = 0;
-	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4, poller_id);
+	rc = vol_proc->init("vol_proc", io_depth* max_vol_cnt * 4, (uint16_t)poller_id);
 	if (rc != 0) {
 		S5LOG_ERROR("vol_proc init failed, rc:%d", rc);
 		return rc;
@@ -978,7 +993,7 @@ void PfReplicatedVolume::client_do_complete(int wc_status, BufferDescriptor* wr_
 }
 
 
-void pf_close_volume(PfReplicatedVolume* volume)
+void pf_close_volume(PfClientVolume* volume)
 {
 	volume->close();
 	delete volume;
@@ -1011,7 +1026,7 @@ static int reopen_volume(PfReplicatedVolume* volume)
 	return rc;
 }
 
-int PfReplicatedVolume::resend_io(PfClientIocb* io)
+int PfClientVolume::resend_io(PfClientIocb* io)
 {
 	S5LOG_WARN("Requeue IO(cid:%d", io->cmd_bd->cmd_bd->command_id);
 	io->cmd_bd->cmd_bd->command_seq ++;
@@ -1274,7 +1289,7 @@ size_t iov_from_buf(const struct iovec *iov, unsigned int iov_cnt, const void *b
 	return done;
 }
 static int unalign_io_print_cnt = 0;
-int PfReplicatedVolume::pf_iov_submit( const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
+int PfReplicatedVolume::iov_submit( const struct iovec *iov, const unsigned int iov_cnt, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	struct PfReplicatedVolume* volume = this;
 	// Check request params
@@ -1289,7 +1304,7 @@ int PfReplicatedVolume::pf_iov_submit( const struct iovec *iov, const unsigned i
 	if(unlikely((offset & 0x0fff) || (length & 0x0fff)))	{
 		unalign_io_print_cnt ++;
 		if((unalign_io_print_cnt % 1000) == 1) {
-			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%x, num:%d", volume->volume_name.c_str(),
+			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%lx, num:%d", volume->volume_name.c_str(),
 			        is_write?"WRITE":"READ", offset, length, unalign_io_print_cnt);
 		}
 	}
@@ -1329,7 +1344,7 @@ int PfReplicatedVolume::pf_iov_submit( const struct iovec *iov, const unsigned i
 	return rc;
 }
 
-int PfReplicatedVolume::pf_io_submit(void* buf, size_t length, off_t offset,
+int PfReplicatedVolume::io_submit(void* buf, size_t length, off_t offset,
                  ulp_io_handler callback, void* cbk_arg, int is_write) {
 	struct PfReplicatedVolume* volume = this;
 	// Check request params
@@ -1340,7 +1355,7 @@ int PfReplicatedVolume::pf_io_submit(void* buf, size_t length, off_t offset,
 	if(unlikely((offset & 0x0fff) || (length & 0x0fff)))	{
 		unalign_io_print_cnt ++;
 		if((unalign_io_print_cnt % 1000) == 1) {
-			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%x, num:%d", volume->volume_name.c_str(),
+			S5LOG_WARN("Unaligned IO on volume:%s OP:%s offset:0x%lx len:0x%lx, num:%d", volume->volume_name.c_str(),
 			           is_write ? "WRITE" : "READ", offset, length, unalign_io_print_cnt);
 		}
 	}
@@ -1551,12 +1566,12 @@ int pf_delete_volume(const char* vol_name,  const char* cfg_filename)
 	return -1;
 }
 
-void PfClientAppCtx::remove_volume(PfReplicatedVolume* vol)
+void PfClientAppCtx::remove_volume(PfClientVolume* vol)
 {
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
 	opened_volumes.remove(vol);
 }
-void PfClientAppCtx::add_volume(PfReplicatedVolume* vol)
+void PfClientAppCtx::add_volume(PfClientVolume* vol)
 {
 	const std::lock_guard<std::mutex> lock(opened_volumes_lock);
 	opened_volumes.push_back(vol);
@@ -1835,12 +1850,40 @@ static void __attribute__((constructor)) spdk_engine_init(void)
 int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
 	ulp_io_handler callback, void* cbk_arg, int is_write)
 {
-	volume->pf_iov_submit(buf, length, offset, callback, cbk_arg, is_write);
+	return volume->io_submit(buf, length, offset, callback, cbk_arg, is_write);
 }
 
 
 int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
 	ulp_io_handler callback, void* cbk_arg, int is_write)
 {
-	volume->pf_iov_submit(iov, iov_cnt, length, offset, callback, cbk_arg, is_write);
+	return volume->iov_submit(iov, iov_cnt, length, offset, callback, cbk_arg, is_write);
+}
+
+static void _cbk_to_lambda(void* cbk_arg, int complete_status)
+{
+	std::function<void(int complete_statue)> *cbk = (std::function<void(int complete_statue)>*)cbk_arg;
+	(*cbk)(complete_status);
+}
+
+int PfClientVolume::io_submit(void* buf, size_t length, off_t offset, int is_write, std::function<void(int complete_statue)> cbk)
+{
+	return io_submit(buf, length, offset, _cbk_to_lambda , &cbk, is_write);
+}
+
+int PfClientVolume::co_pwrite(void* buf, size_t length, off_t offset)
+{
+	volatile int rc = 0;
+	volatile int cnt = 1;
+	io_submit(buf, length, offset, true, [&rc,&cnt](int complete_status) {
+			rc = complete_status;
+			cnt--;
+		});
+	while (cnt) {
+		co_yield();
+	}
+	if (rc) {
+		S5LOG_ERROR("Failed co_pwrite, rc:%d", rc);
+	}
+	return rc;
 }

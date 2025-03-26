@@ -97,7 +97,7 @@ const char* PfAof::path()
 	return volume->volume_name.c_str();
 }
 
-struct PfReplicatedVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
+struct PfClientVolume* _pf_open_volume(const char* volume_name, const char* cfg_filename, const char* snap_name,
 	int lib_ver, bool is_aof); //defined in pf_client_api
 
 int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename, int lib_ver)
@@ -134,7 +134,7 @@ int pf_create_aof(const char* volume_name, int rep_cnt, const char* cfg_filename
 		return rc;
 	if (r.ret_code != 0)
 		return r.ret_code;
-	struct PfReplicatedVolume* vol = _pf_open_volume(volume_name, cfg_filename, NULL, lib_ver, true);
+	struct PfReplicatedVolume* vol = (PfReplicatedVolume * )_pf_open_volume(volume_name, cfg_filename, NULL, lib_ver, true);
 	if(vol == NULL){
 		S5LOG_ERROR("Failed to open volume:%s", volume_name);
 		return -EIO;
@@ -258,6 +258,10 @@ PfAof* pf_open_aof(const char* volume_name, const char* snap_name, int flags, co
 		S5LOG_ERROR("Exception in open aof:%s", e.what());
 	}
 	return NULL;
+}
+void pf_close_aof(PfAof* f)
+{
+	f->dec_ref();
 }
 
 int PfAof::open()

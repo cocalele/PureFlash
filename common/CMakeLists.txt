@@ -70,6 +70,10 @@ set (S5COMMON_SRC
 	src/pf_aof_cache.cpp
 	src/pf_ioengine.cpp
 	src/pf_client_store.cpp
+	src/pf_ec_client_volume.cpp
+	src/pf_ec_wal.cpp
+	src/pf_ec_volume_index.cpp
+	src/pf_coroutine.cpp
 	#${CMAKE_CURRENT_BINARY_DIR}/git_ver.c
 	)
 IF (HAVE_RDMA_H)
