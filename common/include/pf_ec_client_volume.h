@@ -1,25 +1,56 @@
+#ifndef pf_ec_client_volume_h__
+#define pf_ec_client_volume_h__
+#include "pf_client_priv.h"
+class PfClientAppCtx;
+class pfqueue;
+class PfEcRedolog;
+class PfAof;
+class PfReplicatedVolume;
+class PfEcVolumeIndex;
+struct PfRoutine;
+
+
+#define PF_SECTION_INDEX(x) (uint8_t)(((uint64_t)(x))>>56)
 class PfEcClientVolume : public PfClientVolume
 {
-	PfClientAppCtx* runtime_ctx;
-	pfqueue* event_queue;
-	PfEcWal* ec_redolog;
+
+
+
 public:
+	struct HeadPage {
+		uint64_t redolog_position_first;
+		uint64_t redolog_position_second;
+		uint64_t fwd_lut_offset;
+		uint64_t rvs_lut_offset;
+		uint64_t redolog_size;
+		/**update after save metadata**/
+		int64_t  redolog_phase;
+		uint8_t  current_metadata;
+		uint8_t  current_redolog;
+		/***/
+		char create_time[32];
+	} head;
+	void* head_buf; //aligned buffer,used to flush head
 	int do_open(bool reopen = false, bool is_aof = false) override;
-	int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+	int io_submit(void* buf, size_t length, off_t offset,
 		ulp_io_handler callback, void* cbk_arg, int is_write) override;
-	int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+	int iov_submit(const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
 		ulp_io_handler callback, void* cbk_arg, int is_write) override;
 
-protected:
 	int process_event(int event_type, int arg_i, void* arg_p) override;
-
+	void close() override;
 	//functions for EC volume
-	int io_write(PfServerIocb* iocb, PfVolume* vol);
-	int update_lut(PfServerIocb* iocb, struct PfEcRedologEntry* wal, int64_t off);
-	int on_page_load_complete(PfServerIocb* swap_io);
-
 
 	PfAof* data_volume;
 	PfReplicatedVolume* meta_volume;
 	PfEcVolumeIndex* ec_index;
-}
+	PfEcRedolog* ec_redolog;
+
+	void discard_redolog();
+	void co_flush();
+	PfRoutine* flush_routine; //not use FlushCb
+	volatile bool meta_in_flushing = false;
+	volatile int zone_to_flush; //meta zone to flush
+	~PfEcClientVolume();
+};
+#endif // pf_ec_client_volume_h__

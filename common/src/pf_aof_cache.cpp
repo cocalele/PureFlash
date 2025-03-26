@@ -16,7 +16,7 @@ int AofWindowCache::init(PfAof* aof, bool _prefetch)
 	for(int i=0;i<SLOT_CNT;i++){
 		rc = slots[i].init(aof);
 		if(rc){
-			S5LOG_FATAL("Failed to init %d slot, rc:%d", rc);
+			S5LOG_FATAL("Failed to init aof cache, rc:%d", rc);
 		}
 
 	}

@@ -16,7 +16,7 @@
 #include "pf_app_ctx.h"
 #include "pf_iotask.h"
 #include "pf_zk_client.h"
-#include "pf_ec_volume_index.h"
+//#include "pf_ec_volume_index.h"
 
 #define DEFAULT_HTTP_QUERY_INTERVAL 3
 #define AOF_IODEPTH 100
@@ -47,6 +47,7 @@ class PfClientStore;
 class PfReplicatedVolume;
 class PfConnectionPool;
 class PfClientAppCtx;
+enum EcIoState : unsigned int;
 
 class PfVolumeEventProc : public PfEventThread
 {
@@ -67,7 +68,7 @@ public:
 	ulp_io_handler ulp_handler; //up layer protocol io handler
 	void* ulp_arg;
 
-	PfReplicatedVolume* volume;
+	PfClientVolume* volume;
 	BOOL is_timeout;
 
 	uint64_t sent_time; //time the io sent to server
@@ -148,17 +149,28 @@ public:
 	PfVolumeState state = PfVolumeState::VOLUME_CLOSED;
 	RedundencyMode redundency_mode;
 	std::string volume_name;
+	uint64_t volume_size;
+
 	std::string snap_name;
 	std::string status;
 	std::string cfg_file;
-	virtual int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
+	PfClientAppCtx* runtime_ctx = NULL;
+	pfqueue* event_queue = NULL; // brace-or-equal-initializer since C++ 11
+
+	virtual int io_submit(void* buf, size_t length, off_t offset,
 		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
-	virtual int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+	virtual int iov_submit(const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
 		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
-protected:
+	virtual void close() = 0;
 	virtual int do_open(bool reopen = false, bool is_aof = false)=0;
 	virtual int process_event(int event_type, int arg_i, void* arg_p) = 0;
 	virtual ~PfClientVolume(){}
+	int resend_io(PfClientIocb* io);
+
+
+	int io_submit(void* buf, size_t length, off_t offset, int is_write, std::function<void(int complete_statue)> cbk);
+	int co_pwrite(void* buf, size_t length, off_t offset);
+	friend class PfVolumeEventProc;
 };
 class PfReplicatedVolume : public PfClientVolume
 {
@@ -166,7 +178,6 @@ public:
 	//following data are from server open_volume reply
 	char owner_ip[32];
 
-	uint64_t volume_size;
 	uint64_t volume_id;
 	int shard_count;
 	int rep_count;
@@ -175,28 +186,27 @@ public:
 	std::vector<PfClientShardInfo> shards;
 
 	//following are internal data constructed by client
-	pfqueue *event_queue = NULL; // brace-or-equal-initializer since C++ 11
 	int shard_lba_cnt_order; //to support variable shard size. https://github.com/cocalele/PureFlash/projects/1#card-32329729
 
 
-	PfClientAppCtx* runtime_ctx = NULL;
 	uint64_t open_time; //opened time, in us, returned by now_time_usec()
 	PfDoublyList<PfClientIocb> reopen_waiting;
 public:
-	virtual int pf_io_submit(struct PfClientVolume* volume, void* buf, size_t length, off_t offset,
-		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
-	virtual int pf_iov_submit(struct PfClientVolume* volume, const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
-		ulp_io_handler callback, void* cbk_arg, int is_write) = 0;
+	virtual int io_submit(void* buf, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) ;
+	virtual int iov_submit( const struct iovec* iov, const unsigned int iov_cnt, size_t length, off_t offset,
+		ulp_io_handler callback, void* cbk_arg, int is_write) ;
 	int do_open(bool reopen=false, bool is_aof=false) override;
-	void close();
+	void close() override;
 	int process_event(int event_type, int arg_i, void* arg_p) override;
-	int resend_io(PfClientIocb* io);
 
 	PfConnection* get_shard_conn(int shard_index);
 	void client_do_complete(int wc_status, BufferDescriptor* wr_bd);
 #ifdef WITH_PFS2
 	PfClientStore* get_local_store(int shard_index);
 #endif
+
+	using PfClientVolume::io_submit;
 };
 
 class ListVolumeReply
@@ -267,7 +277,7 @@ public:
 	PfVolumeEventProc* vol_proc;
 	std::thread timeout_thread;
 	std::mutex opened_volumes_lock;
-	std::list<PfReplicatedVolume*> opened_volumes;
+	std::list<PfClientVolume*> opened_volumes;
 	ObjectMemoryPool<PfClientIocb> iocb_pool;
 	BufferPool cmd_pool;
 	BufferPool data_pool;
@@ -290,8 +300,8 @@ public:
 		iocb_pool.free(io);
 	}
 
-	void remove_volume(PfReplicatedVolume* vol);
-	void add_volume(PfReplicatedVolume* vol);
+	void remove_volume(PfClientVolume* vol);
+	void add_volume(PfClientVolume* vol);
 
 	int init(conf_file_t cfg, int io_depth, int max_vol_cnt, uint64_t vol_id, int io_timeout);
 	void timeout_check_proc();

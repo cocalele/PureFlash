@@ -406,7 +406,7 @@ int PfDispatcher::init_mempools(int disp_index)
 	rc = mem_pool.cmd_pool.init(sizeof(PfMessageHead), pool_size * 2);
 	if (rc)
 		goto release1;
-	S5LOG_INFO("Allocate data_pool with max IO size:%d, depth:%d", PF_MAX_IO_SIZE, pool_size * 2);
+	S5LOG_INFO("Allocate data_pool with max IO size:%ld, depth:%d", PF_MAX_IO_SIZE, pool_size * 2);
 	if (spdk_engine_used())
 		mem_pool.data_pool.dma_buffer_used = true;
 	rc = mem_pool.data_pool.init(PF_MAX_IO_SIZE, pool_size * 2);

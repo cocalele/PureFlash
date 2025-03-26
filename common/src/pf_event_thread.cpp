@@ -111,7 +111,8 @@ void PfEventThread::stop()
 	tid = 0;
 
 }
-
+struct PfRoutine;
+int _pf_co_enter(PfRoutine* co);
 void* thread_proc_eventq(void* arg)
 {
 	PfEventThread* pThis = (PfEventThread*)arg;
@@ -137,6 +138,11 @@ void* thread_proc_eventq(void* arg)
 				{
 					S5LOG_INFO("exit thread:%s", pThis->name);
 					return NULL;
+				}
+				case EVT_CO_ENTER:
+				{
+					_pf_co_enter((PfRoutine*)t->arg_p);
+					break;
 				}
 				default:
 					pThis->process_event(t->type, t->arg_i, t->arg_p, t->arg_q);

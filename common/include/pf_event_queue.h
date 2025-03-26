@@ -51,6 +51,10 @@ enum S5EventType : int
 	EVT_ASK_CONDUCTOR,
 	EVT_EC_UPDATE_LUT,
 	EVT_EC_IO_REQ,
+	EVT_PERSIST_WAL_PAGE,
+	EVT_CO_ENTER,
+	EVT_EC_FLUSH_META_COMPLETE,
+	EVT_EC_FLUSH_META,
 };
 const char* EventTypeToStr(S5EventType t);
 
