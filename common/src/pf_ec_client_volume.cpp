@@ -41,7 +41,14 @@ int PfEcClientVolume::do_open(bool reopen, bool is_aof)
 			return -ENOMEM;
 		}
 		memset(head_buf, 0, LBA_LENGTH);
-		ec_index = new PfEcVolumeIndex(this);
+
+		int page_cnt = 2000;//TODO: 可以使用更灵活的方法决定内存页的数量，比如与volume size相关，已达到内存命中率与内存占用量的平衡
+		void *p = malloc(sizeof(PfEcVolumeIndex) + sizeof(PfLutPage)*page_cnt);
+		if(p == NULL){
+			S5LOG_ERROR("Failed to alloc volume index");
+			return -ENOMEM;
+		}
+		ec_index = new(p) PfEcVolumeIndex(this, page_cnt);
 		_c.push_back([this]{delete ec_index;});
 		ec_redolog = new PfEcRedolog();
 		_c.push_back([this] {delete ec_redolog; });

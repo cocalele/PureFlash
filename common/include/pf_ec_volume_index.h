@@ -29,6 +29,7 @@ public:
 	PfList<PfClientIocb, &PfClientIocb::ec_next> waiting_list;
 	struct PfLutPte* pte;
 	PfEcClientVolume* owner;
+	PfLutPage* next; //linked in either of free_list, dirty_list, clean_list
 	inline PfEcClientVolume* owner_volume() { return owner; }
 	//int64_t offset(); //offset of this page in meta area, plus fwd_lut_offset or rvs_lut_offset to get real offset on disk
 	uint32_t pfn(PfEcVolumeIndex* owner);
@@ -71,10 +72,10 @@ class PfRoutine;
 class PfEcVolumeIndex
 {
 public:
-	PfEcVolumeIndex(PfEcClientVolume* owner);
+	PfEcVolumeIndex(PfEcClientVolume* owner, int  page_count);
 	//set offset of lba in aof
-	int set_forward_lut(int64_t vol_offset, int64_t aof_offset);
-	int set_reverse_lut(int64_t vol_offset, int64_t aof_offset);
+	void set_forward_lut(int64_t vol_offset, int64_t aof_offset);
+	void set_reverse_lut(int64_t vol_offset, int64_t aof_offset);
 
 	//lookup forward lut to get aof_offset.
 	int64_t get_forward_lut(int64_t vol_off);
@@ -99,6 +100,9 @@ public:
 
 	//allocate a free page
 	PfLutPage* get_page();
+	PfList<PfLutPage, &PfLutPage::next> free_pages;
+	PfList<PfLutPage, &PfLutPage::next> dirty_pages;
+	PfList<PfLutPage, &PfLutPage::next> clean_pages;
 	int page_cnt; //count of pages
 	PfLutPte *fwd_pte;
 	PfLutPte *rvs_pte;

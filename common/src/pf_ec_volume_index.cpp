@@ -3,7 +3,7 @@
 #include "pf_ec_volume_index.h"
 #include "pf_coroutine.h"
 
-PfEcVolumeIndex::PfEcVolumeIndex(PfEcClientVolume* owner)
+PfEcVolumeIndex::PfEcVolumeIndex(PfEcClientVolume* owner, int page_count)
 {
 	this->owner = owner;
 	this->meta_volume = owner->meta_volume;
@@ -27,6 +27,11 @@ PfEcVolumeIndex::PfEcVolumeIndex(PfEcClientVolume* owner)
 		S5LOG_FATAL("Failed to alloc rvs_pte"); //never reach here
 
 	}
+
+	page_cnt = page_count;
+	for(int i=0;i<page_cnt;i++){
+		free_pages.push_back(&pages[i]);
+	}
 	_c.cancel_all();
 }
 int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol);// do io 
@@ -44,10 +49,12 @@ static void page_load_cbk(void* cbk_arg, int complete_status)
 	}
 	page->waiting_list.clear();
 }
-//1. 实现coroutine
-//2. 像android上实现模态对话框一样，进行内部的事件循环，外部逻辑连续
+
+//加载page是异步操作，为了让进程能继续处理其他的IO，可以用下面的方法：
+//1. 实现coroutine， 虽然后来也实现了PfRoutine, 但是协程需要的栈空间比较大，相比方法4消耗的内存多
+//2. 像android上实现模态对话框一样，进行内部的事件循环，外部逻辑连续，需要在不确定的地方发起event_thread的事件处理并递归调用，不好
 //3. .net await模式，或者c++ promise模式。 这个模式需要外部线程池，不行
-//4. EC context, 状态机. 我们使用这一种，
+//4. EC context, 状态机. 我们使用这一种，在每个PfClientIocb里面定义了当前IO进行的中间状态EcIoState，以及相关的迭代中间变量
 int PfEcVolumeIndex::load_page(PfClientIocb* client_io, PfLutPage* page)
 {
 	page->owner = owner;
@@ -65,22 +72,33 @@ int PfEcVolumeIndex::load_page(PfClientIocb* client_io, PfLutPage* page)
 	}
 	return 0;
 }
-int PfEcVolumeIndex::set_forward_lut( int64_t vol_offset, int64_t aof_offset)
+void PfEcVolumeIndex::set_forward_lut( int64_t vol_offset, int64_t aof_offset)
 {
 	PfLutPte *pte = &fwd_pte[PF_OFF2PTE_INDEX(vol_offset)];
 	PfLutPage* page = pte->page(this);
-
+	assert(page);
 	int index = (int)((vol_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
 	page->lut[index]=aof_offset; //update data in memory
 	page->state=PAGE_DIRTY;//mark page dirty
 }
-int PfEcVolumeIndex::set_reverse_lut(int64_t vol_offset, int64_t aof_offset)
+void PfEcVolumeIndex::set_reverse_lut(int64_t aof_offset, int64_t vol_offset)
 {
+	PfLutPte* pte = &rvs_pte[PF_OFF2PTE_INDEX(aof_offset)];
+	PfLutPage* page = pte->page(this);
+	assert(page);
+	int index = (int)((aof_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
+	page->lut[index] = vol_offset; //update data in memory
+	page->state = PAGE_DIRTY;//mark page dirty
 
 }
 
-int64_t PfEcVolumeIndex::get_forward_lut(int64_t vol_off)
+int64_t PfEcVolumeIndex::get_forward_lut(int64_t vol_offset)
 {
+	PfLutPte* pte = &fwd_pte[PF_OFF2PTE_INDEX(vol_offset)];
+	PfLutPage* page = pte->page(this);
+	assert(page);
+	int index = (int)((vol_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
+	return page->lut[index]; //update data in memory
 
 }
 PfLutPte* PfEcVolumeIndex::get_fwd_pte(int64_t pte_index)
@@ -93,9 +111,12 @@ PfLutPte* PfEcVolumeIndex::get_rvs_pte(int64_t pte_index)
 }
 PfLutPage* PfEcVolumeIndex::get_page()
 {
-	//找到一个空闲页面
-	S5LOG_ERROR("Not implemented");
-	return NULL;
+	PfLutPage* p = free_pages.pop_front();
+	if(p == NULL){
+		S5LOG_FATAL("Can't get free page to use!");
+	}
+	
+	return p;
 }
 //static int lut_flush_cbk(void* cbk_arg, int complete_status)
 //{
