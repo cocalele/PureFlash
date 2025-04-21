@@ -13,7 +13,7 @@
 	url = https://gitee.com/mirrors/isa-l_crypto.git
 [submodule "thirdParty/spdk"]
 	path = thirdParty/spdk
-	url = https://gitee.com/mirrors/spdk.git
+	url = https://gitee.com/cocalele/spdk.git
 [submodule "thirdParty/sg3_utils"]
 	path = thirdParty/sg3_utils
 	url = https://gitee.com/mirrors/sg3_utils
