@@ -18,7 +18,40 @@
 
 using namespace std;
 static PfAof* aof = NULL;
+#define FIX_ISAL_LINK_PROBLEM 1
+#ifdef FIX_ISAL_LINK_PROBLEM
+#include "raid.h"
 
+#define TEST_SOURCES 16
+#define TEST_LEN     16*1024
+
+
+int _fake_use_xor_gen()
+{
+
+	int i, j, should_pass, should_fail;
+	void* buffs[TEST_SOURCES + 1];
+
+	printf("XOR example\n");
+	for (i = 0; i < TEST_SOURCES + 1; i++) {
+		void* buf;
+		if (posix_memalign(&buf, 32, TEST_LEN)) {
+			printf("alloc error: Fail");
+			return 1;
+		}
+		buffs[i] = buf;
+	}
+
+	printf("Make random data\n");
+	for (i = 0; i < TEST_SOURCES + 1; i++)
+		for (j = 0; j < TEST_LEN; j++)
+			((char*)buffs[i])[j] = rand();
+
+	printf("Generate xor parity\n");
+	xor_gen(TEST_SOURCES + 1, TEST_LEN, buffs);
+	return 0;
+}
+#endif
 struct cmd{
 	char op;
 	uint64_t length;

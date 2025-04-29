@@ -278,7 +278,8 @@ int PfEventThread::sync_invoke(std::function<int(void)> _f)
 	return arg.rc;
 }
 
-SPDK_TRACE_REGISTER_FN(event_trace, "eventthread", TRACE_GROUP_CLIENT)
+SPDK_TRACE_REGISTER_FN(event_trace, "eventthread", TRACE_GROUP_CLIENT);
+static void event_trace()
 {
         struct spdk_trace_tpoint_opts opts[] =
         {
@@ -295,7 +296,7 @@ SPDK_TRACE_REGISTER_FN(event_trace, "eventthread", TRACE_GROUP_CLIENT)
         };
 
 
-        spdk_trace_register_owner(OWNER_PFS_CIENT_IO, 'e');
+        spdk_trace_register_owner(OWNER_PFS_CIENT_IO, "e");
         spdk_trace_register_object(OBJECT_CLIENT_IO, 'e');
         spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
 }

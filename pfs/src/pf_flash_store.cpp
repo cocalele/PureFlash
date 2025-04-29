@@ -2715,7 +2715,8 @@ int PfFlashStore::spdk_nvme_init(const char *trid_str, uint16_t* p_id)
 	return ret;
 }
 
-SPDK_TRACE_REGISTER_FN(spdk_engine_trace, "spdk", TRACE_GROUP_SPDK)
+
+static void spdk_engine_trace()
 {
 	struct spdk_trace_tpoint_opts opts[] = {
         {
@@ -2729,7 +2730,8 @@ SPDK_TRACE_REGISTER_FN(spdk_engine_trace, "spdk", TRACE_GROUP_SPDK)
 	};
 
 
-	spdk_trace_register_owner(OWNER_PFS_SPDK_IO, 's');
+	spdk_trace_register_owner(OWNER_PFS_SPDK_IO, "s");
 	spdk_trace_register_object(OBJECT_SPDK_IO, 's');
 	spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
 }
+SPDK_TRACE_REGISTER_FN(spdk_engine_trace, "spdk", TRACE_GROUP_SPDK);

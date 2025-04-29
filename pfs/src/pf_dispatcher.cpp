@@ -530,7 +530,8 @@ void PfServerIocb::dec_ref_on_error() {
 
 }
 
-SPDK_TRACE_REGISTER_FN(disp_trace, "disp", TRACE_GROUP_DISP)
+SPDK_TRACE_REGISTER_FN(disp_trace, "disp", TRACE_GROUP_DISP);
+static void disp_trace()
 {
 	struct spdk_trace_tpoint_opts opts[] = {
         {
@@ -556,7 +557,7 @@ SPDK_TRACE_REGISTER_FN(disp_trace, "disp", TRACE_GROUP_DISP)
 	};
 
 
-	spdk_trace_register_owner(OWNER_PFS_DISP_IO, 'd');
+	spdk_trace_register_owner(OWNER_PFS_DISP_IO, "d");
 	spdk_trace_register_object(OBJECT_DISP_IO, 'd');
 	spdk_trace_register_description_ext(opts, SPDK_COUNTOF(opts));
 }

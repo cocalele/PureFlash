@@ -11,7 +11,7 @@ set(CMAKE_CXX_FLAGS   "-Wall -Wno-sign-compare -Wconversion -fPIC ${CXX_FLAG_GCO
 
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g ")
 set(CMAKE_CXX_COMPILER g++)
-set(SPDKLIBS spdk_nvme spdk_env_dpdk spdk_util spdk_log spdk_sock spdk_trace spdk_json spdk_jsonrpc spdk_rpc)
+set(SPDKLIBS spdk_nvme spdk_env_dpdk spdk_util spdk_log spdk_sock spdk_trace spdk_json spdk_jsonrpc spdk_rpc spdk_keyring isal )
 set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring)
 
 add_definitions(-D_POSIX_C_SOURCE=200112L)
@@ -26,6 +26,7 @@ INCLUDE_DIRECTORIES(include)
 include_directories(../S5bd/include ../pfs/nlohmann_json/include)
 include_directories(../thirdParty/spdk/include)
 include_directories(../thirdParty/spdk)
+include_directories(../thirdParty/spdk/isa-l/include)
 include_directories(../thirdParty/spdk/dpdk/build/include)
 USE_ZOOKEEPER()
 
@@ -90,6 +91,7 @@ file(GLOB INCS2  "../../rdma-include/infiniband/*.h")
 #set_target_properties(s5sqlite3 PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 link_directories(${THIRDPARTY}/spdk/build/lib)
+link_directories(${THIRDPARTY}/spdk/isa-l/.libs)
 link_directories(${THIRDPARTY}/spdk/dpdk/build/lib)
 
 
@@ -124,6 +126,9 @@ add_custom_command(TARGET s5common POST_BUILD
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_json.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_jsonrpc.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_vfio_user.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_keyring.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/build/lib/libspdk_dma.so*  ${LIBRARY_OUTPUT_PATH}/
+
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_eal.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_ring.so*  ${LIBRARY_OUTPUT_PATH}/

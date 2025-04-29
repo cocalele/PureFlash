@@ -98,7 +98,7 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
         msg = SLIST_FIRST(&tls_queue->msg_cache);
         if (unlikely(msg == NULL)) {
             S5LOG_ERROR("failed to alloc msg from tls_queue's msg_cache");
-            return NULL;
+            return -ENOMEM;
         }
         SLIST_REMOVE_HEAD(&tls_queue->msg_cache, link);
         msg->lock_cache_msg = false;
@@ -107,7 +107,7 @@ int PfSpdkQueue::post_event(int type, int arg_i, void* arg_p, void*)
         msg = SLIST_FIRST(&msg_cache_locked);
         if (unlikely(msg == NULL)) {
             S5LOG_ERROR("failed to alloc msg from msg_cache_locked");
-            return NULL;
+            return -ENOMEM;
         }
         SLIST_REMOVE_HEAD(&msg_cache_locked, link);
         pthread_spin_unlock(&lock);
@@ -179,7 +179,7 @@ int PfSpdkQueue::get_events(int max_events, void **msgs)
     #endif
     //S5LOG_ERROR("dequeu messages=====%d", count);
 
-    return count;
+    return (int)count;
 }
 
 void PfSpdkQueue::put_event(void *msg)
