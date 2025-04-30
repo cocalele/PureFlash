@@ -12,7 +12,7 @@ set(CMAKE_CXX_FLAGS   "-Wall -Wno-sign-compare -Wconversion -fPIC ${CXX_FLAG_GCO
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g ")
 set(CMAKE_CXX_COMPILER g++)
 set(SPDKLIBS spdk_nvme spdk_env_dpdk spdk_util spdk_log spdk_sock spdk_trace spdk_json spdk_jsonrpc spdk_rpc spdk_keyring isal )
-set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring)
+set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring rte_log)
 
 add_definitions(-D_POSIX_C_SOURCE=200112L)
 
@@ -137,5 +137,6 @@ add_custom_command(TARGET s5common POST_BUILD
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_pci.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_bus_pci.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_mempool_ring.so*  ${LIBRARY_OUTPUT_PATH}/
+	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/librte_log.so*  ${LIBRARY_OUTPUT_PATH}/
 	COMMAND cp -rpfu ${THIRDPARTY}/spdk/dpdk/build/lib/dpdk ${LIBRARY_OUTPUT_PATH}/
 )

@@ -28,7 +28,7 @@ set(CMAKE_CXX_FLAGS   "-Wall -Wconversion -Wno-sign-compare  -fms-extensions -Wn
 set(CMAKE_C_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 set(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g -DDEBUG ")
 set(SPDKLIBS spdk_nvme spdk_env_dpdk spdk_util spdk_log spdk_sock spdk_trace spdk_json spdk_jsonrpc spdk_rpc spdk_vfio_user spdk_keyring spdk_dma isal)
-set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring)
+set(DPDKLIBS rte_eal rte_mempool rte_ring rte_telemetry rte_kvargs rte_pci rte_bus_pci rte_mempool_ring rte_log)
 add_definitions(-D_XOPEN_SOURCE)
 #set(CMAKE_CXX_COMPILER g++)
 
