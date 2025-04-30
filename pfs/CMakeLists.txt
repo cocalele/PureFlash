@@ -93,6 +93,7 @@ file(GLOB INCS2  "../../rdma-include/infiniband/*.h")
 link_directories(${CMAKE_BINARY_DIR}/bin)
 link_directories(${THIRDPARTY}/spdk/build/lib)
 link_directories(${THIRDPARTY}/spdk/dpdk/build/lib)
+link_directories(${THIRDPARTY}/spdk/isa-l/.libs)
 
 add_executable(pfs  ${S5AFS_SRC} ${HTTP_SRC} ${INCS})
 set_target_properties(pfs PROPERTIES SKIP_BUILD_RPATH true)
