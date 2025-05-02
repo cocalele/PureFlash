@@ -57,17 +57,18 @@ assert make
 
 cd $DIR
 info "build qemu with pfbd"
-assert apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
-assert pip3 install -U pip
+#assert apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
+#assert pip3 install -U pip
 # apt install -y  libfdt-dev  #need on ARM
 assert git clone https://${PFREPO}.com/cocalele/qemu.git
 cd qemu
-git checkout v8.1.2-pfbd
+git checkout v8.2.4-pfbd
 PUREFLASH_HOME=$DIR/PureFlash
 OSNAME=`$DIR/PureFlash/scripts/osname.sh`
 mkdir /usr/include/pfbd
 cp -f ${PUREFLASH_HOME}/common/include/pf_client_api.h /usr/include/pfbd/pf_client_api.h
 cp -f ${PUREFLASH_HOME}/build/bin/libs5common.a /usr/lib/libs5common.a
+cp -f ${PUREFLASH_HOME}/thirdParty/spdk/isa-l/.libs/libisal.a /usr/lib/libisal.a
 cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libzookeeper_mt.a /usr/lib/libzookeeper_mt.a
 cp -f $DIR/PureFlash/pre_build_libs/$OSNAME/libhashtable.a /usr/lib/libhashtable.a
 ( cd ${PUREFLASH_HOME}/build/bin; cp -rp libspdk* /usr/lib/)

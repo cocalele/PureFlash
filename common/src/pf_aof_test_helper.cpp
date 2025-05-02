@@ -18,28 +18,7 @@
 
 using namespace std;
 static PfAof* aof = NULL;
-#define FIX_ISAL_LINK_PROBLEM 1
-#ifdef FIX_ISAL_LINK_PROBLEM
-#include "raid.h"
-#include "crc.h"
-#include "crc64.h"
-#define TEST_SOURCES 16
-#define TEST_LEN     16*1024
 
-
-int _fake_use_xor_gen()
-{
-
-	int i, j, should_fail;
-	void* buffs[TEST_SOURCES + 1];
-
-	
-	xor_gen(TEST_SOURCES + 1, TEST_LEN, buffs);
-	crc32_iscsi(NULL, 0, 0);
-	crc64_rocksoft_refl(0, NULL, 0);
-	return 0;
-}
-#endif
 struct cmd{
 	char op;
 	uint64_t length;

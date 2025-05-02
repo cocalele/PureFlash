@@ -1,5 +1,5 @@
 FROM ubuntu:22.04
-LABEL version="1.9.0"
+LABEL version="1.9.2"
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/ShangHai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -8,6 +8,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt update
 RUN apt install -y python3
 RUN apt install -y cgdb curl gzip jq libaio1 libcurl4   libibverbs1 libicu-dev libjsoncpp25 librdmacm1 readline-common libstdc++6 libtool  libuuid1 tar unzip  util-linux vim wget  net-tools  ninja-build libcurl4-openssl-dev libcppunit-dev uuid-dev libaio-dev nasm autoconf cmake librdmacm-dev pkg-config g++ default-jdk ant meson libssl-dev ncurses-dev libnuma-dev help2man vim rsync libfuse3-dev
+RUN apt install -y  libglib2.0-dev libpixman-1-dev python3 git python3-pip libslirp-dev
+
 RUN apt install -y python3 git
 RUN apt install -y python3-pip
 RUN pip install pyelftools
