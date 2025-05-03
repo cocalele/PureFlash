@@ -126,6 +126,7 @@ add_custom_target(scripts ALL
 	COMMAND mv -f ${CMAKE_BINARY_DIR}/scripts/env.sh ${CMAKE_BINARY_DIR}/..
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/docker/restart-pfs.sh ${CMAKE_BINARY_DIR}
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/docker/restart-pfc.sh ${CMAKE_BINARY_DIR}
+	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/docker/start-zk-mysql.sh ${CMAKE_BINARY_DIR}
 	COMMAND cp -rpfu ${CMAKE_CURRENT_SOURCE_DIR}/docker/run-all.sh ${CMAKE_BINARY_DIR}
     COMMAND cp -rp ${CMAKE_CURRENT_SOURCE_DIR}/testing ${BUILD_ROOT_DIR}
 )

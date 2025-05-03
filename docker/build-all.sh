@@ -21,7 +21,7 @@ function assert()
 
 
 info "This build script need run in pureflash develop container."
-info "Start container with command:\n   docker run -ti --rm --network host  docker.io/pureflash/pureflash-dev:1.9.1-x64 /bin/bash"
+info "Start container with command:\n   docker run -ti --rm --network host  docker.io/pureflash/pureflash-dev:1.9.2-x64 /bin/bash"
 #give time to read above tips
 sleep 2
 
