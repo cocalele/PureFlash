@@ -43,6 +43,7 @@ static void page_load_cbk(void* cbk_arg, int complete_status)
 	}
 	
 	PfLutPage* page = (PfLutPage*)cbk_arg;
+	page->state = PAGE_PRESENT;
 	PfEcClientVolume* vol = page->owner;
 	for (PfClientIocb* p = page->waiting_list.head; p != NULL; p = p->ec_next) {
 		do_io_write(p,vol);
@@ -72,6 +73,27 @@ int PfEcVolumeIndex::load_page(PfClientIocb* client_io, PfLutPage* page)
 	}
 	return 0;
 }
+int PfEcVolumeIndex::co_sync_load_page(PfLutPage* page)
+{
+	page->owner = owner;
+	assert(page->state != PAGE_PRESENT);
+	int rc = 0;
+	while (page->state == PAGE_LOADING)
+	{
+		S5LOG_FATAL("Unexpected state");// should never reach here, this function called only during load/replay
+		co_yield(); //
+		//WAIT page load complete!! WHEN co_enter again ? 
+		return 0;
+	}
+	rc = meta_volume->co_pread(page->addr, PF_EC_INDEX_PAGE_SIZE, page->pte->offset(this));
+	if (rc) {
+		S5LOG_ERROR("Failed to read lut page, volume:%s offset:%ld", meta_volume->volume_name.c_str(), page->pte->offset(this));
+		return rc;
+	}
+	page->state = PAGE_PRESENT;
+	return 0;
+}
+
 void PfEcVolumeIndex::set_forward_lut( int64_t vol_offset, int64_t aof_offset)
 {
 	PfLutPte *pte = &fwd_pte[PF_OFF2PTE_INDEX(vol_offset)];
@@ -80,6 +102,22 @@ void PfEcVolumeIndex::set_forward_lut( int64_t vol_offset, int64_t aof_offset)
 	int index = (int)((vol_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
 	page->lut[index]=aof_offset; //update data in memory
 	page->state=PAGE_DIRTY;//mark page dirty
+}
+void PfEcVolumeIndex::co_sync_set_forward_lut(int64_t vol_offset, int64_t aof_offset)
+{
+	PfLutPte* pte = &fwd_pte[PF_OFF2PTE_INDEX(vol_offset)];
+	PfLutPage* page = pte->page(this);
+	assert(page);
+	if (page->state != PAGE_PRESENT) {
+		int rc = co_sync_load_page(page);
+		if(rc != 0){
+			S5LOG_FATAL("Failed set forward lut for load page fail:%d", rc);
+		}
+	}
+	int index = (int)((vol_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
+	page->lut[index] = aof_offset; //update data in memory
+	page->state = PAGE_DIRTY;//mark page dirty
+
 }
 void PfEcVolumeIndex::set_reverse_lut(int64_t aof_offset, int64_t vol_offset)
 {
@@ -91,7 +129,22 @@ void PfEcVolumeIndex::set_reverse_lut(int64_t aof_offset, int64_t vol_offset)
 	page->state = PAGE_DIRTY;//mark page dirty
 
 }
+void PfEcVolumeIndex::co_sync_set_reverse_lut(int64_t aof_offset, int64_t vol_offset)
+{
+	PfLutPte* pte = &rvs_pte[PF_OFF2PTE_INDEX(aof_offset)];
+	PfLutPage* page = pte->page(this);
+	assert(page);
+	if (page->state != PAGE_PRESENT) {
+		int rc = co_sync_load_page(page);
+		if (rc != 0) {
+			S5LOG_FATAL("Failed set reverse lut for load page fail:%d", rc);
+		}
+	}
+	int index = (int)((aof_offset >> LBA_LENGTH_ORDER) % PF_INDEX_CNT_PER_PAGE);
+	page->lut[index] = vol_offset; //update data in memory
+	page->state = PAGE_DIRTY;//mark page dirty
 
+}
 int64_t PfEcVolumeIndex::get_forward_lut(int64_t vol_offset)
 {
 	PfLutPte* pte = &fwd_pte[PF_OFF2PTE_INDEX(vol_offset)];
@@ -152,6 +205,7 @@ int PfEcVolumeIndex::co_flush_once(/*bool initial */)
 	
 	volatile int inflying_io = 0;
 	volatile int io_rc = 0;
+	S5LOG_DEBUG("Begin flush index pages, total %d pages", page_cnt);
 	for (int page_idx = 0; page_idx < page_cnt && io_rc == 0; page_idx++) {
 		while(inflying_io >= FLUSH_IO_DEPTH){
 			co_yield();
@@ -164,11 +218,14 @@ int PfEcVolumeIndex::co_flush_once(/*bool initial */)
 			
 			offset = (page->pte > rvs_pte ? owner->head.rvs_lut_offset :  owner->head.fwd_lut_offset) + page->pte->offset(this);
 			meta_volume->io_submit(page->addr, (size_t)PF_EC_INDEX_PAGE_SIZE, offset, (int)TRUE,
-			[this, &inflying_io, &io_rc, offset](int complete_status)->void{
+			[this, page, &inflying_io, &io_rc, offset](int complete_status)->void{
 				inflying_io--;
 				if(complete_status){
 					S5LOG_ERROR("Failed flush lut, offset:0x%lx, rc:%d", offset, complete_status);
 					io_rc = complete_status;
+				}
+				if(page->state == PAGE_FLUSHING){ //state may changed to PAGE_DIRTY before io complete
+					page->state = PAGE_PRESENT;
 				}
 				co_enter(owner->flush_routine);
 			});
@@ -181,7 +238,7 @@ int PfEcVolumeIndex::co_flush_once(/*bool initial */)
 	if(io_rc){
 		S5LOG_ERROR("Error during flush meta, rc:%d", io_rc);
 	}
-
+	return io_rc;
 #else
 	if(initial){
 		flush_cb.page_idx = 0;
@@ -219,7 +276,7 @@ int64_t PfLutPte::offset(PfEcVolumeIndex* owner)
 }
 uint32_t PfLutPage::pfn(PfEcVolumeIndex* owner)
 {
-	return this - &owner->pages[0];
+	return (uint32_t)(this - &owner->pages[0]);
 }
 
 //#define _1GB (1LL<<30)

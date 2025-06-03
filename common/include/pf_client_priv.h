@@ -95,7 +95,7 @@ public:
 	enum EcIoState current_state;
 	int64_t current_offset;
 	int64_t new_aof_offset;
-	int64_t old_aof_offset;//will account to garbage
+	//int64_t old_aof_offset;//will account to garbage
 	PfClientIocb* ec_next;
 	struct PfEcRedologEntry* wal;
 	//int is_ec_page_swap_io;//internal IO to load/flush ec index page , valid for swap IO
@@ -170,6 +170,8 @@ public:
 
 	int io_submit(void* buf, size_t length, off_t offset, int is_write, std::function<void(int complete_statue)> cbk);
 	int co_pwrite(void* buf, size_t length, off_t offset);
+	int co_pread(void* buf, size_t length, off_t offset);
+
 	friend class PfVolumeEventProc;
 };
 class PfReplicatedVolume : public PfClientVolume

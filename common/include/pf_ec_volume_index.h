@@ -8,11 +8,13 @@
 #define PF_OFF2PTE_INDEX(x) ((x)>>16) //i.e. x/64K
 #define PF_INDEX_CNT_PER_PAGE (8<<10) //i.e. 8K
 static_assert(PF_EC_INDEX_PAGE_SIZE/sizeof(int64_t) == PF_INDEX_CNT_PER_PAGE);
+class PfEcClientVolume;
+class PfEcVolumeIndex;
 
 
 enum PteState : uint8_t {
 	PAGE_UNPRESENT = 0,
-	PAGE_PRESENT = 1,
+	PAGE_PRESENT = 1, //also means PAGE_CLEAN
 	PAGE_LOADING = 2,
 	PAGE_DIRTY = 3,
 	PAGE_FLUSHING = 4,
@@ -25,7 +27,7 @@ public:
 		int64_t* lut;
 	};
 	int lru_count;
-	PteState state;
+	volatile PteState state;
 	PfList<PfClientIocb, &PfClientIocb::ec_next> waiting_list;
 	struct PfLutPte* pte;
 	PfEcClientVolume* owner;
@@ -36,8 +38,6 @@ public:
 };
 
 
-class PfEcClientVolume;
-class PfEcVolumeIndex;
 #pragma  pack(1)
 struct PfLutPte{
 union{
@@ -63,7 +63,7 @@ static_assert(sizeof(PfLutPte) == 8, "Unexpected size");
 enum EcIoState : unsigned int
 {
 	APPENDING_AOF = 0,//appending data to aof
-	FILLING_WAL = 1,
+	//FILLING_WAL = 1,
 	UPDATING_FWD_LUT = 2, //updating forward lut table
 	UPDATING_RVS_LUT = 3, //updating reverse lut table
 	COMMITING_WAL = 4,
@@ -73,9 +73,13 @@ class PfEcVolumeIndex
 {
 public:
 	PfEcVolumeIndex(PfEcClientVolume* owner, int  page_count);
-	//set offset of lba in aof
+	//set offset of lba in aof, 调用set函数前要保证需要的Lut 页加载在内存中
 	void set_forward_lut(int64_t vol_offset, int64_t aof_offset);
 	void set_reverse_lut(int64_t vol_offset, int64_t aof_offset);
+
+	//带co_前缀的表示是协程模式，这中模式的set函数内部会自己处理缺页
+	void co_sync_set_forward_lut(int64_t vol_offset, int64_t aof_offset);
+	void co_sync_set_reverse_lut(int64_t vol_offset, int64_t aof_offset);
 
 	//lookup forward lut to get aof_offset.
 	int64_t get_forward_lut(int64_t vol_off);
@@ -97,6 +101,7 @@ public:
 	PfReplicatedVolume* meta_volume;
 
 	int load_page(PfClientIocb* client_io, PfLutPage* page);
+	int co_sync_load_page(PfLutPage* page);
 
 	//allocate a free page
 	PfLutPage* get_page();

@@ -4,9 +4,9 @@
 /**
 * Copyright (C), 2014-2019.
 * @file
-* s5log macroes.
+* s5log macro.
 *
-* This file defines s5log's macroes.
+* This file defines s5log's macro.
 */
 
 void s5log(int level, const char * format, ...) __attribute__((format(printf, 2, 3)));

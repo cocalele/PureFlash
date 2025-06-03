@@ -82,6 +82,9 @@ void co_yield() {
 }
 void co_enter(PfRoutine* co) {
 
-	co->exe_thread->event_queue->post_event(EVT_CO_ENTER, 0, co);
+	int rc = co->exe_thread->event_queue->post_event(EVT_CO_ENTER, 0, co);
+	if(rc){
+		S5LOG_ERROR("Failed to post event EVT_CO_ENTER, rc:%d" , rc);
+	}
 
 }

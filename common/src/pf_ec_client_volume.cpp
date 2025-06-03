@@ -35,7 +35,7 @@ int PfEcClientVolume::do_open(bool reopen, bool is_aof)
 		runtime_ctx->add_ref();
 		event_queue = runtime_ctx->vol_proc->event_queue;
 
-		head_buf = aligned_alloc(LBA_LENGTH, LBA_LENGTH);
+		head_buf = aligned_alloc(PAGE_SIZE, LBA_LENGTH);
 		if(head_buf == NULL){
 			S5LOG_ERROR("Failed to alloc memory for head");
 			return -ENOMEM;
@@ -49,7 +49,7 @@ int PfEcClientVolume::do_open(bool reopen, bool is_aof)
 			return -ENOMEM;
 		}
 		ec_index = new(p) PfEcVolumeIndex(this, page_cnt);
-		_c.push_back([this]{delete ec_index;});
+		_c.push_back([this]{ec_index->~PfEcVolumeIndex(); free(ec_index);});
 		ec_redolog = new PfEcRedolog();
 		_c.push_back([this] {delete ec_redolog; });
 		int rc = ec_redolog->init(this, meta_volume);
@@ -57,10 +57,37 @@ int PfEcClientVolume::do_open(bool reopen, bool is_aof)
 			S5LOG_ERROR("Failed init redolog");
 			return rc;
 		}
+
+		p = aligned_alloc(PAGE_SIZE, sizeof(PfEcSectionInfoTable));
+		if (p == NULL) {
+			S5LOG_ERROR("Failed to alloc PfEcSectionInfoTable");
+			return -ENOMEM;
+		}
+		section_tbl = new(p) PfEcSectionInfoTable;
+		_c.push_back([this] {section_tbl->~PfEcSectionInfoTable(); free(section_tbl); });
+
 		flush_routine = co_create(runtime_ctx->vol_proc, std::bind(&PfEcClientVolume::co_flush, this));
 		if (flush_routine == NULL) {
 			S5LOG_ERROR("Failed to create flush coroutine");
 			return -ENOMEM;
+		}
+		auto load_routine = co_create(runtime_ctx->vol_proc, std::bind(&PfEcClientVolume::co_load, this));
+		if (load_routine == NULL) {
+			S5LOG_ERROR("Failed to create load_meta coroutine");
+			return -ENOMEM;
+		}
+
+		rc = sem_init(&load_done, 0, 0);
+		if (rc) {
+			S5LOG_ERROR("Failed init semaphore load_done, rc:%d", rc);
+			return rc;
+		}
+
+		co_enter(load_routine);
+		rc = sem_wait(&load_done); //等待协程load_routine 完成
+		if (rc) {
+			S5LOG_ERROR("Failed wait semaphore load_done, rc:%d", rc);
+			return rc;
 		}
 
 		_c.cancel_all();
@@ -154,11 +181,35 @@ int PfEcClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 		//TODO: resend pending IO
 		S5LOG_FATAL("Not implemented, should not happen");
 	}
-	
+	break;
+	default:
+		S5LOG_FATAL("Unknown event:%d", event_type);
 	}
+	return 0;
 }
 
-void PfEcClientVolume::co_flush(/*bool initial */)
+int PfEcClientVolume::co_save_meta_data()
+{
+	volatile int rc = 0;
+	rc = ec_index->co_flush_once();
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume index, rc:%d", rc);
+	}
+	rc = section_tbl->co_flush_once();
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume index, rc:%d", rc);
+	}
+
+	memcpy(head_buf, &head, sizeof(head));
+	rc = meta_volume->co_pwrite(&head_buf, LBA_LENGTH, 0);
+
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
+	}
+	return rc;
+}
+
+void PfEcClientVolume::co_flush()
 {
 	while (1) {
 		if (meta_in_flushing) {
@@ -166,25 +217,101 @@ void PfEcClientVolume::co_flush(/*bool initial */)
 			co_yield();
 		}
 		meta_in_flushing = true;
+		volatile int rc = co_save_meta_data();
 		//ec_redolog->set_log_phase(); //
 
-		volatile int rc = ec_index->co_flush_once();
-		if(rc){
-			S5LOG_ERROR("Failed flush volume index, rc:%d", rc);
-		}
-		memcpy(head_buf, &head, sizeof(head));
 
-		rc = meta_volume->co_pwrite(&head_buf, LBA_LENGTH, 0);
-		
-		if (rc) {
-			S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
-		}
 		meta_in_flushing = false;
+		int flushed_zone_idx = (int)((head.redolog_phase -1)%2);
+		PfEcRedolog::Zone* flushed_zone = &ec_redolog->zone[flushed_zone_idx];
+		flushed_zone->need_flush = 0;
+
 		event_queue->post_event(EVT_EC_FLUSH_META_COMPLETE, rc, NULL, this);
 		co_yield();
 	}
 }
+int64_t PfEcClientVolume::co_determine_max_phase()
+{
+	volatile int rc = meta_volume->co_pread(&head_buf, LBA_LENGTH,  head.redolog_position_first);
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
+		return rc;
+	}
+	int64_t p1 = ((PfEcRedologPage * )head_buf)->phase;
+	S5LOG_DEBUG("phase of first redolog area:%ld", p1);
+	rc = meta_volume->co_pread(&head_buf, LBA_LENGTH, head.redolog_position_second);
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
+		return rc;
+	}
+	int64_t p2 = ((PfEcRedologPage*)head_buf)->phase;
+	S5LOG_DEBUG("phase of second redolog area:%ld", p2);
+	return p1>p2 ? p1 : p2;
+}
+void PfEcClientVolume::co_load()
+{
+	S5LOG_INFO("Begion load metadata for EC volume:%s", volume_name.c_str());
+	state = VOLUME_REOPEN_FAIL;
+	DeferCall _d([this](){
+		int rc = sem_post(&load_done);
+		if (rc) {
+			S5LOG_ERROR("Failed post semaphore load_done, rc:%d", rc);
+		}
+	});
+	//判断最大的redolog phase, 如果等于Head, 就只需要replay一次，如果等于head.phase+1则需要replay两次
+	int64_t max_phase = co_determine_max_phase();
+	if(max_phase < 0){
+		S5LOG_ERROR("Failed get max redolog phase, rc:%ld", max_phase);
+		return;
+	}
+	S5LOG_DEBUG("max_phase is:%ld", max_phase);
 
+
+	//从磁盘加载元数据头，得到redolog_phase = N
+	//此时的redolog区域可能存在pahse=N, phase=N+1两片区域都是需要replay的
+	volatile int rc = meta_volume->co_pread(&head_buf, LBA_LENGTH, 0);
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
+		return;
+	}
+	memcpy(&head, head_buf, sizeof(head));
+	assert(head.redolog_phase >= 1);
+	S5LOG_DEBUG("head phase from disk:%ld", head.redolog_phase);
+
+	//在保存section table的时候，我们保存的是old section table, 即phase = N-1的那份，只有这份是可靠的。加载时同样需要读old, 即N-1的这份
+	int old_idx = (int)((head.redolog_phase-1)%2);
+	rc = meta_volume->co_pread(&head_buf, LBA_LENGTH, old_idx == 0 ? head.section_tbl_position_first : head.section_tbl_position_second);
+	
+	if (rc) {
+		S5LOG_ERROR("Failed flush volume head, rc:%d", rc);
+		return;
+	}
+	memcpy(&section_tbl->zone[old_idx], head_buf, sizeof(PfEcSectionInfoTable::SectionZone));
+	section_tbl->set_current(head.redolog_phase%2); //also copy old to current
+
+	int cnt = 0;
+	while (max_phase >= head.redolog_phase) {
+		assert(cnt < 2);
+		cnt ++;
+		rc = ec_redolog->co_replay(head.redolog_phase); //第一次循环replay phase=N, 第二次replay phase=N+1的条目
+		if (rc) {
+			S5LOG_ERROR("Failed replay, rc:%d", rc);
+			return;
+		}
+		++head.redolog_phase; //第一次循环：加完后成为N+1
+		ec_redolog->set_current(head.redolog_phase % 2);
+		section_tbl->set_current(head.redolog_phase % 2);
+		rc = co_save_meta_data();
+		if (rc) {
+			S5LOG_ERROR("Failed save meta during open, rc:%d", rc);
+			return;
+		}
+	}
+
+	ec_redolog->set_current(head.redolog_phase % 2);
+	section_tbl->set_current(head.redolog_phase % 2);
+	state = VOLUME_OPENED;
+}
 int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 {
 	int rc = 0;
@@ -204,16 +331,15 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 			}
 			wal->aof_off = curr_pos;
 			wal->vol_off = iocb->cmd_bd->cmd_bd->offset;
+			wal->length = iocb->cmd_bd->cmd_bd->length;
 			iocb->wal = wal;
-			iocb->current_state = FILLING_WAL;
+			iocb->current_offset = iocb->cmd_bd->cmd_bd->offset;
+			iocb->new_aof_offset = wal->aof_off;
+			iocb->current_state = UPDATING_FWD_LUT;
 		}
 	}
-		//fall through to FILLING_WAL
-	case FILLING_WAL:
-		
-		iocb->current_state = UPDATING_FWD_LUT;
-		iocb->current_offset = iocb->cmd_bd->cmd_bd->offset;
-		//fall through to UPDATING_FWD_LUT
+
+	//fall through to UPDATING_FWD_LUT
 	case UPDATING_FWD_LUT:
 	{
 		struct PfEcRedologEntry* wal = iocb->wal;
@@ -225,18 +351,20 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 				return 1;
 			}
 			int64_t old_off = vol->ec_index->get_forward_lut(iocb->current_offset);
-			int idx = (iocb->current_offset - iocb->cmd_bd->cmd_bd->offset)>>LBA_LENGTH_ORDER;
+			int idx = (int)((iocb->current_offset - iocb->cmd_bd->cmd_bd->offset)>>LBA_LENGTH_ORDER);
+			assert(idx < S5ARRAY_SIZE(wal->old_section_index));
 			wal->old_section_index[idx] = PF_SECTION_INDEX(old_off);
-			//TODO: update garbage length of each section
 			vol->ec_index->set_forward_lut(iocb->current_offset, iocb->new_aof_offset + (iocb->current_offset - iocb->cmd_bd->cmd_bd->offset));
+			assert(PF_SECTION_INDEX(old_off) < S5ARRAY_SIZE(vol->section_tbl->current->items));
+			vol->section_tbl->current->items[PF_SECTION_INDEX(old_off)].garbage_length++;
+			vol->section_tbl->current->items[PF_SECTION_INDEX(iocb->new_aof_offset + (iocb->current_offset - iocb->cmd_bd->cmd_bd->offset))].length++;
 		}
 		iocb->current_state = UPDATING_RVS_LUT;
-		iocb->current_offset = iocb->new_aof_offset;
+		iocb->current_offset = iocb->new_aof_offset; //current_offset接下来作为更新reverse_lut的位置变量
 	}
 		//fall through to update reverse LUT
 	case UPDATING_RVS_LUT:
-		for (; iocb->current_offset < iocb->new_aof_offset + iocb->cmd_bd->cmd_bd->length;
-			iocb->current_offset += LBA_LENGTH) {
+		for (; iocb->current_offset < iocb->new_aof_offset + iocb->cmd_bd->cmd_bd->length; iocb->current_offset += LBA_LENGTH) {
 			PfLutPte* pte = vol->ec_index->get_rvs_pte(PF_OFF2PTE_INDEX(iocb->current_offset));
 			PfLutPage* page = pte->page(vol->ec_index);
 			if (page->state != PAGE_PRESENT) {
@@ -247,10 +375,15 @@ int do_io_write(PfClientIocb* iocb, PfEcClientVolume* vol)
 
 		}
 		iocb->current_state = COMMITING_WAL;
-		
+		//fall through to commit wal
+	case COMMITING_WAL:
 		vol->ec_redolog->commit_entry(iocb->wal, iocb);
+		break;
+	default:
+		S5LOG_FATAL("Unexpected iocb state:%d", iocb->current_state);
 		
 	}
+	return 0;
 }
 
 void PfEcClientVolume::close(){

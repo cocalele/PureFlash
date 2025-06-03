@@ -45,7 +45,6 @@
 int _fake_use_xor_gen()
 {
 
-	int i, j, should_fail;
 	void* buffs[TEST_SOURCES + 1];
 
 
@@ -1884,6 +1883,23 @@ int PfClientVolume::co_pwrite(void* buf, size_t length, off_t offset)
 	}
 	if (rc) {
 		S5LOG_ERROR("Failed co_pwrite, rc:%d", rc);
+	}
+	return rc;
+}
+
+int PfClientVolume::co_pread(void* buf, size_t length, off_t offset)
+{
+	volatile int rc = 0;
+	volatile int cnt = 1;
+	io_submit(buf, length, offset, false, [&rc, &cnt](int complete_status) {
+		rc = complete_status;
+		cnt--;
+		});
+	while (cnt) {
+		co_yield();
+	}
+	if (rc) {
+		S5LOG_ERROR("Failed co_pread, rc:%d", rc);
 	}
 	return rc;
 }
