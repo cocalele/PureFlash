@@ -606,7 +606,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 		throw runtime_error(format_string("Connection rejected by server with result: %d", hmsg->hs_result));
 	}
 	S5LOG_DEBUG("Handshake complete, send iodepth:%d, receive iodepth:%d", io_depth, hmsg->crqsize);
-	io_depth = hmsg->hsqsize;
+	io_depth = hmsg->crqsize;
 	PfTcpConnection* conn = new PfTcpConnection(true);
 	clean.push_back([conn]() {delete conn; });
 	rc = conn->init(socket_fd, poller, io_depth, io_depth);
