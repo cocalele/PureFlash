@@ -6,8 +6,9 @@
 #include "pf_lock.h"
 
 static int64_t event_delta = 1;
-PfEventQueue::PfEventQueue():event_fd(0)
+PfEventQueue::PfEventQueue()
 {
+	event_fd  = 0;
 	current_queue = NULL;
 }
 int PfEventQueue::init(const char* name, int size, BOOL semaphore_mode)
@@ -50,17 +51,17 @@ PfEventQueue::~PfEventQueue()
 void PfEventQueue::destroy()
 {
 	current_queue = NULL;
-	queue1.destroy();
-	queue1.destroy();
 	close(event_fd);
+	queue1.destroy();
+	queue2.destroy();
 }
 
-int PfEventQueue::post_event(int type, int arg_i, void* arg_p)
+int PfEventQueue::post_event(int type, int arg_i, void* arg_p, void* arg_q)
 {
 	//S5LOG_INFO("post_event %s into:%s", EventTypeToStr((S5EventType)type), name);
 	{
 		AutoSpinLock _l(&lock);
-		int rc = current_queue->enqueue(S5Event{ type, arg_i, arg_p });
+		int rc = current_queue->enqueue_nolock(S5Event{ type, arg_i, arg_p , arg_q});
 		if(rc)
 			return rc;
 	}
@@ -89,7 +90,7 @@ int PfEventQueue::post_event(int type, int arg_i, void* arg_p)
 int PfEventQueue::get_events(PfFixedSizeQueue<S5Event>** /*out*/ q)
 {
 	int64_t v;
-	if( unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
+	if(unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
 	{
 		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
 		return -errno;
@@ -104,7 +105,7 @@ int PfEventQueue::get_events(PfFixedSizeQueue<S5Event>** /*out*/ q)
 int PfEventQueue::get_event(S5Event* /*out*/ evt)
 {
 	int64_t v;
-	if( unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
+	if(unlikely(read(event_fd, &v, sizeof(v)) != sizeof(v)))
 	{
 		S5LOG_ERROR("Failed read event fd, rc:%d", -errno);
 		return -errno;

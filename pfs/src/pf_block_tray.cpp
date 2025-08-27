@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #include <sys/stat.h>
 #include <unistd.h>
 #include <linux/fs.h>

@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #ifndef afs_cluster_h__
 #define afs_cluster_h__
 #include <stdint.h>
@@ -76,6 +81,7 @@ int register_store_node(int store_id, const char* mngt_ip);
  * @retval ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
  */
 int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t object_size);
+int register_shared_disk(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t obj_size);
 
 /**
  * set store node's state. create `state` and `alive` node on zookeeper, if not exists.

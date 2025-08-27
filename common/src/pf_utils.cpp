@@ -13,10 +13,14 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "/usr/include/signal.h" //avoid confuse with Ceph's signal.h
+#include <rdma/rdma_cma.h>
+
 #include "pf_log.h"
 
 #include "basetype.h"
 #include "pf_utils.h"
+#include "pf_app_ctx.h"
+#include "pf_event_queue.h"
 
 #define MAXLINE 4096
 void write_pid_file(const char* filename)
@@ -139,6 +143,21 @@ uint64_t now_time_usec()
 	return tp.tv_sec * 1000000LL + tp.tv_nsec/1000;
 }
 
+void * align_malloc_spdk(size_t align, size_t size, uint64_t *phys_addr)
+{
+	if (spdk_engine_used())
+		return pf_spdk_dma_zmalloc(size, align, phys_addr);
+	else
+		return aligned_alloc(align, size);
+}
+
+void free_spdk(void *buf)
+{
+	if (spdk_engine_used())
+		return pf_spdk_free(buf);
+	else
+		return free(buf);
+}
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
@@ -179,8 +198,11 @@ void s5log(int level, const char * format, ...)
 	strftime(time_buf, 100, "%Y-%m-%d %H:%M:%S", localtime(&tp.tv_sec));
 	snprintf(&time_buf[strlen(time_buf)], 100, ".%03d", (int)(tp.tv_nsec/1000000L));
 	fprintf(stderr, "[%s %s]%s\n", log_level_str[level], time_buf, buffer);
-	if (level == S5LOG_LEVEL_FATAL)
+	if (level == S5LOG_LEVEL_FATAL){
+		fflush(stderr);
+		fsync(STDERR_FILENO);
 		exit(-1);
+	}
 }
 
 const std::string format_string(const char * format, ...)
@@ -203,7 +225,7 @@ const std::string format_string(const char * format, ...)
  * @param is_client , 1 if this socket_fd is client. 0 for server
  * @return a string describe this socket, like TCP://(me)srv_ip:srv_port<=client_ip:client_port
  */
-const std::string get_socket_addr(int sock_fd, bool is_client)
+const std::string get_socket_desc(int sock_fd, bool is_client)
 {
 	struct sockaddr_in local_addr, remote_addr;
 	socklen_t len = sizeof(local_addr);
@@ -211,13 +233,13 @@ const std::string get_socket_addr(int sock_fd, bool is_client)
 	if(rc != 0)
 	{
 		S5LOG_ERROR("Failed get local addr, sock:%d, rc:%d", sock_fd, -errno);
-		return "[Unknow socket addr]";
+		return "[Unknown socket addr]";
 	}
 	rc = getpeername(sock_fd, (struct sockaddr *)&remote_addr, &len);
 	if (rc != 0)
 	{
 		S5LOG_ERROR("Failed get remote addr, sock:%d, rc:%d", sock_fd, -errno);
-		return "[Unknow socket addr]";
+		return "[Unknown socket addr]";
 	}
 	std::string remote_str  = inet_ntoa(remote_addr.sin_addr);
 	return format_string("TCP://(me)%s:%d%s%s:%d", inet_ntoa(local_addr.sin_addr), ntohs(local_addr.sin_port),
@@ -225,6 +247,39 @@ const std::string get_socket_addr(int sock_fd, bool is_client)
 		                 remote_str.c_str(), ntohs(remote_addr.sin_port));
 }
 
+const std::string get_rdma_desc(struct rdma_cm_id* id, bool is_client)
+{
+	struct sockaddr* local_addr, *remote_addr;
+	__be16 local_port, remote_port;
+	local_addr = rdma_get_local_addr(id);
+	remote_addr = rdma_get_peer_addr(id);
+	/* as defined in https://github.com/linux-rdma/rdma-core/librdmacm/rdma_cma.h   
+	* static inline struct sockaddr *rdma_get_local_addr(struct rdma_cm_id *id)
+	* {
+	*	return &id->route.addr.src_addr;
+	* }
+	* 
+	* static inline struct sockaddr *rdma_get_peer_addr(struct rdma_cm_id *id)
+	* {
+	* 	return &id->route.addr.dst_addr;
+	* }
+	* this two function return address of existing member variable.
+	* so we don't need to free the returned pointer
+	*/
+
+	local_port = rdma_get_src_port(id);
+	remote_port = rdma_get_dst_port(id);
+
+	char local_buf[32];
+	strcpy(local_buf, inet_ntoa(((struct sockaddr_in*)local_addr)->sin_addr));
+	char remote_buf[32];
+	strcpy(remote_buf, inet_ntoa(((struct sockaddr_in*)remote_addr)->sin_addr));
+	return format_string("RDMA://(me)%s:%d%s%s:%d", local_buf,
+		ntohs(local_port),
+		is_client ? "=>" : "<=",
+		remote_buf, ntohs(remote_port));
+
+}
 std::vector<std::string> split_string(const std::string& str, char delim)
 {
 	std::vector<std::string> tokens;
@@ -265,4 +320,15 @@ std::vector<std::string> split_string(const std::string& str, const std::string&
 		prev = pos + delim.length();
 	} while (pos < str.length() && prev < str.length());
 	return tokens;
+}
+
+#define as_str(s) _as_str(s)
+#define _as_str(s) #s
+const char* get_git_ver()
+{
+#ifndef _GIT_REV
+	return  " ";
+#else
+	return as_str(_GIT_REV);
+#endif
 }

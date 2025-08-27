@@ -5,6 +5,7 @@
 
 #include "pf_fixed_size_queue.h"
 #include "pf_lock.h"
+#include "spdk/env.h"
 
 template <class U>
 class ObjectMemoryPool
@@ -42,28 +43,37 @@ public:
 			free_obj_queue.enqueue(&data[i]);
 		}
 		return 0;
-	release1:
-		pthread_spin_destroy(&lock);
 	release2:
 		free_obj_queue.destroy();
+	release1:
+		pthread_spin_destroy(&lock);
 		return rc;
 	}
 
 	U* alloc() {
-		AutoSpinLock _l(&lock);
-		if (free_obj_queue.is_empty())
+		pthread_spin_lock(&lock);
+		if (free_obj_queue.is_empty()){
+			pthread_spin_unlock(&lock);
 			return NULL;
-		return free_obj_queue.dequeue();
+		}
+		U* t = free_obj_queue.dequeue_nolock();
+		pthread_spin_unlock(&lock);
+		return t;
 	}
 
 	/**
 	 * throw logic_error
 	 */
 	void free(U* p) {
-		if (free_obj_queue.is_full())
+		pthread_spin_lock(&lock);
+		int rc = free_obj_queue.enqueue_nolock(p);
+		pthread_spin_unlock(&lock);
+		if (rc != 0) {
+			S5LOG_ERROR("Failed to free obj:%p, pool is full", p);
 			throw std::runtime_error("call free to full memory pool");
-		free_obj_queue.enqueue(p);
+		}
 	}
+
 	void destroy() {
 		if(data != NULL)
 		{
@@ -89,8 +99,18 @@ public:
 class BigMemPool {
 public:
 	BigMemPool(size_t buf_size) { this->buf_size = buf_size; }
-	void* alloc(size_t s) { return memalign(4096, s);}
-	void free(void* p) { ::free(p); }
+	void* alloc(size_t s, bool dma_buf) {
+		if (dma_buf)
+			return spdk_dma_zmalloc(s, 4096, NULL);
+		else
+			return memalign(4096, s);
+	}
+	void free(void* p, bool dma_buf) {
+		if (dma_buf)
+			spdk_dma_free(p);
+		else
+			::free(p);
+	}
 private:
 	size_t buf_size;
 };

@@ -1,21 +1,32 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #ifndef pf_restful_api_h__
 #define pf_restful_api_h__
 
 #include <string>
 #include <vector>
+#include <list>
 #include <stdint.h>
+#include <semaphore.h> //for sem_t
 #include <nlohmann/json.hpp>
 #include <pf_message.h>
+#include "pf_volume_type.h"
+#include "pf_event_thread.h"
 
 class ReplicaArg
 {
 public:
+	uint64_t id;
 	int index;
 	int store_id;
 	std::string tray_uuid;
 	std::string status;
 	std::string rep_ports;
 };
+
 class ShardArg
 {
 public:
@@ -24,6 +35,21 @@ public:
 	int primary_rep_index;
 	std::string status;
 };
+
+class DeleteVolumeArg
+{
+public:
+	std::string op;
+	std::string volume_name;
+	uint64_t volume_id;
+};
+
+class GetThreadStatsArg
+{
+public:
+	std::string op;
+};
+
 class PrepareVolumeArg
 {
 public:
@@ -53,11 +79,19 @@ public:
 	const static int REMOTE_ERROR = 5;
 	const static int ALREADY_DONE = 6;
 	const static int INVALID_STATE = 7;
+	const static int INTERNAL_ERROR = 100;
 
 	RestfulReply();
 	RestfulReply(std::string op, int ret_code=RestfulReply::OK, const char* reason="");
 };
 void from_json(const nlohmann::json& j, RestfulReply& p);
+
+class GetThreadStatsReply : public RestfulReply {
+public:
+	std::vector<thread_stat> thread_stats;
+};
+
+void from_json(const nlohmann::json& j, GetThreadStatsReply& p);
 
 class GetSnapListReply : public RestfulReply {
 public:
@@ -73,11 +107,13 @@ public:
 
 	BackgroudTaskReply():task_id(0), progress(0){ }
 };
+
 class ErrorReportReply : public RestfulReply {
 public:
 	PfMessageStatus action_code;
 	uint16_t meta_ver;
 };
+
 class CalcMd5Reply : public RestfulReply {
 public:
 	CalcMd5Reply() : RestfulReply("calculate_replica_md5_reply"){
@@ -86,16 +122,52 @@ public:
 	std::string md5;
 };
 
+struct SnapshotMd5
+{
+	uint32_t snap_seq;
+	std::string md5;
+	SnapshotMd5():snap_seq(0){}
+	SnapshotMd5(uint32_t ss, std::string&& _md5) : snap_seq(ss), md5(_md5){}
+};
+
+class ObjectMd5Reply : public RestfulReply {
+public:
+	ObjectMd5Reply(replica_id_t _rep_id) : RestfulReply("calculate_object_md5_reply"), rep_id(_rep_id) {
+
+	};
+	replica_id_t rep_id;
+	uint64_t offset_in_vol=0;
+	std::list< SnapshotMd5> snap_md5;
+};
+
+struct restful_get_stats_ctx {
+	struct get_stats_ctx ctx;
+	struct mg_connection *nc;
+	sem_t sem;
+};
+
+class PerfReply : public RestfulReply {
+public:
+	PerfReply() : RestfulReply("perf_reply") {
+
+	};
+	std::string line;
+};
 void from_json(const nlohmann::json& j, RestfulReply& p) ;
 void from_json(const nlohmann::json& j, ReplicaArg& p);
 void from_json(const nlohmann::json& j, ShardArg& p);
 void from_json(const nlohmann::json& j, PrepareVolumeArg& p);
-void from_json(const nlohmann::json& j, GetSnapListReply& p) ;
+void from_json(const nlohmann::json& j, DeleteVolumeArg& p);
+void from_json(const nlohmann::json& j, GetThreadStatsArg& p);
+void from_json(const nlohmann::json& j, GetSnapListReply& p);
+void from_json(const nlohmann::json& j, GetThreadStatsReply& p);
 void to_json(nlohmann::json& j, const RestfulReply& r);
 void to_json(nlohmann::json& j, const BackgroudTaskReply& r);
 void from_json(const nlohmann::json& j, ErrorReportReply& p);
 void to_json(nlohmann::json& j, const CalcMd5Reply& r);
-
+void to_json(nlohmann::json& j, const PerfReply& r);
+void to_json(nlohmann::json& j, const ObjectMd5Reply& r);
+void to_json(nlohmann::json& j, const SnapshotMd5& m);
 struct mg_connection;
 struct http_message;
 
@@ -103,6 +175,8 @@ std::string get_http_param_as_string(const struct mg_str *http_str, const char *
 int64_t get_http_param_as_int64(const struct mg_str *http_content, const char *name, int64_t def_val, bool mandatory=false);
 
 void handle_prepare_volume(struct mg_connection *nc, struct http_message * hm);
+void handle_delete_volume(struct mg_connection *nc, struct http_message * hm);
+void handle_get_thread_stats(struct mg_connection *nc, struct http_message * hm);
 void handle_set_snap_seq(struct mg_connection *nc, struct http_message * hm);
 void handle_set_meta_ver(struct mg_connection *nc, struct http_message * hm);
 void handle_delete_snapshot(struct mg_connection *nc, struct http_message * hm);
@@ -115,4 +189,12 @@ void handle_delete_replica(struct mg_connection *nc, struct http_message * hm);
 void handle_query_task(struct mg_connection *nc, struct http_message * hm);
 void handle_clean_disk(struct mg_connection *nc, struct http_message * hm);
 void handle_cal_replica_md5(struct mg_connection *nc, struct http_message * hm);
+void handle_cal_object_md5(struct mg_connection* nc, struct http_message* hm);
+void handle_prepare_shards(struct mg_connection* nc, struct http_message* hm);
+void handle_perf_stat(struct mg_connection* nc, struct http_message* hm);
+void handle_disp_io_stat(struct mg_connection* nc, struct http_message* hm);
+void handle_disp_io_stat_reset(struct mg_connection* nc, struct http_message* hm);
+void handle_save_md_disk(struct mg_connection* nc, struct http_message* hm);
+void handle_stat_conn(struct mg_connection* nc, struct http_message* hm);
+void handle_stat_iocb_pool(struct mg_connection* nc, struct http_message* hm);
 #endif // pf_restful_api_h__

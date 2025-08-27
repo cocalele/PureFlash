@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 //
 // Created by liu_l on 10/25/2020.
 //
@@ -33,14 +38,18 @@ BackgroundTask* BackgroundTaskManager::initiate_task(TaskType type, std::string 
 
 	S5LOG_INFO("Initiate background task id:%d", t->id);
 	task_map[t->id] = t;
+	return t;
+}
+void BackgroundTaskManager::commit_task(BackgroundTask* t)
+{
 	recovery_thread_pool.commit([t]()->int {
 		t->status = TaskStatus::RUNNING;
 		S5LOG_DEBUG("Begin background task id:%d, %s", t->id, t->desc.c_str());
-		t->result = t->exec(t->arg);
+		t->result = t->exec(t);
 		S5LOG_DEBUG("Finish background task id:%d, ret_code:%d", t->id, t->result->ret_code);
 		t->finish_time = std::time(nullptr);
 		t->status = (t->result->ret_code == 0 ? TaskStatus::SUCCEEDED : TaskStatus::FAILED);
 		return 0;
-	});
-	return t;
+		});
+
 }

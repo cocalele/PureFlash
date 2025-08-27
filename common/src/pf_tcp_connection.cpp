@@ -17,7 +17,11 @@ PfTcpConnection::PfTcpConnection(bool _is_client) :socket_fd(0), poller(NULL), r
                                     recv_bd(NULL),send_buf(NULL), sent_len(0), wanted_send_len(0),send_bd(NULL),
                                     readable(FALSE), writeable(FALSE),need_reconnect(FALSE), is_client(_is_client)
                                     {}
-PfTcpConnection::~PfTcpConnection()    { }
+PfTcpConnection::~PfTcpConnection()
+{
+	send_q.destroy();
+	recv_q.destroy();
+}
 int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int recv_q_depth)
 {
 	int rc = 0;
@@ -30,7 +34,7 @@ int PfTcpConnection::init(int sock_fd, PfPoller* poller, int send_q_depth, int r
 		S5LOG_ERROR("set TCP_NODELAY failed!");
 	}
 
-	connection_info = get_socket_addr(sock_fd, is_client);
+	connection_info = get_socket_desc(sock_fd, is_client);
 	rc = send_q.init("net_send_q", send_q_depth, TRUE);
 	if (rc)
 		goto release1;
@@ -77,58 +81,52 @@ int PfTcpConnection::do_close()
 			this->flush_wr();
 			return 0;
 		});
-	send_q.destroy();
-	recv_q.destroy();
 	return 0;
 }
 
 void PfTcpConnection::flush_wr()
 {
-	if (recv_bd)
-	{
-		on_work_complete(recv_bd, WcStatus::TCP_WC_FLUSH_ERR, this, recv_bd->cbk_data);
+	if (recv_bd) {
+		on_work_complete(recv_bd, WcStatus::WC_FLUSH_ERR, this, recv_bd->cbk_data);
 		dec_ref();
 		recv_bd = NULL;
 	}
-	if (send_bd)
-	{
-		on_work_complete(send_bd, WcStatus::TCP_WC_FLUSH_ERR, this, send_bd->cbk_data);
+
+	if (send_bd) {
+		on_work_complete(send_bd, WcStatus::WC_FLUSH_ERR, this, send_bd->cbk_data);
 		dec_ref();
 		send_bd = NULL;
 	}
+
 	PfFixedSizeQueue<S5Event>* q;
 	int rc;
-	if(!recv_q.is_empty()) {
+	if (!recv_q.is_empty()) {
 		rc = recv_q.get_events(&q);
-		if(rc == 0)
-		{
-			while(!q->is_empty())
-			{
+		if(rc == 0) {
+			while(!q->is_empty()) {
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				on_work_complete(bd, WcStatus::WC_FLUSH_ERR, this, bd->cbk_data);
 				dec_ref();
 			}
 		}
 	}
 
-	if(!send_q.is_empty()) {
+	if (!send_q.is_empty()) {
 		rc = send_q.get_events(&q);
-		if(rc == 0)
-		{
-			while(!q->is_empty())
-			{
+		if(rc == 0) {
+			while(!q->is_empty()) {
 				S5Event* t = &q->data[q->head];
 				q->head = (q->head + 1) % q->queue_depth;
 				BufferDescriptor* bd = (BufferDescriptor*)t->arg_p;
-				on_work_complete(bd, WcStatus::TCP_WC_FLUSH_ERR, this, bd->cbk_data);
+				on_work_complete(bd, WcStatus::WC_FLUSH_ERR, this, bd->cbk_data);
 				dec_ref();
 			}
-
 		}
 	}
 }
+
 void PfTcpConnection::on_send_q_event(int fd, uint32_t event, void* c)
 {
 	//S5LOG_DEBUG("on_send_q_event called, event:%d", event);
@@ -165,47 +163,55 @@ void PfTcpConnection::on_recv_q_event(int fd, uint32_t event, void* c)
 		conn->start_recv((BufferDescriptor*)evt.arg_p);
 	}
 }
-void PfTcpConnection::start_recv(BufferDescriptor* bd)
+
+int PfTcpConnection::start_recv(BufferDescriptor* bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	recv_bd = bd;
 	recv_buf = bd->buf;
 	wanted_recv_len = bd->data_len;
 	recved_len = 0;
-	do_receive();
+	return do_receive();
 }
-void PfTcpConnection::start_recv(BufferDescriptor* bd, void* buf)
+
+int PfTcpConnection::start_recv(BufferDescriptor* bd, void* buf)
 {
 	bd->wr_op = WrOpcode::TCP_WR_RECV;
 	recv_bd = bd;
 	recv_buf = buf;
 	wanted_recv_len = bd->data_len;
 	recved_len = 0;
-	do_receive();
+	return do_receive();
 }
-void PfTcpConnection::start_send(BufferDescriptor* bd)
+
+int PfTcpConnection::start_send(BufferDescriptor* bd)
 {
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	send_bd = bd;
 	send_buf = bd->buf;
 	wanted_send_len = bd->data_len;
 	sent_len = 0;
-	do_send();
+	return do_send();
 }
 
-void PfTcpConnection::start_send(BufferDescriptor* bd, void* buf)
+int PfTcpConnection::start_send(BufferDescriptor* bd, void* buf)
 {
 	bd->wr_op = WrOpcode::TCP_WR_SEND;
 	send_bd = bd;
 	send_buf = buf;
 	wanted_send_len = bd->data_len;
 	sent_len = 0;
-	do_send();
+	return do_send();
 }
 
 void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 {
 	PfTcpConnection* conn = (PfTcpConnection*)c;
+	
+	//send_q, recv_q is valid after connection close
+	//if(conn->state == CONN_CLOSED){
+	//	S5LOG_WARN("connection:%p (%s) has been closed!", conn, conn->connection_info.c_str());
+	//}
 	if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
 	{
 		if (events & EPOLLERR)
@@ -236,7 +242,7 @@ void PfTcpConnection::on_socket_event(int fd, uint32_t events, void* c)
 	{
 		conn->do_send();
 	}
-}
+	}
 
 int PfTcpConnection::rcv_with_error_handle()
 {
@@ -288,7 +294,7 @@ int PfTcpConnection::do_receive()
 	int rc = 0;
 
 	do {
-		if (recv_bd == NULL){
+		if (recv_bd == NULL) {
 			if (recv_q.is_empty()) {
 				return 0;
 			}
@@ -311,6 +317,7 @@ int PfTcpConnection::do_receive()
 		rc = rcv_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
+			S5LOG_ERROR("TCP receive failed, rc:%d conn:%p (%s)", rc, this, connection_info.c_str());
 			close();
 			return -ECONNABORTED;
 		}
@@ -318,7 +325,7 @@ int PfTcpConnection::do_receive()
 		{
 			BufferDescriptor* temp_bd = recv_bd;
 			recv_bd = NULL;
-			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, NULL);
+			rc = on_work_complete(temp_bd, WC_SUCCESS, this, NULL);
 			dec_ref();
 			if (unlikely(rc < 0))
 			{
@@ -367,7 +374,7 @@ int PfTcpConnection::send_with_error_handle()
 			}
 			else
 			{
-				S5LOG_ERROR("recv return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
+				S5LOG_ERROR("send return rc:%d, %s need reconnect.", -errno, connection_info.c_str());
 				writeable = FALSE;
 				need_reconnect = TRUE;
 				return -errno;
@@ -387,11 +394,14 @@ int PfTcpConnection::do_send()
 			}
 			S5Event evt;
 			rc = send_q.get_event(&evt);
-			if(unlikely(rc)){
+			if (unlikely(rc)) {
 				S5LOG_ERROR("Get event from send_q failed");
-			}
-			else {
-				start_send((BufferDescriptor*) evt.arg_p);
+			} else {
+				rc = start_send((BufferDescriptor*) evt.arg_p);
+				if (unlikely(rc)) {
+					S5LOG_ERROR("start send failed, rc=%d",rc);
+					return rc;
+				}
 				continue;
 			}
 
@@ -399,6 +409,7 @@ int PfTcpConnection::do_send()
 		rc = send_with_error_handle();
 		if (unlikely(rc != 0 && rc != -EAGAIN))
 		{
+			S5LOG_ERROR("TCP send failed, rc:%d conn:%p (%s)", rc, this, connection_info.c_str());
 			close();
 			return -ECONNABORTED;
 		}
@@ -408,7 +419,7 @@ int PfTcpConnection::do_send()
 			BufferDescriptor* temp_bd = send_bd;
 			send_bd = NULL;
 
-			rc = on_work_complete(temp_bd, TCP_WC_SUCCESS, this, temp_bd->cbk_data);
+			rc = on_work_complete(temp_bd, WC_SUCCESS, this, temp_bd->cbk_data);
 			dec_ref();
 			if (unlikely(rc < 0))
 			{
@@ -521,6 +532,16 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	{
 		throw runtime_error("set SO_REUSEPORT failed!");
 	}
+	int sz = 1 << 20;
+	rc = setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set RCVBUF, rc:%d", errno);
+	}
+
+	rc = setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
+	if (rc) {
+		S5LOG_ERROR("Failed to set SNDBUF to size:%d, rc:%d", sz, errno);
+	}
 
 	struct sockaddr_in addr;
 	rc = parse_net_address(ip.c_str(), (uint16_t)port, &addr);
@@ -555,7 +576,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 		{
 			if (poll_fd.revents & POLLOUT)
 			{
-				S5LOG_INFO("TCP connect success:%s", ip.c_str());
+				//S5LOG_INFO("TCP connect success:%s", ip.c_str()); //may still fail on later state check
 			}
 			else
 			{
@@ -579,9 +600,14 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	if (error != 0)	{
 		throw runtime_error(format_string("socket in error state:%d", error));
 	}
-
+	S5LOG_INFO("TCP connect success:%s, begin shake hands...", ip.c_str());
 	fcntl(socket_fd, F_SETFL, fdopt);
+
+
+
 	PfHandshakeMessage* hmsg = new PfHandshakeMessage;
+	DeferCall _d([hmsg]() {delete hmsg; });
+	
 	memset(hmsg, 0, sizeof(PfHandshakeMessage));
 	hmsg->hsqsize = (int16_t)io_depth;
 	hmsg->vol_id = vol_id;
@@ -609,7 +635,7 @@ PfTcpConnection* PfTcpConnection::connect_to_server(const std::string& ip, int p
 	io_depth = hmsg->crqsize;
 	PfTcpConnection* conn = new PfTcpConnection(true);
 	clean.push_back([conn]() {delete conn; });
-	rc = conn->init(socket_fd, poller, io_depth, io_depth);
+	rc = conn->init(socket_fd, poller, io_depth*2, io_depth*2);
 	if (rc != 0)
 		throw runtime_error(format_string("Failed call connection init, rc:%d", rc));
 	conn->state = CONN_OK;

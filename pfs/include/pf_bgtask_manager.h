@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 //
 // Created by liu_l on 10/24/2020.
 //
@@ -18,8 +23,9 @@ enum TaskStatus{WAITING, RUNNING, SUCCEEDED, FAILED };
 const char* TaskStatusToStr(TaskStatus s);
 
 class RestfulReply;
+class BackgroundTask;
 
-typedef std::function<RestfulReply*(void*)> TaskExecutor;
+typedef std::function<RestfulReply*(BackgroundTask*)> TaskExecutor;
 class BackgroundTask{
 public:
 	int64_t id;
@@ -42,6 +48,7 @@ public:
 	{}
 
 	BackgroundTask* initiate_task(TaskType type, std::string desc, TaskExecutor exe, void* arg);
+	void commit_task(BackgroundTask*);
 };
 
 #endif //PUREFLASH_PF_BGTASK_MANAGER_H

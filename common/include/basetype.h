@@ -23,7 +23,7 @@ typedef unsigned int BOOL;
 #define SHARD_SIZE (1LL<<SHARD_SIZE_ORDER) //i.e. 64GB
 #define	LBA_LENGTH		4096	///< LBA's length.
 #define LBA_LENGTH_ORDER 12
-#define SECTOR_SIZE 512 //this is linux standarded
+#define SECTOR_SIZE 512 //this is linux standard
 
 #endif //__BASE_TYPE_H__
 

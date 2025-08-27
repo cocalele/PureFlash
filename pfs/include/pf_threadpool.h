@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 //
 // this file was origined from  https://github.com/lzpong/threadpool
 //
@@ -36,9 +41,8 @@ class ThreadPool
 	std::atomic<int>  idlThrNum;
 
 public:
-	inline ThreadPool(unsigned short size = 4) :stoped{ false }
+	ThreadPool(int size = 4) : stoped(false),idlThrNum(size)
 	{
-		idlThrNum = size < 1 ? 1 : size;
 		for (size = 0; size < idlThrNum; ++size)
 		{   //初始化线程数量
 			pool.emplace_back(
@@ -67,7 +71,7 @@ public:
 			);
 		}
 	}
-	inline ~ThreadPool()
+	~ThreadPool()
 	{
 		stoped.store(true);
 		cv_task.notify_all(); // 唤醒所有线程执行

@@ -21,19 +21,22 @@
 #define	S5MESSAGE_MAGIC		0x3553424e	///< magic number for s5 message.
 #define _WRITE_OP_ 0x01
 #define _READ_OP_ 0x02
-#define _NODATA_OP_ 0x03
+#define _NODATA_OP_ 0
 #define IS_WRITE_OP(op) ((op & 0x03) == _WRITE_OP_)
 #define IS_READ_OP(op) ((op & 0x03) == _READ_OP_)
 
+#define _OP_CODE_(x, dir) ((x<<2)|dir)
 enum PfOpCode : uint8_t {
-    S5_OP_WRITE = _WRITE_OP_,
-    S5_OP_READ  = _READ_OP_,
-    S5_OP_REPLICATE_WRITE = 0X11,
-    S5_OP_COW_READ = 0X22,
-    S5_OP_COW_WRITE = 0X21,
-    S5_OP_RECOVERY_READ = 0X32,
-    S5_OP_RECOVERY_WRITE = 0X31,
-    S5_OP_HEARTBEAT = 0X13,
+	S5_OP_WRITE = _OP_CODE_(0, _WRITE_OP_),
+	S5_OP_READ  = _OP_CODE_(0, _READ_OP_),
+	S5_OP_HEARTBEAT = _OP_CODE_(1, _NODATA_OP_),
+	S5_OP_REPLICATE_WRITE = _OP_CODE_(1, _WRITE_OP_),
+	S5_OP_COW_READ = _OP_CODE_(2, _READ_OP_),
+	S5_OP_COW_WRITE = _OP_CODE_(2, _WRITE_OP_),
+	S5_OP_RECOVERY_READ = _OP_CODE_(3, _READ_OP_),
+	S5_OP_RECOVERY_WRITE = _OP_CODE_(3, _WRITE_OP_),
+	S5_OP_RPC_ALLOC_BLOCK = _OP_CODE_(4, _NODATA_OP_),
+	S5_OP_RPC_DELETE_BLOCK = _OP_CODE_(5, _NODATA_OP_),
 };
 
 const char* PfOpCode2Str(PfOpCode op);
@@ -98,16 +101,15 @@ struct PfMessageHead
 	uint16_t                  command_id;
 	uint32_t                  snap_seq;
 	uint64_t                  vol_id;
-	//uint64_t                  buf_addr;
-	uint64_t                  rsv5;
+	uint64_t                  buf_addr;
 	uint32_t                  rkey;
 	uint16_t                  meta_ver;
-	uint16_t                  rsv4;
+	uint16_t                  rsv2;
 	uint64_t                  offset;
 	uint32_t                  length;
 	uint32_t                  command_seq;  //use this field to hold io task sequence number
-	uint64_t                  rsv2;
 	uint64_t                  rsv3;
+	uint64_t                  rsv4;
 };
 #define PF_MSG_HEAD_SIZE 64
 static_assert(sizeof(PfMessageHead) == PF_MSG_HEAD_SIZE, "PfMessageHead");
@@ -119,7 +121,7 @@ struct PfMessageReply {
 	uint16_t  command_id;     /* of the command which completed */
 	uint16_t  rsv0;
 	uint32_t  command_seq;
-	uint32_t  rsv1;
+	uint32_t  block_id; //for block allocation rpc, return new block id
 	uint64_t  rsv2;
 	uint64_t  rsv3;
 };

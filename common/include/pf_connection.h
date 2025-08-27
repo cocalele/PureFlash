@@ -10,39 +10,46 @@
 const char* ConnState2Str(int conn_state);
 
 
-#define TRANSPORT_TCP 1
-#define TRANSPORT_RDMA 2
-
 #define PROTOCOL_VER 1
 class PfClientVolume;
 class PfDispatcher;
 class PfVolume;
 class PfReplicator;
+class PfClientAppCtx;
+
+enum connection_type {
+	TCP_TYPE = 0,
+	RDMA_TYPE = 1
+};
 
 typedef int(*work_complete_handler)(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
 class PfConnection
 {
 public:
+	static int total_count;
+	static int closed_count;
+	static int released_count;
 	int ref_count = 0;
 	work_complete_handler on_work_complete;
 
 	union {
-		PfClientVolume* volume; //used in client side
+		PfClientAppCtx* client_ctx; //used in client side
 		PfVolume* srv_vol; //used in server side
 		PfReplicator* replicator;
 		void* master;
 	};
     PfDispatcher* dispatcher;
 	int state;
-	int transport;
+	connection_type conn_type;
 	uint64_t last_heartbeat_time;
 	int io_depth;
 	std::string connection_info;
 	std::string peer_ip;
 	int peer_port;
 	int inflying_heartbeat;
+	int inflying_io;
 	bool unclean_closed = false;
-
+	uint64_t close_time = 0;
 	PfConnection();
 	virtual ~PfConnection();
 	virtual int post_recv(BufferDescriptor* buf)=0;
@@ -71,6 +78,26 @@ public:
 				on_destroy(this);
 			delete this;
 		}
+	}
+
+	inline bool get_throttle()
+	{
+		int current_cnt = __sync_fetch_and_add(&inflying_io, 1);
+		if (current_cnt < io_depth)
+			return true;
+		else{
+			
+				//S5LOG_DEBUG(" throttle by infly:%d iod:%d", inflying_io, io_depth);
+			__sync_fetch_and_sub(&inflying_io, 1);
+		}
+		return false;
+
+		return true;
+	}
+	inline void put_throttle()
+	{
+		//S5LOG_DEBUG("put throttle");
+		__sync_fetch_and_sub(&inflying_io, 1);
 	}
 };
 

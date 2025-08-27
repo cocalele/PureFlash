@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #include "pf_volume.h"
 #include "pf_utils.h"
 
@@ -28,8 +33,39 @@ const char* HealthStatus2Str(HealthStatus code)
 	}
 }
 
+PfVolume& PfVolume::operator=(PfVolume&& vol)
+{
+	this->meta_ver = vol.meta_ver;
+	this->size = vol.size;
+	this->snap_seq = vol.snap_seq;
+	this->status = vol.status;
+	for (int i = 0; i < shard_count; i++) {
+		PfShard* s = shards[i];
+		for (int j = 0; j < s->rep_count; j++) {
+			if (s->replicas[j] == NULL) {
+				continue;
+			}
+			if (s->replicas[j]->status == HealthStatus::HS_RECOVERYING && vol.shards[i]->replicas[j]->status == HealthStatus::HS_ERROR) {
+				vol.shards[i]->replicas[j]->status = HealthStatus::HS_RECOVERYING; //keep recoverying continue
+			}
+		}
+
+		this->shards[i] = vol.shards[i];
+		vol.shards[i] = NULL;
+		delete s;
+	}
+
+	for (int i = shard_count; i < vol.shards.size(); i++) { //enlarged shard
+		shards.push_back(vol.shards[i]);
+		vol.shards[i] = NULL;
+	}
+	this->shard_count = vol.shard_count;
+	return *this;
+}
+
 PfVolume::~PfVolume()
 {
+	S5LOG_DEBUG("Desctruct PfVolume, %d shards", shards.size());
 	for(int i=0;i<shards.size();i++)
 	{
 		delete shards[i];
@@ -39,8 +75,12 @@ PfVolume::~PfVolume()
 
 PfShard::~PfShard()
 {
-	for(int i=0;i<rep_count;i++)
+	S5LOG_DEBUG("Desctruct PfShard, idx:%d", this->shard_index);
+	for(int i=0;i< MAX_REP_COUNT; i++)
 	{
+		if (replicas[i] == NULL) {
+			continue;
+		}
 		delete replicas[i];
 		replicas[i] = NULL;
 	}

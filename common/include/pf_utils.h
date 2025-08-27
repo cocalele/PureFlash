@@ -16,7 +16,9 @@
 #include <string>
 #include <functional>
 #include <vector>
-
+#include <stdexcept>
+#include <numeric> //std::accumulate
+#include <iostream>
 #include "pf_conf.h"
 #include "pf_log.h"
 #include "basetype.h"
@@ -153,17 +155,34 @@ inline uint64_t up_align(uint64_t number, uint64_t alignment)
 {
 	return ((number + alignment - 1) / alignment)*alignment;
 }
+const char* get_git_ver();
 
 #ifdef __cplusplus
 }
 #endif
 uint64_t now_time_usec();
 #define US2MS(u) ((u)/1000)
+#define SEC2US(s) (s*1000000L)
 const std::string format_string(const char * format, ...);
-const std::string get_socket_addr(int sock_fd, bool is_client);
+const std::string get_socket_desc(int sock_fd, bool is_client);
+const std::string get_rdma_desc(struct rdma_cm_id* id, bool is_client);
 void split_string(const std::string& str, char delim, std::vector<std::string>& tokens);
 std::vector<std::string> split_string(const std::string& str, char delim);
 std::vector<std::string> split_string(const std::string& str, const std::string& delim);
+template<typename T>
+std::string join(std::vector<T> const& vec)
+{
+	if (vec.empty()) {
+		return std::string();
+	}
+
+	std::string delim = ",";
+	return std::accumulate(vec.begin() + 1, vec.end(), std::to_string(vec[0]),
+		[](const std::string& a, T b) {
+			return a + ", " + std::to_string(b);
+		});
+}
+
 class DeferCall {
 	std::function<void(void)> f;
 public:
@@ -186,4 +205,8 @@ public:
 			(*i)();
 	}
 };
+
+void * align_malloc_spdk(size_t align, size_t size, uint64_t *phys_addr);
+
+void free_spdk(void *buf);
 #endif

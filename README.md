@@ -1,34 +1,29 @@
+For Chinese version, please visist [中文版README](./README_cn.md)
+
 # 1. What's PureFlash
 
+PureFlash is an open source ServerSAN implementation, that is, through a large number of general-purpose servers, plus PureFlash software system, to construct a set of distributed SAN storage that can meet the various business needs of enterprises.
 
-PureFlash is a ServerSAN system designed for flash based storage device, such as PCIe flash card, NVMe SSD, SATA SSD. 
-PureFlash has the following features:
+The idea behind PureFlash comes from the fully hardware-accelerated flash array S5, so while PureFlash itself is a software-only implementation, its storage protocol is highly hardware-friendly. It can be considered that PureFlash's protocol is the NVMe protocol plus cloud storage feature enhancements, including snapshots, replicas, shards, cluster hot upgrades and other capabilities.
 
-  * 1) provide block storage to client
-  * 2) multi-replications on different for data protection
-  * 3) multi-path for client 
-  * 4) RDMA based client access 
-  * 5) thin provision
-  * 6) uninterruptedly scale out
-  * 7) volume snap shot
-  * 8) volume clone
+
   
 # 2. Why need a new ServerSAN software?
+PureFlash is a storage system designed for the all-flash era. At present, the application of SSD disks is becoming more and more extensive, and there is a trend of fully replacing HDDs. The significant difference between SSD and HDD is the performance difference, which is also the most direct difference in user experience, and with the popularity of NVMe interface, the difference between the two is getting bigger and bigger, and this nearly hundredfold difference in quantity is enough to bring about a qualitative change in architecture design. For example, the performance of HDDs is very low, far lower than the performance capabilities of CPUs and networks, so the system design criterion is to maximize the performance of HDDs, and to achieve this goal can be at the expense of CPU and other resources. In the NVMe era, the performance relationship has been completely reversed, and the disk is no longer the bottleneck, but the CPU and network have become the bottleneck of the system. That method of consuming CPU to optimize IO is counterproductive.
 
-
-Flash storage device is totally different than traditional HDD. The essential different is that SSD don't need seek time
-before read/write. So SSD has outstanding random read/write performance. 
-
-Almost all traditional storage system has a deep software stack from client's access to data's stored on disk. This deep 
-software stack exhaust system's compute power and make the SSD useless. PureFlash simplify software stack by the following ways:
- * 1) Use RDMA instead of TCP between server nodes and client
- * 2) manage raw SSD directly instead of using file system
- * 3) provide block service only
+Therefore, we need a new storage system architecture to fully exploit the capabilities of SSDs and improve the efficiency of the system. PureFlash is designed to simplify IO stack, separate data path and control path, and prioritize fast path as the basic principles to ensure high performance and high reliability, and provide block storage core capabilities in the cloud computing era.
 
 # 3. Software design
+Almost all current distributed storage systems have a very deep software stack, from the client software to the final server-side SSD disk, the IO path is very long. This deep software stack consumes a lot of system computing resources on the one hand, and on the other hand, the performance advantages of SSDs are wiped out. PureFlash is designed with the following principles in mind:
+  - "Less is more", remove the complex logic on the IO path, use the unique BoB (Block over Bock) structure, and minimize the hierarchy
+  - "Resource-centric", around CPU resources, SSD resource planning software structure, number of threads. Instead of planning according to the usual needs of software code logic
+  - "Control/Data Separation", the control part is developed in Java, and the data path is developed in C++, each taking its own strengths
 
+In addition, PureFlash "uses TCP in RDMA mode" on the network model, instead of the usual "use RDMA as faster TCP", RDMA must configure the one-sided API and the two-sided API correctly according to business needs. This not only makes RDMA used correctly, but also greatly improves the efficiency of TCP use.
 
-The whole system include 3 modules (View graph with tabstop=4 and monospaced font)
+Here is the structure diagram of our system:
+
+The whole system include 5 modules (View graph with tabstop=4 and monospaced font)
 <pre>			   
                                                             +---------------+
                                                             |               |
@@ -36,47 +31,100 @@ The whole system include 3 modules (View graph with tabstop=4 and monospaced fon
                                                        |    |  (HA DB)      |
                              +------------------+      |    +---------------+
                              |                  +------+
-                             | S5conductor      |           +---------------+
+                             | pfconductor      |           +---------------+
                         +---->  (Max 5 nodes)   +----------->               |
                         |    +--------+---------+           | Zookeeper     |
                         |             |                     | (3 nodes)     |
                         |             |                     +------^--------+
 +-------------------+   |             |                            |
 |                   +---+    +--------v---------+                  |
-| S5bd  S5kd        |        |                  |                  |
-| (User and kernel  +------->+ S5afs            +------------------+
+| pfbd/pfkd/tcmu    |        |                  |                  |
+| (User and kernel  +------->+ pfs              +------------------+
 | space client)     |        | (Max 1024 nodes) |
 +-------------------+        +------------------+
 
 </pre>
 
-## 3.1 S5afs, S5 All Flash System
-  This module is the server daemon, provide all data service on store. include:
-   1) SSD disk management
-   2) Networ interface (RDMA and TCP protocol)
-   3) IO handling
+## 3.1 pfs, PureFlash Store
+  This module is the storage service daemon that provides all data services, including:
+   1) SSD disk space management
+   2) Network Interface Services (RDMA and TCP protocols)
+   3) IO request processing
   
-  There're at most 1024 S5afs nodes in a cluster. All s5afs works in acitve mode, since every s5afs need to provide data service.
+A PureFlash cluster can support up to 1024 pfs storage nodes. All PFS provide services to the outside world, so all nodes are working in the active state.
   
-## 3.2 S5conductor
-  This is the control module to conduct all players in storage cluster. A cluster should has at least 2 s5conductor nodes and at most 5 are supported.
-  S5conductor works in active-standby mode. only one conductor is active. All others in standby.
+## 3.2 pfconductor
+    This module is the cluster control module. A production deployment should have at least 2 pfconductor nodes (up to 5). Key features include:
+    1) Cluster discovery and state maintenance, including the activity of each node, the activity of each SSD, and the capacity
+	2) Respond to users' management requests, create volumes, snapshots, tenants, etc
+	3) Cluster operation control, volume opening/closing, runtime fault handling
+  This module is programmed in Java, and the code repository URL： https://github.com/cocalele/pfconductor
   
 ## 3.3 Zookeeper
-  All conductor and afs nodes(instance) register themself to zookeeper, so the active conductor can discovery services in cluster.
+  Zookeeper is a module in the cluster that implements the Paxos protocol to solve the network partitioning problem. All pfconductor and pfs instances are registered with zookeeper so that active pfconductor can discover other members in the entire cluster.
 
 ## 3.4 MetaDB
-  MetaDB is a PostgreSQL cluster with HA.   
+  MetaDB is used to hold cluster metadata, and we use MariaDB here. Production deployment requires the Galaera DB plug-in to ensure it's HA.
   
-## 3.5 S5bd and S5kd
-  S5bd is user space client. Qemu   
+## client application
+  There are two types of client interfaces: user mode and kernel mode. User mode is accessed by applications in the form of APIs, which are located in libpfbd.
 
-# networks ports
-49162  store node TCP port
-49160  store node RDMA port
+### 3.5.1 pfdd 
+  pfdd is a dd-like tool, but has access to the PureFlash volume，https://github.com/cocalele/PureFlash/blob/master/common/src/pf_pfdd.cpp
 
-49180  conductor HTTP port
-49181  store node HTTP port
+### 3.5.2 fio
+  A FIO branch that supports PFBD. Can be used to test PureFlash with direct access to PureFlash volume。repository URL：https://github.com/cocalele/fio.git 
 
-Thanks for:
-1. IntelliJ has provide all develop IDE for Java/C++/golang
+### 3.5.3 qemu
+  A qemu branch with PFBD enabled, support to access PureFlash volume from VM. repository URL: https://github.com/cocalele/qemu.git
+
+### 3.5.4 kernel driver
+  PureFlash provides a free Linux kernel mode driver, which can directly access pfbd volumes as block devices on bare-metal machines, and then format them into arbitrary file systems, which can be accessed by any application without API adaptation.
+  
+  The kernel driver is ideal for Container PV and database scenarios.
+
+### 3.5.5 nbd
+  A nbd implementation to support access PureFlash volume as nbd device， repository URL： https://gitee.com/cocalele/pfs-nbd.git
+
+  After compile, you can attach a volume like bellow:
+``` 
+    # pfsnbd  /dev/nbd3 test_v1 
+```
+
+### 3.5.6 iSCSI
+  A LIO backend implementation to use PureFlash volume as LIO backend device，so it ban be accessed via iSCSI. repository URL：https://gitee.com/cocalele/tcmu-runner.git
+ 
+  # networks ports
+  - 49162  store node TCP port
+  - 49160  store node RDMA port
+
+  - 49180  conductor HTTP port
+  - 49181  store node HTTP port
+
+# Try PureFlash
+the easiest way to try PureFlash is to use docker.
+Suppose you have a NVMe SSD, e.g. nvme1n1, make sure the data is no more needed.
+```
+# dd if=/dev/zero of=/dev/nvme1n1 bs=1M count=100 oflag=direct
+# docker pull pureflash/pureflash:latest
+# docker run -ti --rm  --env PFS_DISKS=/dev/nvme1n1 --ulimit core=-1 --privileged  -e TZ=Asia/Shanghai  --network host  pureflash/pureflash:latest
+# pfcli list_store
++----+---------------+--------+
+| Id | Management IP | Status |
++----+---------------+--------+
+|  1 |     127.0.0.1 |     OK |
++----+---------------+--------+
+ 
+# pfcli list_disk
++----------+--------------------------------------+--------+
+| Store ID |                 uuid                 | Status |
++----------+--------------------------------------+--------+
+|        1 | 9ae5b25f-a1b7-4b8d-9fd0-54b578578333 |     OK |
++----------+--------------------------------------+--------+
+
+#let's create a volume
+# pfcli create_volume -v test_v1 -s 128G --rep 1
+
+#run fio test
+# /opt/pureflash/fio -name=test -ioengine=pfbd -volume=test_v1 -iodepth=16  -rw=randwrite -size=128G -bs=4k -direct=1
+```

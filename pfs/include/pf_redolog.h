@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2016 Liu Lele(liu_lele@126.com)
+ *
+ * This code is licensed under the GPL.
+ */
 #ifndef pf_redolog_h__
 #define pf_redolog_h__
 #include <stdint.h>
@@ -13,6 +18,9 @@ class PfRedoLog
 		TRIM_OBJ = 2,
 		FREE_OBJ = 3,
 		SNAP_SEQ_CHANGE = 4,
+		STATUS_CHANGE = 5,
+
+		_REDO_ITEM_TYPE_COUNT_
 	};
 
 	struct Item{
@@ -39,6 +47,12 @@ class PfRedoLog
 				struct lmt_entry bentry;
 				uint32_t old_snap_seq;
 			}snap_seq_change;
+			struct {
+				struct lmt_key bkey;
+				struct lmt_entry bentry;
+				int old_status;
+			}state_change;
+
 		};
 	};
 
@@ -52,18 +66,21 @@ public:
 	void* entry_buff;
 	std::thread auto_save_thread;
 
-	int init(struct PfFlashStore* ssd);
-	int load(struct PfFlashStore* ssd);
-	int replay();
+	int init(struct PfFlashStore* s);
+	int set_log_phase(int64_t phase, uint64_t offset);
+	int replay(int64_t start_phase, int which);
 	int discard();
 	int log_allocation(const struct lmt_key* key, const struct lmt_entry* entry, int free_list_head);
 	int log_free(int block_id, int trim_list_head, int free_list_tail);
 	int log_trim(const struct lmt_key* key, const struct lmt_entry* entry, int trim_list_tail);
+	int log_status_change(const lmt_key* key, const lmt_entry* entry, EntryStatus old_state);
+
 	int redo_allocation(Item* e);
 	int redo_trim(Item* e);
 	int redo_free(Item* e);
 	int log_snap_seq_change(const struct lmt_key* key, const struct lmt_entry* entry, int old_seq);
 	int redo_snap_seq_change(PfRedoLog::Item* e);
+	int redo_state_change(PfRedoLog::Item* e);
 	int stop();
 	int start();
 private:
