@@ -1045,6 +1045,7 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 			PfClientStore* local_store = get_local_store(shard_index);
 			if(local_store == NULL){
 				io->ulp_handler(io->ulp_arg, PfMessageStatus::MSG_STATUS_CONN_LOST);
+				break;
 			}
 			io->setup_subtask(io_cmd->opcode);
 			if (io_cmd->opcode == S5_OP_READ)
