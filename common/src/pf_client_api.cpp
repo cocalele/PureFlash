@@ -441,7 +441,16 @@ static void client_on_tcp_close(PfConnection* _c)
 		{
 			ios[i].conn->dec_ref();
 			ios[i].conn = NULL;
-			ios[i].volume->resend_io(&ios[i]);
+			int rc = ios[i].volume->resend_io(&ios[i]);
+			if (rc) {
+				ios[i].ulp_handler(ios[i].ulp_arg, PfMessageStatus::MSG_STATUS_NO_RESOURCE);
+
+				PfMessageHead *io_cmd = ios[i].cmd_bd->cmd_bd;
+				S5LOG_ERROR("IOError, can't resend io, enqueue event fail, volume:%s command id:%d task_sequence:%d, io_cmd :%d", 
+					(ios[i].volume->volume_name).c_str(), io_cmd->command_id, io_cmd->command_seq, io_cmd->opcode);
+				ios[i].volume->runtime_ctx->iocb_pool.free(&ios[i]);
+			}
+ 
 			cnt++;
 		}
 	}
@@ -1150,12 +1159,6 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
 			io->sent_time = 0;
 			io->conn->close();
-			io->conn->dec_ref();
-			io->conn = NULL;
-			int rc = resend_io(io);
-			if(rc) {
-				runtime_ctx->iocb_pool.free(io);
-			}
 		}
 		break;
 	}
