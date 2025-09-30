@@ -2,9 +2,9 @@
 #define pf_volume_type_h__
 
 
-#define SHARD_ID(x)        ((x) & 0xffffffffffffff00LL)
-#define SHARD_INDEX(x)    (((x) & 0x0000000000ffff00LL) >> 8)
-#define REPLICA_INDEX(x)   ((x) & 0x00000000000000ffLL)
+#define SHARD_ID(x)        ((x) & 0xfffffffffffffff0LL)
+#define SHARD_INDEX(x)    (((x) & 0x0000000000fffff0LL) >> 4)
+#define REPLICA_INDEX(x)   ((x) & 0x000000000000000fLL)
 #define VOLUME_ID(x)        ((x) & 0xffffffffff000000LL)
 
 struct volume_id_t {
