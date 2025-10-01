@@ -1,4 +1,4 @@
-FROM docker.io/pureflash/pureflash-dev:1.9.1-x64 AS builder
+FROM docker.io/pureflash/pureflash-dev:1.9.2-x64 AS builder
 ARG PFREPO
 WORKDIR /
 COPY apt-origin.list /etc/apt/sources.list
