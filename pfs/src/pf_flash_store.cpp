@@ -2328,7 +2328,7 @@ int PfFlashStore::recovery_single_object_entry(struct RecoveryContext& recov_ctx
 		t->meta_ver = recov_ctx.meta_ver;
 		t->opcode = PfOpCode::S5_OP_RECOVERY_READ;
 		t->owner_queue = &recov_ctx.task_queue;
-		app_context.replicators[0]->event_queue->post_event(EVT_RECOVERY_READ_IO, 0, t);
+                app_context.replicators[(t->volume_id >> 24) % app_context.replicators.size()]->event_queue->post_event(EVT_RECOVERY_READ_IO, 0, t);
 	}
 	for (int i = 0; i < recov_ctx.iodepth; i++) {
 		sem_wait(&recov_sem);

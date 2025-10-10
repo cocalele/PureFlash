@@ -183,17 +183,29 @@ static PfVolume* convert_argument_to_volume(const PrepareVolumeArg& arg)
 		shard->snap_seq = vol->snap_seq;
 		shard->status = health_status_from_str(arg.shards[i].status);
 		S5LOG_INFO("Convert to shard:%d with %d replicas", i, arg.shards[i].replicas.size());
+
+                // one replica of shard[i].replicas must be asigned to this store
+		bool shard_replica_on_this_store = FALSE;
+                for (int t = 0; t < arg.shards[i].replicas.size(); t++)
+                {
+                        if (app_context.store_id == arg.shards[i].replicas[t].store_id)
+                        {
+                                shard_replica_on_this_store = TRUE;
+                                break;
+                        }
+                }
 		for (int j = 0; j < arg.shards[i].replicas.size(); j++)
 		{
 			if (app_context.shard_to_replicator) {
-				// case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
-				// case2: primary shard is not asigned to this store but slave shard is asigned to this store, 
-				// 		  only alloc PfLocalReplica
-				// case3: no shard is asigned to this store, do noting
-				if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id && 
-					app_context.store_id != arg.shards[i].replicas[j].store_id) {
-					continue;
-				}				
+                               // case1: primary shard is asigned to this store, alloc PfLocalReplica and PfSyncRemoteReplica
+                               // case2: primary shard is not asigned to this store but slave shard is asigned to this store,
+                               //                only alloc PfLocalReplica
+                               // case3: no shard is asigned to this store, do noting
+                               if (app_context.store_id != arg.shards[i].replicas[shard->primary_replica_index].store_id &&
+                                   app_context.store_id != arg.shards[i].replicas[j].store_id &&
+                                   !shard_replica_on_this_store) {
+                                       continue;
+                               }
 			}
 			
 			const ReplicaArg& rarg = arg.shards[i].replicas[j];
