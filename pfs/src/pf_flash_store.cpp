@@ -469,7 +469,7 @@ inline int PfFlashStore::do_read(IoSubTask* io)
 	lmt_entry *entry = NULL;
 	if (block_pos != obj_lmt.end())
 		entry = block_pos->second;
-	while ((entry && cmd->snap_seq < entry->snap_seq) || entry->status == EntryStatus::COPYING)
+	while (entry && ((entry && cmd->snap_seq < entry->snap_seq) || entry->status == EntryStatus::COPYING))
 		entry = entry->prev_snap;
 	if (entry == NULL)
 	{
