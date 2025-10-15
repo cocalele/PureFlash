@@ -144,7 +144,7 @@ int PfFlashStore::shared_disk_init(const char* tray_name, uint16_t* p_id)
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(tray_name, this->fd, g_app_ctx);
+	ioengine = new PfAioEngine(tray_name, this->fd, g_app_ctx, &app_context);
 	//ioengine = new PfIouringEngine(this);
 	ioengine->init();
 	DeferCall _2([this]() { delete ioengine; ioengine=NULL; });
@@ -202,7 +202,7 @@ int PfFlashStore::owner_init()
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(this->tray_name, fd, g_app_ctx);
+	ioengine = new PfAioEngine(this->tray_name, fd, g_app_ctx, &app_context);
 	//ioengine = new PfIouringEngine(this);
 	ioengine->init();
 
@@ -425,7 +425,7 @@ int PfFlashStore::init(const char* tray_name, uint16_t *p_id)
 
 	/*init ioengine first*/
 	//TODO: change io engine according to config file
-	ioengine = new PfAioEngine(tray_name, fd, g_app_ctx);
+	ioengine = new PfAioEngine(tray_name, fd, g_app_ctx, &app_context);
 	//ioengine = new PfIouringEngine(this);
 	ioengine->init();
 
