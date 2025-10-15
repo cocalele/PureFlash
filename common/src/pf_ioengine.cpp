@@ -23,6 +23,7 @@
 #include "pf_buffer.h"
 #include "pf_iotask.h"
 #include "pf_app_ctx.h"
+#include "pf_main.h"
 using namespace std;
 
 uint64_t fd_get_cap(int fd)
@@ -176,7 +177,7 @@ void PfAioEngine::polling_proc()
 							aiocb->aio_lio_opcode, aiocb->u.c.offset, aiocb->u.c.nbytes, t->parent_iocb->cmd_bd->cmd_bd->offset,
 							aiocb->u.c.buf);
 						//res = (res == 0 ? len : res);
-						t->ops->complete(t, PfMessageStatus::MSG_STATUS_AIOERROR);
+						afs_ctx->error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
 					}
 					else
 						t->ops->complete(t, PfMessageStatus::MSG_STATUS_SUCCESS);
@@ -186,8 +187,7 @@ void PfAioEngine::polling_proc()
 					if (unlikely(len != ((CowTask*)t)->size || res < 0)) {
 						S5LOG_ERROR("cow aio error, op:%d, len:%d rc:%d", t->opcode, (int)len, (int)res);
 						//res = (res == 0 ? len : res);
-						t->ops->complete(t, PfMessageStatus::MSG_STATUS_AIOERROR);
-
+                                                afs_ctx->error_handler->submit_error(t, PfMessageStatus::MSG_STATUS_AIOERROR);
 					}
 					else {
 						t->complete_status = PfMessageStatus::MSG_STATUS_SUCCESS;

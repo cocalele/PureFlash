@@ -28,6 +28,7 @@ include_directories(../thirdParty/spdk/include)
 include_directories(../thirdParty/spdk)
 include_directories(../thirdParty/spdk/isa-l/include)
 include_directories(../thirdParty/spdk/dpdk/build/include)
+include_directories(../pfs/include)
 USE_ZOOKEEPER()
 
 execute_process(COMMAND git log --pretty=format:'%h' -n 1

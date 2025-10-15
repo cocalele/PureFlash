@@ -18,6 +18,7 @@
 class PfFlashStore;
 class IoSubTask;
 class PfAppCtx;
+class PfAfsAppContext;
 
 #define MAX_AIO_DEPTH 4096
 
@@ -47,9 +48,10 @@ public:
 	io_context_t aio_ctx;
 	struct iocb* batch_iocb[BATCH_IO_CNT];
 	int batch_io_cnt=0;
-	PfAppCtx *app_ctx;
+	PfAppCtx* app_ctx = nullptr;
+	PfAfsAppContext* afs_ctx = nullptr;
 public:
-	PfAioEngine(const char* name, int _fd, PfAppCtx* ctx) :PfIoEngine(name), fd(_fd), app_ctx(ctx) {};
+	PfAioEngine(const char* name, int _fd, PfAppCtx* client_ctx, PfAfsAppContext* server_ctx) : PfIoEngine(name), fd(_fd), app_ctx(client_ctx), afs_ctx(server_ctx) {};
 	~PfAioEngine();
 	int init();
 	int submit_io(struct IoSubTask* io, int64_t media_offset, int64_t media_len);
