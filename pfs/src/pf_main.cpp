@@ -286,7 +286,6 @@ int main(int argc, char *argv[])
 	}
 
 	app_context.zk_client.delete_node(format_string("stores/%d/trays", store_id));
-	app_context.zk_client.delete_node(format_string("shared_disks", store_id));
 
 	for(int i=0;i<MAX_TRAY_COUNT;i++)
 	{
