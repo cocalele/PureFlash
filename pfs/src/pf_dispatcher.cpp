@@ -233,8 +233,8 @@ int PfDispatcher::dispatch_write(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 	PfMessageHead* cmd = iocb->cmd_bd->cmd_bd;
 	iocb->task_mask = 0;
 	if (unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
-		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d status:%d cid:%d",
-		            vol->id, vol->name, s->shard_index, s->duty_rep_index, s->replicas[s->duty_rep_index]->status, iocb->cmd_bd->cmd_bd->command_id);
+		S5LOG_ERROR("Write on non-primary node, vol:0x%llx, %s, shard_index:%d, primary_replica_index:%d, current replica_index:%d status:%d cid:%d",
+			    vol->id, vol->name, s->shard_index, s->primary_replica_index, s->duty_rep_index, s->replicas[s->duty_rep_index]->status, iocb->cmd_bd->cmd_bd->command_id);
 		int i = s->duty_rep_index;
 		iocb->setup_one_subtask(s, i, cmd->opcode);
 		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
@@ -282,8 +282,8 @@ int PfDispatcher::dispatch_read(PfServerIocb* iocb, PfVolume* vol, PfShard * s)
 		iocb->subtasks[i]->rep_id = s->replicas[i]->id;
 		iocb->subtasks[i]->store_id = s->replicas[i]->store_id;
 		if(unlikely(!s->is_primary_node || s->replicas[s->duty_rep_index]->status != HS_OK)) {
-			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, current replica_index:%d status:%d",
-			            vol->id, vol->name, s->id, s->duty_rep_index, s->replicas[s->duty_rep_index]->status);
+			S5LOG_ERROR("Read on non-primary node, vol:0x%llx, %s, shard_index:%d, primary_replica_index:%d, current replica_index:%d status:%d",
+				    vol->id, vol->name, s->shard_index, s->primary_replica_index, s->duty_rep_index, s->replicas[s->duty_rep_index]->status);
 			app_context.error_handler->submit_error((IoSubTask*)iocb->subtasks[i], PfMessageStatus::MSG_STATUS_NOT_PRIMARY);
 			return 1;
 		}
