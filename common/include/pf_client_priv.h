@@ -273,6 +273,14 @@ public:
 
 	inline PfClientIocb* pick_iocb(uint16_t cid, uint32_t cmd_seq) {
 		PfClientIocb* io = &iocb_pool.data[cid];
+		if (io->cmd_bd == NULL) {
+			S5LOG_WARN("IO cmd_bd release, ID:%d seq:%d", cid, cmd_seq);
+			return NULL;
+		}
+		if (io->cmd_bd->cmd_bd == NULL) {
+			S5LOG_WARN("IO cmd_bd's PfMessageHead release, ID:%d seq:%d", cid, cmd_seq);
+			return NULL;
+		}
 		if(io->cmd_bd->cmd_bd->command_seq != cmd_seq) {
 			S5LOG_WARN("IO staled, ID:%d seq:%d", cid, cmd_seq);
 			return NULL;
