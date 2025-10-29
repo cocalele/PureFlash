@@ -35,6 +35,8 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 				ip_id_map.erase(pos);
 				c->dec_ref();
 			}
+		} else {
+		        ip_id_map.erase(pos);
 		}
 	}
 
