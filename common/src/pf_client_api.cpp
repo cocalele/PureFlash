@@ -1155,10 +1155,19 @@ int PfClientVolume::process_event(int event_type, int arg_i, void* arg_p)
 				runtime_ctx->iocb_pool.free(io);
 				break;
 			}
-			S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
-				io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
-			io->sent_time = 0;
-			io->conn->close();
+
+                        if (io->conn != NULL)
+                                S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, store:%s will reconnect and resend...",
+                                        io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER, io->conn->connection_info.c_str());
+                        else
+                                S5LOG_WARN("IO(cid:%d) timeout, vol:%s, shard:%d, will reconnect and resend...",
+                                        io_cmd->command_id, volume_name.c_str(), io_cmd->offset >> SHARD_SIZE_ORDER);
+                        io->sent_time = 0;
+                        if (io->conn != NULL) {
+                                io->conn->close();
+                        } else {
+                                resend_io(io);
+                        }
 		}
 		break;
 	}
