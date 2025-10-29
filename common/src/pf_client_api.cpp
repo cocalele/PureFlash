@@ -923,7 +923,7 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			{
 				__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
 				io->sent_time = 0;
-				f (io->conn != NULL) {
+				if (io->conn != NULL) {
 					io->conn->dec_ref();
 				}
 				io->conn = NULL;
