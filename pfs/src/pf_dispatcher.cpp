@@ -37,11 +37,11 @@ int PfDispatcher::prepare_volume(PfVolume* vol)
 	if (pos != opened_volumes.end())
 	{
 		PfVolume* old_v = pos->second;
-		//if(old_v->meta_ver >= vol->meta_ver) {
-		//	S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
-		//	  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
-		//	return 0;
-		//}
+		if(old_v->meta_ver > vol->meta_ver) {
+			S5LOG_WARN("Not update volume in dispatcher:%d, vol:%s, whose meta_ver:%d new meta_ver:%d",
+			  disp_index, vol->name, old_v->meta_ver, vol->meta_ver);
+			return 0;
+		}
 
 		(*old_v) = std::move(*vol);
 	} else {
