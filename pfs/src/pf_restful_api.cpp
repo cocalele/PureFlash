@@ -362,6 +362,13 @@ void handle_delete_volume(struct mg_connection *nc, struct http_message * hm)
 		rc = d->sync_invoke([d, vol_id]()->int {return d->delete_volume(vol_id);});
 		assert(rc == 0);
 	}
+
+	AutoMutexLock _l(&app_context.lock);
+	auto pos = app_context.opened_volumes.find(vol_id);
+	if (pos != app_context.opened_volumes.end()) {
+        	app_context.opened_volumes.erase(pos);
+	}
+
 	S5LOG_INFO("Succeeded delete volume:%s", arg.volume_name.c_str());
 
 	RestfulReply r(arg.op + "_reply");
