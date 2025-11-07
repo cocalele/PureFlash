@@ -366,6 +366,8 @@ void handle_delete_volume(struct mg_connection *nc, struct http_message * hm)
 	AutoMutexLock _l(&app_context.lock);
 	auto pos = app_context.opened_volumes.find(vol_id);
 	if (pos != app_context.opened_volumes.end()) {
+		PfVolume* vol = pos->second;
+		vol->dec_ref();
         	app_context.opened_volumes.erase(pos);
 	}
 
