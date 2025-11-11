@@ -116,5 +116,7 @@ int set_store_node_state(int store_id, const char* state, BOOL alive);
  */
 int set_tray_state(int store_id, const uuid_t tray_uuid, const char* state, BOOL online);
 
+int set_tray_free_size(int store_id, const uuid_t tray_uuid, int64_t free_size);
+
 int register_port(int store_id, const char* ip, int purpose);
 #endif // afs_cluster_h__

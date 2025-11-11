@@ -135,6 +135,20 @@ int set_tray_state(int store_id, const uuid_t uuid, const char* state, BOOL onli
 	return ZOK;
 }
 
+int set_tray_free_size(int store_id, const uuid_t uuid, int64_t free_size)
+{
+	char zk_node_name[128];
+	char value_buf[128];
+	char uuid_str[64];
+	int rc;
+	uuid_unparse(uuid, uuid_str);
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/free_size", store_id, uuid_str);
+	snprintf(value_buf, sizeof(value_buf), "%ld", free_size);
+	if ((rc = app_context.zk_client.set_value(zk_node_name, value_buf)) != ZOK)
+		return rc;
+	return 0;
+}
+
 int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t capacity, int64_t obj_size)
 {
 	char zk_node_name[128];
@@ -159,6 +173,12 @@ int register_tray(int store_id, const uuid_t uuid, const char* devname, int64_t 
 	snprintf(value_buf, sizeof(value_buf), "%ld", obj_size);
 	if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
 		return rc;
+        // in register tray, free_size equal to capacity
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/trays/%s/free_size", store_id, uuid_str);
+	snprintf(value_buf, sizeof(value_buf), "%ld", capacity);
+        if ((rc = app_context.zk_client.create_node(zk_node_name, false, value_buf)) != ZOK)
+		return rc;
+
 	set_tray_state(store_id, uuid, "OK", true);
 	return 0;
 }
