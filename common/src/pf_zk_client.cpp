@@ -204,6 +204,24 @@ int PfZkClient::delete_node(const std::string& node_path)
 	return zoo_delete(zkhandle, full_path.c_str(), -1);
 }
 
+int PfZkClient::set_value(const std::string& node_path, const char* node_data)
+{
+	string full_path = node_path;
+	if(node_path[0] != '/')
+		full_path = "/pureflash/"+cluster_name+"/"+node_path;
+	int rc = zoo_exists(zkhandle, full_path.c_str(), 0, NULL);
+	if (rc != ZOK) {
+		return rc;
+	}
+
+	rc = zoo_set(zkhandle, full_path.c_str(), node_data, node_data ? (int)strlen(node_data) : 0, -1);
+	if(rc != ZOK) {
+		S5LOG_ERROR("Failed to set ZK node:%s, node_path:%s, value:%s, rc:%d", full_path.c_str(), node_path.c_str(), node_data, rc);
+	}
+
+	return rc;
+}
+
 std::string PfZkClient::get_data_port(int store_id,  int port_idx)
 {
 	int rc = 0;

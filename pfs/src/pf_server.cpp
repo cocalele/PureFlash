@@ -33,6 +33,7 @@
 #include "pf_volume.h"
 #include "pf_dispatcher.h"
 #include "spdk/env.h"
+#include "pf_cluster.h"
 
 static void *afs_listen_thread(void *param);
 static int server_on_tcp_network_done(BufferDescriptor* bd, WcStatus complete_status, PfConnection* conn, void* cbk_data);
@@ -442,6 +443,16 @@ void server_cron_proc(void)
 	{
 		if (sleep(10) != 0)
 			return;
+
+		for (auto disk : app_context.trays) {
+			int cnt = disk->event_queue->sync_invoke([disk]()->int{
+				return disk->free_obj_queue.space();
+			});
+
+                        uint64_t free_size = cnt * disk->head.objsize;
+			set_tray_free_size(app_context.store_id, disk->head.uuid, free_size);
+		}
+
 		uint64_t now = now_time_usec();
 #define CLOSE_TIMEOUT_US 180000000ULL
 		std::lock_guard<std::mutex> _l(app_context.conn_map_lock);
