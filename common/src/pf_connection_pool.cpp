@@ -27,12 +27,16 @@ PfConnection* PfConnectionPool::get_conn(const std::string& ip, enum connection_
 	auto pos = ip_id_map.find(ip);
 	if (pos != ip_id_map.end()) {
 		auto c = pos->second;
-		if(c->state == CONN_OK)
-			return c;
-		else {
-			S5LOG_WARN("Connection:%s in state:%s, will reconnect.", c->connection_info.c_str(), ConnState2Str(c->state));
-			ip_id_map.erase(pos);
-			c->dec_ref();
+		if (c != NULL) {
+			if(c->state == CONN_OK)
+				return c;
+			else {
+				S5LOG_WARN("Connection:%s in state:%s, will reconnect.", c->connection_info.c_str(), ConnState2Str(c->state));
+				ip_id_map.erase(pos);
+				c->dec_ref();
+			}
+		} else {
+		        ip_id_map.erase(pos);
 		}
 	}
 
@@ -78,8 +82,10 @@ void PfConnectionPool::close_all()
 
 	for(auto it = ip_id_map.begin(); it != ip_id_map.end(); ++it) {
 		auto c = it->second;
-		c->close();
-		c->dec_ref();
+		if (c != NULL) {
+			c->close();
+			c->dec_ref();
+		}
 	}
 	ip_id_map.clear();
 }

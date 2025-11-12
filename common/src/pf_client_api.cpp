@@ -906,7 +906,9 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 					S5LOG_WARN("client meta_ver is:%d, store meta_ver is:%d. reopen volume", meta_ver, reply->meta_ver);
 					event_queue->post_event(EVT_REOPEN_VOLUME, reply->meta_ver, (void *)(now_time_usec()), io->volume);
 				}
-				io->conn->dec_ref();
+				if (io->conn != NULL) {
+					io->conn->dec_ref();
+				}
 				io->conn=NULL;
 				event_queue->post_event(EVT_IO_REQ, 0, io, this);
 				runtime_ctx->reply_pool.free(wr_bd);
@@ -921,7 +923,9 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			{
 				__sync_fetch_and_sub(&conn->inflying_heartbeat, 1);
 				io->sent_time = 0;
-				io->conn->dec_ref();
+				if (io->conn != NULL) {
+					io->conn->dec_ref();
+				}
 				io->conn = NULL;
 				runtime_ctx->free_iocb(io);
 				runtime_ctx->reply_pool.free(wr_bd);
@@ -948,7 +952,9 @@ void PfClientVolume::client_do_complete(int wc_status, BufferDescriptor* wr_bd)
 			runtime_ctx->reply_pool.free(io->reply_bd);
 	        io->reply_bd = NULL;
 	        io->sent_time=0;
-	        io->conn->dec_ref();
+		if (io->conn != NULL) {
+	        	io->conn->dec_ref();
+		}
 	        io->conn=NULL;
 	        if(io->cmd_bd->cmd_bd->opcode == S5_OP_READ)  {
 	        	if(io->user_iov_cnt)
@@ -1756,7 +1762,9 @@ int PfClientAppCtx::rpc_common(PfClientVolume* vol, std::function<void(PfMessage
 	reply_pool.free(io->reply_bd);
 	io->reply_bd = NULL;
 	io->sent_time = 0;
-	io->conn->dec_ref();
+	if (io->conn != NULL) {
+		io->conn->dec_ref();
+	}
 	io->conn = NULL;
 	free_iocb(io);
 	return rc;
