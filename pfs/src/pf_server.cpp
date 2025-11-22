@@ -446,7 +446,7 @@ void server_cron_proc(void)
 
 		for (auto disk : app_context.trays) {
 			int cnt = disk->event_queue->sync_invoke([disk]()->int{
-				return disk->free_obj_queue.space();
+				return disk->free_obj_queue.count();
 			});
 
                         uint64_t free_size = cnt * disk->head.objsize;
