@@ -84,6 +84,14 @@ int register_store_node(int store_id, const char* mngt_ip)
 	char zk_node_name[64];
 	int rc;
 
+	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d", store_id);
+	rc = app_context.zk_client.delete_node(zk_node_name);
+	if(rc != ZOK)
+		S5LOG_WARN("Failed to delete zookeeper node %s rc:%d", zk_node_name, rc);
+
+	if ((rc = app_context.zk_client.create_node(zk_node_name, false, NULL)) != ZOK)
+		return rc;
+
 	snprintf(zk_node_name, sizeof(zk_node_name), "stores/%d/mngt_ip", store_id);
 
 
